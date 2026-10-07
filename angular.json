@@ -1,0 +1,71 @@
+{
+  "$schema": "./node_modules/@angular/cli/lib/config/schema.json",
+  "version": 1,
+  "newProjectRoot": "",
+  "projects": {
+    "app": {
+      "projectType": "application",
+      "root": "",
+      "sourceRoot": "./",
+      "prefix": "app",
+      "architect": {
+        "build": {
+          "builder": "@angular/build:application",
+          "options": {
+            "outputPath": {
+              "base": "./dist",
+              "browser": "."
+            },
+            "browser": "index.tsx",
+            "tsConfig": "tsconfig.json",
+            "assets": [
+              { "glob": "**/*", "input": "public", "output": "" },
+              "manifest.webmanifest",
+              "sw.js",
+              "icon-192.png",
+              "icon-512.png",
+              "apple-touch-icon.png"
+            ],
+            "define": {
+              "process.env.API_KEY": "\"\"",
+              "process.env.GEMINI_API_KEY": "\"\"",
+              "process.env.GROQ_API_KEY": "\"\"",
+              "process.env.SUPABASE_URL": "\"https://epazfolcfbmedjxlchqb.supabase.co\"",
+              "process.env.SUPABASE_PUBLISHABLE_KEY": "\"sb_publishable_c--UjXXWohgzQqj_Ky496g_G7h62ned\"",
+              "process.env.NEXT_PUBLIC_SUPABASE_URL": "\"https://epazfolcfbmedjxlchqb.supabase.co\"",
+              "process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY": "\"sb_publishable_c--UjXXWohgzQqj_Ky496g_G7h62ned\""
+            }
+          },
+          "configurations": {
+            "production": {
+              "outputHashing": "all"
+            },
+            "development": {
+              "optimization": false,
+              "extractLicenses": false,
+              "sourceMap": true
+            }
+          },
+          "defaultConfiguration": "production"
+        },
+        "serve": {
+          "builder": "@angular/build:dev-server",
+          "options": {
+            "host": "0.0.0.0",
+            "port": 3000,
+            "allowedHosts": true
+          },
+          "configurations": {
+            "production": {
+              "buildTarget": "app:build:production"
+            },
+            "development": {
+              "buildTarget": "app:build:development"
+            }
+          },
+          "defaultConfiguration": "development"
+        }
+      }
+    }
+  }
+}
