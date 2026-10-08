@@ -4,6 +4,30 @@ import jsPDF from 'jspdf';
 import { Store } from './store.service';
 import { MonthlyChartItem } from '../components/store-report.component';
 
+export interface StoreVoucherData {
+  storeName: string;
+  luc: string;
+  contrato?: string;
+  utilityType: 'luz' | 'agua' | 'gas';
+  utilityLabel: string;
+  unit: string;
+  month: string;
+  monthLabel: string;
+  prevReading: number;
+  currentReading: number;
+  readingDiff: number;
+  constant: number;
+  adjustment: number;
+  consumption: number;
+  unitPrice: number;
+  totalCost: number;
+  variationPct?: number;
+  note?: string;
+  photoDataUrl?: string;
+  photoCapturedAt?: string;
+  issueDate?: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -552,5 +576,168 @@ export class ReportExportService {
         resolve('');
       }
     });
+  }
+
+  // --- COMPROVANTE INDIVIDUAL DO LOJISTA COM FOTO (ESPELHO EM PDF) ---
+  exportStoreVoucherPdf(data: StoreVoucherData): void {
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 14;
+    let y = 14;
+
+    // Header Background Accent Bar
+    const bgHeader = data.utilityType === 'luz' ? [13, 148, 136] : (data.utilityType === 'agua' ? [37, 99, 235] : [225, 29, 72]);
+    doc.setFillColor(bgHeader[0], bgHeader[1], bgHeader[2]);
+    doc.rect(0, 0, pageWidth, 24, 'F');
+
+    // Title
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.text('COMPROVANTE INDIVIDUAL DE MEDIÇÃO & RATEIO', margin, 11);
+
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Shopping Center • ${data.utilityLabel.toUpperCase()} • Referência: ${data.monthLabel || data.month}`, margin, 17);
+
+    const nowStr = data.issueDate || new Date().toLocaleString('pt-BR');
+    doc.setFontSize(7.5);
+    doc.text(`Emissão: ${nowStr}`, pageWidth - margin, 17, { align: 'right' });
+
+    y = 30;
+
+    // 1. Dados da Loja (Card Superior)
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(margin, y, pageWidth - (margin * 2), 22, 2, 2, 'FD');
+
+    doc.setTextColor(15, 23, 42);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.text(data.storeName, margin + 4, y + 7);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`Espaço (LUC): ${data.luc}`, margin + 4, y + 14);
+    doc.text(`Contrato: ${data.contrato || 'Não informado'}`, margin + 50, y + 14);
+    doc.text(`Insumo: ${data.utilityLabel}`, margin + 100, y + 14);
+    doc.text(`Mês de Vigência: ${data.monthLabel || data.month}`, margin + 145, y + 14);
+
+    y += 27;
+
+    // 2. Quadro de Apuração do Consumo e Custos
+    doc.setFillColor(241, 245, 249);
+    doc.rect(margin, y, pageWidth - (margin * 2), 7, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(30, 41, 59);
+    doc.text('MEMÓRIA DE CÁLCULO E VALORES APURADOS', margin + 3, y + 5);
+
+    y += 9;
+
+    const rowH = 7;
+    const items: [string, string][] = [
+      ['Leitura Anterior no Relógio', `${data.prevReading.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 4 })} ${data.unit}`],
+      ['Leitura Atual Coletada em Campo', `${data.currentReading.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 4 })} ${data.unit}`],
+      ['Diferença Bruta de Mostrador', `${data.readingDiff >= 0 ? '+' : ''}${data.readingDiff.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 4 })} ${data.unit}`],
+      ['Fator Multiplicador / Constante', `${data.constant} (Ajuste: ${data.adjustment})`],
+      ['Consumo Total Faturado', `${data.consumption.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${data.unit}`],
+      ['Tarifa Unitária Rateada', `R$ ${data.unitPrice.toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })} por ${data.unit}`],
+    ];
+
+    if (data.variationPct !== undefined && !isNaN(data.variationPct)) {
+      items.push(['Variação vs Mês Anterior', `${data.variationPct >= 0 ? '+' : ''}${data.variationPct.toFixed(1)}%`]);
+    }
+
+    doc.setFontSize(8);
+    items.forEach(([label, val], idx) => {
+      if (idx % 2 === 0) {
+        doc.setFillColor(248, 250, 252);
+        doc.rect(margin, y - 1, pageWidth - (margin * 2), rowH, 'F');
+      }
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(71, 85, 105);
+      doc.text(label, margin + 3, y + 4);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(15, 23, 42);
+      doc.text(val, pageWidth - margin - 3, y + 4, { align: 'right' });
+      y += rowH;
+    });
+
+    // Box de Total a Pagar
+    y += 2;
+    doc.setFillColor(236, 253, 245);
+    doc.setDrawColor(52, 211, 153);
+    doc.roundedRect(margin, y, pageWidth - (margin * 2), 15, 2, 2, 'FD');
+
+    doc.setTextColor(6, 78, 59);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.text('TOTAL A COBRAR NO RATEIO:', margin + 5, y + 6);
+
+    doc.setFontSize(13);
+    doc.setTextColor(5, 150, 105);
+    doc.text(`R$ ${data.totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, pageWidth - margin - 5, y + 10.5, { align: 'right' });
+
+    y += 20;
+
+    // Observações de Campo se houver
+    if (data.note) {
+      doc.setFillColor(254, 243, 199);
+      doc.setDrawColor(251, 191, 36);
+      doc.roundedRect(margin, y, pageWidth - (margin * 2), 9, 1.5, 1.5, 'FD');
+      doc.setTextColor(146, 64, 14);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Observação de Campo: ${data.note}`, margin + 4, y + 6);
+      y += 13;
+    }
+
+    // 3. Foto de Evidência do Medidor (se disponível)
+    if (data.photoDataUrl) {
+      doc.setFillColor(241, 245, 249);
+      doc.rect(margin, y, pageWidth - (margin * 2), 7, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(30, 41, 59);
+      doc.text('REGISTRO FOTOGRÁFICO DO MEDIDOR (EVIDÊNCIA AUDITADA)', margin + 3, y + 5);
+      y += 9;
+
+      const imgW = 75;
+      const imgH = 60;
+      const imgX = (pageWidth - imgW) / 2;
+
+      try {
+        doc.setDrawColor(203, 213, 225);
+        doc.rect(imgX - 1, y - 1, imgW + 2, imgH + 2, 'S');
+        doc.addImage(data.photoDataUrl, 'JPEG', imgX, y, imgW, imgH);
+
+        y += imgH + 3;
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(7.5);
+        doc.setTextColor(100, 116, 139);
+        const photoDate = data.photoCapturedAt ? new Date(data.photoCapturedAt).toLocaleString('pt-BR') : 'Data não registrada';
+        doc.text(`Foto capturada no local em: ${photoDate} • Registro autenticado`, pageWidth / 2, y + 2, { align: 'center' });
+        y += 8;
+      } catch (e) {
+        console.warn('Erro ao inserir foto no voucher PDF:', e);
+      }
+    }
+
+    // Rodapé de Autenticidade
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(7);
+    doc.setTextColor(148, 163, 184);
+    doc.text('Este comprovante é emitido pela administração do shopping para conferência de leitura e rateio. Dúvidas contatar a equipe técnica.', margin, 287);
+
+    const safeName = data.storeName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    doc.save(`Comprovante_${data.luc}_${safeName}_${data.month}.pdf`);
   }
 }

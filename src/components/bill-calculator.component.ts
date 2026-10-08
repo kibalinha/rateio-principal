@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { StoreService, Store } from '../services/store.service';
 import { HistoryService, BillData, StoreReading } from '../services/history.service';
 import { AuthService } from '../services/auth.service';
-import { ReportExportService } from '../services/report-export.service';
+import { ReportExportService, StoreVoucherData } from '../services/report-export.service';
 import { IndexedDbService, MeterPhotoRecord } from '../services/indexed-db.service';
 import { GeminiService, MeterOcrResult } from '../services/gemini.service';
 import { SupabaseService } from '../services/supabase.service';
@@ -661,6 +661,7 @@ type ColumnDef = {
                               <span class="text-slate-300 dark:text-slate-600">•</span>
                               <span class="text-slate-500 dark:text-slate-400 font-medium">Ctr: {{ item.contrato }}</span>
                             }
+                            <button type="button" (click)="openStoreVoucher(item)" title="Gerar espelho do lojista" class="ml-auto text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer flex items-center gap-0.5"><span>📲</span><span>Espelho</span></button>
                           </div>
                       </td>
                       <td class="p-3 text-center text-slate-400 dark:text-slate-400 font-mono border-r border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950">
@@ -1376,6 +1377,17 @@ type ColumnDef = {
                         }
                       </div>
 
+                      <!-- Botão Espelho do Lojista no Modo Rota -->
+                      <div class="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                        <span class="text-xs font-bold text-slate-500 dark:text-slate-400">Prestação de Contas:</span>
+                        <button type="button" 
+                          (click)="openStoreVoucher(stepStore)" 
+                          class="px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs">
+                          <span>📲</span>
+                          <span>Espelho / WhatsApp</span>
+                        </button>
+                      </div>
+
                       <!-- Observação de Campo no Modo Rota -->
                       <div class="pt-2 border-t border-slate-100 dark:border-slate-800">
                         <div class="flex items-center justify-between text-xs mb-1.5">
@@ -1718,6 +1730,12 @@ type ColumnDef = {
                   <span>⬇️ Baixar Foto</span>
                 </button>
 
+                <button type="button" 
+                  (click)="openStoreVoucherByStoreId(photo.storeId)" 
+                  class="flex-1 py-2.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer">
+                  <span>📲 Ver Espelho</span>
+                </button>
+
                 <label class="flex-1 py-2.5 px-3 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer text-center">
                   <span>🔄 Substituir</span>
                   <input type="file" 
@@ -1938,6 +1956,190 @@ type ColumnDef = {
         </div>
       }
 
+      
+      <!-- Modal: Espelho Individual do Lojista (Comprovante com Foto / WhatsApp / PDF) -->
+      @if (showVoucherModal()) {
+        @let voucher = selectedVoucherData();
+        @if (voucher) {
+          <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
+            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-xl w-full my-auto shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+              
+              <!-- Modal Top Actions Bar -->
+              <div class="p-3.5 sm:p-4 bg-slate-900 text-white flex justify-between items-center shrink-0 border-b border-slate-800">
+                <div class="flex items-center gap-2">
+                  <span class="text-xl">📲</span>
+                  <div>
+                    <h3 class="text-sm font-bold leading-tight">Espelho Individual do Lojista</h3>
+                    <p class="text-[11px] text-slate-400">Comprovante de medição & memória de cálculo</p>
+                  </div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button type="button" (click)="closeStoreVoucher()" class="text-slate-400 hover:text-white text-lg p-1 cursor-pointer">✕</button>
+                </div>
+              </div>
+
+              <!-- Printable / Previewable Voucher Body -->
+              <div id="printable-store-voucher" class="p-5 overflow-y-auto space-y-4 text-xs bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100">
+                
+                <!-- Voucher Header Paper Style -->
+                <div class="border-b-2 border-slate-900 dark:border-slate-700 pb-3 flex justify-between items-start">
+                  <div>
+                    <div class="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-extrabold">ADMINISTRAÇÃO DO SHOPPING</div>
+                    <div class="text-base font-black text-slate-900 dark:text-white uppercase">Comprovante de Rateio</div>
+                    <div class="text-[11px] font-semibold text-teal-700 dark:text-teal-400">
+                      {{ voucher.utilityLabel }} • Mês de Referência: {{ voucher.monthLabel || voucher.month }}
+                    </div>
+                  </div>
+                  <div class="text-right">
+                    <span class="inline-block px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                      Via do Lojista
+                    </span>
+                    <div class="text-[9px] text-slate-400 mt-1">Emissão: {{ voucher.issueDate }}</div>
+                  </div>
+                </div>
+
+                <!-- Card Loja -->
+                <div class="p-3 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <div class="col-span-2 sm:col-span-1">
+                    <span class="text-[10px] uppercase font-bold text-slate-400 block">Loja / Lojista</span>
+                    <strong class="text-sm font-bold text-slate-900 dark:text-white">{{ voucher.storeName }}</strong>
+                  </div>
+                  <div>
+                    <span class="text-[10px] uppercase font-bold text-slate-400 block">Espaço (LUC)</span>
+                    <span class="font-mono font-bold text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 text-xs">
+                      {{ voucher.luc }}
+                    </span>
+                  </div>
+                  <div>
+                    <span class="text-[10px] uppercase font-bold text-slate-400 block">Contrato</span>
+                    <span class="font-mono text-slate-700 dark:text-slate-300 text-xs">
+                      {{ voucher.contrato || 'Não inf.' }}
+                    </span>
+                  </div>
+                </div>
+
+                <!-- Tabela de Leituras & Consumo -->
+                <div class="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
+                  <div class="bg-slate-100 dark:bg-slate-800 px-3 py-1.5 font-bold text-[11px] text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                    Apuração de Consumo
+                  </div>
+                  <div class="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                    <div class="px-3 py-2 flex justify-between items-center">
+                      <span class="text-slate-600 dark:text-slate-400">Leitura Anterior (Relógio)</span>
+                      <strong class="font-mono">{{ voucher.prevReading | number:'1.0-4' }} {{ voucher.unit }}</strong>
+                    </div>
+                    <div class="px-3 py-2 flex justify-between items-center bg-teal-50/30 dark:bg-teal-950/20">
+                      <span class="text-slate-600 dark:text-slate-400">Leitura Atual (Coletada)</span>
+                      <strong class="font-mono text-teal-800 dark:text-teal-300 font-bold">{{ voucher.currentReading | number:'1.0-4' }} {{ voucher.unit }}</strong>
+                    </div>
+                    <div class="px-3 py-2 flex justify-between items-center">
+                      <span class="text-slate-600 dark:text-slate-400">Diferença de Mostrador</span>
+                      <span class="font-mono">+{{ voucher.readingDiff | number:'1.0-4' }} {{ voucher.unit }}</span>
+                    </div>
+                    @if (voucher.constant !== 1 || voucher.adjustment !== 1) {
+                      <div class="px-3 py-2 flex justify-between items-center">
+                        <span class="text-slate-600 dark:text-slate-400">Constante / Fatores</span>
+                        <span class="font-mono text-slate-500">Const: {{ voucher.constant }} | Ajuste: {{ voucher.adjustment }}</span>
+                      </div>
+                    }
+                    <div class="px-3 py-2.5 flex justify-between items-center bg-slate-50 dark:bg-slate-850 font-bold">
+                      <span class="text-slate-800 dark:text-slate-200">Consumo Total Faturado</span>
+                      <strong class="font-mono text-sm text-slate-900 dark:text-white">{{ voucher.consumption | number:'1.2-2' }} {{ voucher.unit }}</strong>
+                    </div>
+                    <div class="px-3 py-2 flex justify-between items-center">
+                      <span class="text-slate-600 dark:text-slate-400">Tarifa Unitária de Rateio</span>
+                      <span class="font-mono text-slate-600 dark:text-slate-400">R$ {{ voucher.unitPrice | number:'1.4-4' }} / {{ voucher.unit }}</span>
+                    </div>
+                    @if (voucher.variationPct !== undefined && !isNaN(voucher.variationPct)) {
+                      <div class="px-3 py-2 flex justify-between items-center">
+                        <span class="text-slate-600 dark:text-slate-400">Variação vs Mês Anterior</span>
+                        <span class="font-mono font-bold" [class.text-rose-600]="voucher.variationPct > 20" [class.text-emerald-600]="voucher.variationPct <= 0">
+                          {{ voucher.variationPct >= 0 ? '+' : '' }}{{ voucher.variationPct | number:'1.1-1' }}%
+                        </span>
+                      </div>
+                    }
+                  </div>
+                </div>
+
+                <!-- Caixa Destaque de Valor Total -->
+                <div class="p-3.5 bg-emerald-50 dark:bg-emerald-950/60 rounded-xl border-2 border-emerald-300 dark:border-emerald-800 flex justify-between items-center">
+                  <div>
+                    <span class="text-[10px] uppercase font-bold text-emerald-800 dark:text-emerald-300 block">Valor a Pagar no Rateio</span>
+                    <span class="text-[11px] text-emerald-700 dark:text-emerald-400">Cobrança inclusa no boleto condominial</span>
+                  </div>
+                  <div class="text-right">
+                    <strong class="text-xl font-mono font-black text-emerald-700 dark:text-emerald-300">{{ voucher.totalCost | currency:'BRL' }}</strong>
+                  </div>
+                </div>
+
+                <!-- Foto do Medidor Incorporada -->
+                @if (voucher.photoDataUrl) {
+                  <div class="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
+                    <div class="flex justify-between items-center">
+                      <span class="font-bold text-[11px] text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                        <span>📷 Evidência Fotográfica do Relógio</span>
+                        <span class="bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-300 text-[10px] px-1.5 py-0.2 rounded font-bold">Auditado</span>
+                      </span>
+                      @if (voucher.photoCapturedAt) {
+                        <span class="text-[10px] font-mono text-slate-400">{{ voucher.photoCapturedAt | date:'dd/MM/yyyy HH:mm' }}</span>
+                      }
+                    </div>
+                    <div class="flex justify-center bg-black/5 dark:bg-black/30 p-2 rounded-lg">
+                      <img [src]="voucher.photoDataUrl" 
+                           alt="Foto do Medidor" 
+                           class="max-h-48 rounded-lg object-contain border border-slate-300 dark:border-slate-700 shadow-xs">
+                    </div>
+                  </div>
+                }
+
+                @if (voucher.note) {
+                  <div class="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs">
+                    <strong>Observação de Campo:</strong> {{ voucher.note }}
+                  </div>
+                }
+
+                <div class="text-[10px] text-slate-400 italic text-center pt-1 border-t border-slate-100 dark:border-slate-800">
+                  Comprovante gerado automaticamente pelo Sistema de Gestão & Rateio de Utilidades.
+                </div>
+              </div>
+
+              <!-- Modal Bottom Actions -->
+              <div class="p-3 sm:p-4 bg-slate-50 dark:bg-slate-850 border-t border-slate-200 dark:border-slate-800 flex flex-wrap gap-2 justify-between items-center shrink-0">
+                <button type="button" 
+                  (click)="closeStoreVoucher()" 
+                  class="px-3.5 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 text-slate-700 dark:text-slate-200 font-bold text-xs cursor-pointer transition-colors">
+                  Fechar
+                </button>
+
+                <div class="flex flex-wrap gap-2 ml-auto">
+                  <button type="button" 
+                    (click)="copyVoucherText()" 
+                    class="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-colors">
+                    <span>📋</span>
+                    <span>Copiar Texto</span>
+                  </button>
+
+                  <button type="button" 
+                    (click)="downloadVoucherPdf()" 
+                    class="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors">
+                    <span>📄</span>
+                    <span>Baixar PDF</span>
+                  </button>
+
+                  <button type="button" 
+                    (click)="shareVoucherWhatsApp()" 
+                    class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-sm transition-all">
+                    <span>💬</span>
+                    <span>WhatsApp</span>
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        }
+      }
+
       <!-- Mobile Floating Quick Route Bar -->
       <div class="md:hidden fixed bottom-16 left-3 right-3 z-30 pointer-events-none flex justify-center">
         <div class="pointer-events-auto bg-slate-900/90 text-white backdrop-blur-md px-3.5 py-2 rounded-full shadow-xl border border-slate-700 flex items-center gap-3 text-xs">
@@ -2027,6 +2229,10 @@ export class BillCalculatorComponent implements OnDestroy {
   groqInputKey = signal<string>('');
   geminiInputKey = signal<string>('');
   pendingOcrStoreId = signal<string | null>(null);
+
+    // --- STORE VOUCHER / ESPELHO DO LOJISTA STATE ---
+  showVoucherModal = signal<boolean>(false);
+  selectedVoucherData = signal<StoreVoucherData | null>(null);
 
   // --- BATCH OCR QUEUE STATE ---
   showBatchOcrModal = signal<boolean>(false);
@@ -3859,4 +4065,115 @@ export class BillCalculatorComponent implements OnDestroy {
       this.isExportingExcel.set(false);
     }
   }
+  // --- STORE VOUCHER / ESPELHO DO LOJISTA METHODS ---
+  getUtilityLabel() {
+    switch(this.utilityType()) {
+      case 'luz': return 'Energia Elétrica';
+      case 'agua': return 'Água & Esgoto';
+      case 'gas': return 'Gás GLP';
+    }
+  }
+
+  selectedMonthLabel(): string {
+    const m = this.selectedMonth();
+    if (!m) return '';
+    const [year, month] = m.split('-');
+    const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+    const idx = parseInt(month, 10) - 1;
+    return (months[idx] || month) + '/' + year;
+  }
+
+  openStoreVoucher(item: any) {
+    if (!item) return;
+    const type = this.utilityType();
+    const month = this.selectedMonth();
+    const photo = this.meterPhotos()[item.storeId];
+
+    const data: StoreVoucherData = {
+      storeName: item.storeName,
+      luc: item.luc,
+      contrato: item.contrato,
+      utilityType: type,
+      utilityLabel: this.getUtilityLabel(),
+      unit: this.getUnit(),
+      month: month,
+      monthLabel: this.selectedMonthLabel(),
+      prevReading: item.prevReading || 0,
+      currentReading: item.currentReading || 0,
+      readingDiff: item.readingDiff !== undefined ? item.readingDiff : ((item.currentReading || 0) - (item.prevReading || 0)),
+      constant: item.constant || 1,
+      adjustment: item.adjustment || 1,
+      consumption: item.consumption || 0,
+      unitPrice: this.calculatedUnitPrice() || 0,
+      totalCost: item.cost || 0,
+      variationPct: item.variation,
+      note: item.note,
+      photoDataUrl: photo?.photoDataUrl,
+      photoCapturedAt: photo?.capturedAt || item.photoTimestamp,
+      issueDate: new Date().toLocaleString('pt-BR')
+    };
+
+    this.selectedVoucherData.set(data);
+    this.showVoucherModal.set(true);
+  }
+
+  openStoreVoucherByStoreId(storeId?: string | null) {
+    if (!storeId) return;
+    const item = this.tableData().find(s => s.storeId === storeId);
+    if (item) {
+      this.openStoreVoucher(item);
+    }
+  }
+
+  closeStoreVoucher() {
+    this.showVoucherModal.set(false);
+  }
+
+  downloadVoucherPdf() {
+    const v = this.selectedVoucherData();
+    if (!v) return;
+    this.exportService.exportStoreVoucherPdf(v);
+    this.indexedDb.showToast('📄 PDF de ' + v.storeName + ' (' + v.luc + ') baixado com sucesso!');
+  }
+
+  buildVoucherWhatsAppMessage(): string {
+    const v = this.selectedVoucherData();
+    if (!v) return '';
+
+    return [
+      '🏬 *COMPROVANTE DE RATEIO - SHOPPING*',
+      '📍 *Loja:* ' + v.storeName + ' (LUC: ' + v.luc + (v.contrato ? ' • Ctr: ' + v.contrato : '') + ')',
+      '📅 *Mês de Referência:* ' + (v.monthLabel || v.month),
+      '⚡ *Insumo:* ' + v.utilityLabel,
+      '',
+      '🔢 *Leitura Anterior:* ' + v.prevReading.toLocaleString('pt-BR') + ' ' + v.unit,
+      '🔢 *Leitura Atual:* ' + v.currentReading.toLocaleString('pt-BR') + ' ' + v.unit,
+      '📊 *Consumo Faturado:* ' + v.consumption.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + v.unit,
+      '💵 *Tarifa de Rateio:* R$ ' + v.unitPrice.toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) + ' / ' + v.unit,
+      '💰 *VALOR A PAGAR:* R$ ' + v.totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      v.note ? '📝 *Observação de Campo:* ' + v.note : '',
+      '',
+      v.photoDataUrl ? '📸 _Foto do relógio auditada e arquivada pela administração._' : '',
+      '_Emitido em: ' + (v.issueDate || new Date().toLocaleString('pt-BR')) + '_'
+    ].filter(Boolean).join('\n');
+  }
+
+  shareVoucherWhatsApp() {
+    const msg = this.buildVoucherWhatsAppMessage();
+    if (!msg) return;
+    const url = 'https://api.whatsapp.com/send?text=' + encodeURIComponent(msg);
+    window.open(url, '_blank');
+  }
+
+  async copyVoucherText() {
+    const msg = this.buildVoucherWhatsAppMessage();
+    if (!msg) return;
+    try {
+      await navigator.clipboard.writeText(msg);
+      this.indexedDb.showToast('📋 Comprovante copiado! Pronto para colar no WhatsApp.');
+    } catch {
+      this.indexedDb.showToast('Erro ao copiar texto.');
+    }
+  }
+
 }
