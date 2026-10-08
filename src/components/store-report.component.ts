@@ -78,7 +78,8 @@ export interface StoreAlertInfo {
                 : alertCount() > 0 
                   ? 'text-rose-700 dark:text-rose-400 hover:text-rose-900 bg-rose-50/80 dark:bg-rose-950/40 font-bold border border-rose-200 dark:border-rose-800' 
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 font-medium'"
-              class="px-3 py-1.5 text-xs rounded-lg transition-all flex items-center gap-1.5">
+              class="px-3 py-1.5 text-xs rounded-lg transition-all flex items-center gap-1.5 cursor-pointer"
+              [title]="'Filtrar lojas com alertas no período selecionado (' + formatMonthLabel(startPeriod()) + ' até ' + formatMonthLabel(endPeriod()) + ')'">
               <span class="w-2 h-2 rounded-full" [class]="statusFilter() === 'alert' ? 'bg-white' : alertCount() > 0 ? 'bg-rose-500 animate-pulse' : 'bg-slate-300'"></span>
               <span>⚠️ Com Alertas ({{ alertCount() }})</span>
             </button>
@@ -931,81 +932,193 @@ export class StoreReportComponent {
   activeCount = computed(() => this.storeService.stores().filter(s => s.active !== false).length);
   inactiveCount = computed(() => this.storeService.stores().filter(s => s.active === false).length);
 
-  // Global Alerts Map for all stores based on the currently selected utility
+  // Global Alerts Map for all stores dynamically adapted to the selected period range [startPeriod, endPeriod]
   storeAlertsMap = computed<Record<string, StoreAlertInfo>>(() => {
     const allData = this.historyService.getAllData();
     const utility = this.selectedUtility();
-    const periods = this.availablePeriodsList();
+    const allPeriods = this.availablePeriodsList();
     const stores = this.storeService.stores();
+
+    const start = this.startPeriod() || (allPeriods.length > 0 ? allPeriods[0] : '');
+    const end = this.endPeriod() || (allPeriods.length > 0 ? allPeriods[allPeriods.length - 1] : '');
+    const selectedPeriods = allPeriods.filter(p => (!start || p >= start) && (!end || p <= end));
+
     const map: Record<string, StoreAlertInfo> = {};
 
     for (const store of stores) {
-      // Gather active consumption data across periods
-      const values: { period: string; val: number }[] = [];
-      for (const p of periods) {
+      // 1. Helper to extract store consumption in any given month
+      const getStoreConsumption = (p: string): number | null => {
         const bill = allData[`${utility}_${p}`];
-        if (bill && bill.readings && bill.readings[store.id] !== undefined) {
-          const r: any = bill.readings[store.id];
-          let val = 0;
-          if (typeof r === 'object') {
-            val = r.calculatedConsumption ?? r.consumption ?? 0;
-          } else if (typeof r === 'number') {
-            val = r;
-          }
-          if (val > 0) {
-            values.push({ period: p, val });
-          }
+        if (!bill || !bill.readings || bill.readings[store.id] === undefined) return null;
+        const r: any = bill.readings[store.id];
+        if (typeof r === 'object' && r !== null) {
+          return r.calculatedConsumption ?? r.consumption ?? 0;
+        }
+        if (typeof r === 'number') {
+          return r;
+        }
+        return null;
+      };
+
+      // 2. Compute store's historical average consumption for baseline comparison
+      const allHistoricalValues: number[] = [];
+      for (const p of allPeriods) {
+        const c = getStoreConsumption(p);
+        if (c !== null && c > 0) {
+          allHistoricalValues.push(c);
+        }
+      }
+      const overallAvg = allHistoricalValues.length > 0
+        ? allHistoricalValues.reduce((a, b) => a + b, 0) / allHistoricalValues.length
+        : 0;
+
+      // 3. Gather readings inside the user-selected period window
+      const windowItems: { period: string; val: number }[] = [];
+      for (const p of selectedPeriods) {
+        const c = getStoreConsumption(p);
+        if (c !== null) {
+          windowItems.push({ period: p, val: c });
         }
       }
 
-      if (values.length < 2) {
+      if (windowItems.length === 0) {
         map[store.id] = {
           hasAlert: false,
           severity: 'normal',
           badgeText: '',
           diffAvgPct: 0,
           momPct: null,
-          latestConsumption: values.length === 1 ? values[0].val : 0,
-          avgConsumption: values.length === 1 ? values[0].val : 0
+          latestConsumption: 0,
+          avgConsumption: overallAvg
         };
         continue;
       }
 
-      const sum = values.reduce((acc, v) => acc + v.val, 0);
-      const avg = sum / values.length;
-      const latest = values[values.length - 1].val;
-      const prev = values[values.length - 2].val;
+      const windowPositive = windowItems.filter(w => w.val > 0).map(w => w.val);
+      const windowAvg = windowPositive.length > 0
+        ? windowPositive.reduce((a, b) => a + b, 0) / windowPositive.length
+        : overallAvg;
+      
+      const storeAvg = windowPositive.length >= 2 ? windowAvg : (overallAvg > 0 ? overallAvg : windowAvg);
+      const latestItem = windowItems[windowItems.length - 1];
 
-      const diffAvgPct = avg > 0 ? ((latest - avg) / avg) * 100 : 0;
-      const momPct = prev > 0 ? ((latest - prev) / prev) * 100 : 0;
+      // 4. Scan all months in the selected period window for anomalies/alerts
+      type AlertEntry = {
+        period: string;
+        severity: 'critical' | 'warning' | 'drop';
+        badgeText: string;
+        diffAvgPct: number;
+        momPct: number | null;
+        val: number;
+      };
+      const alertsInWindow: AlertEntry[] = [];
 
-      let hasAlert = false;
-      let severity: 'critical' | 'warning' | 'drop' | 'normal' = 'normal';
-      let badgeText = '';
+      for (let i = 0; i < windowItems.length; i++) {
+        const currentItem = windowItems[i];
+        const val = currentItem.val;
+        const p = currentItem.period;
 
-      if (diffAvgPct >= 40 || momPct >= 50) {
-        hasAlert = true;
-        severity = 'critical';
-        badgeText = diffAvgPct >= 40 ? `🚨 +${Math.round(diffAvgPct)}% vs Média` : `🚨 Salto +${Math.round(momPct)}%`;
-      } else if (diffAvgPct >= 20 || momPct >= 30) {
-        hasAlert = true;
-        severity = 'warning';
-        badgeText = diffAvgPct >= 20 ? `⚠️ +${Math.round(diffAvgPct)}% Média` : `⚠️ Salto +${Math.round(momPct)}%`;
-      } else if (diffAvgPct <= -35 || momPct <= -40) {
-        hasAlert = true;
-        severity = 'drop';
-        badgeText = `📉 Queda ${Math.round(diffAvgPct)}%`;
+        // Determine previous month's value (prefer prior month in history even if outside window)
+        const pIdx = allPeriods.indexOf(p);
+        const prevPeriodKey = pIdx > 0 ? allPeriods[pIdx - 1] : null;
+        const prevVal = prevPeriodKey ? getStoreConsumption(prevPeriodKey) : null;
+
+        // Check for 0 consumption on active store with historic consumption
+        if (val === 0 && store.active !== false && storeAvg > 0) {
+          alertsInWindow.push({
+            period: p,
+            severity: 'drop',
+            badgeText: '📉 Consumo Zero',
+            diffAvgPct: -100,
+            momPct: -100,
+            val: 0
+          });
+          continue;
+        }
+
+        if (val <= 0) continue;
+
+        const diffAvgPct = storeAvg > 0 ? ((val - storeAvg) / storeAvg) * 100 : 0;
+        const momPct = (prevVal !== null && prevVal > 0) ? ((val - prevVal) / prevVal) * 100 : null;
+
+        let hasMonthAlert = false;
+        let monthSeverity: 'critical' | 'warning' | 'drop' = 'warning';
+        let monthBadge = '';
+
+        if (diffAvgPct >= 40 || (momPct !== null && momPct >= 50)) {
+          hasMonthAlert = true;
+          monthSeverity = 'critical';
+          monthBadge = diffAvgPct >= 40 ? `🚨 +${Math.round(diffAvgPct)}% vs Média` : `🚨 Salto +${Math.round(momPct!)}%`;
+        } else if (diffAvgPct >= 20 || (momPct !== null && momPct >= 30)) {
+          hasMonthAlert = true;
+          monthSeverity = 'warning';
+          monthBadge = diffAvgPct >= 20 ? `⚠️ +${Math.round(diffAvgPct)}% Média` : `⚠️ Salto +${Math.round(momPct!)}%`;
+        } else if (diffAvgPct <= -35 || (momPct !== null && momPct <= -40)) {
+          hasMonthAlert = true;
+          monthSeverity = 'drop';
+          monthBadge = `📉 Queda ${Math.round(diffAvgPct)}%`;
+        }
+
+        if (hasMonthAlert) {
+          alertsInWindow.push({
+            period: p,
+            severity: monthSeverity,
+            badgeText: monthBadge,
+            diffAvgPct,
+            momPct,
+            val
+          });
+        }
       }
 
-      map[store.id] = {
-        hasAlert,
-        severity,
-        badgeText,
-        diffAvgPct,
-        momPct,
-        latestConsumption: latest,
-        avgConsumption: avg
-      };
+      // 5. Build final StoreAlertInfo for this store in the selected window
+      if (alertsInWindow.length === 0) {
+        const lastPIdx = allPeriods.indexOf(latestItem.period);
+        const lastPrevKey = lastPIdx > 0 ? allPeriods[lastPIdx - 1] : null;
+        const lastPrevVal = lastPrevKey ? getStoreConsumption(lastPrevKey) : null;
+        const lastMomPct = (lastPrevVal !== null && lastPrevVal > 0 && latestItem.val > 0)
+          ? ((latestItem.val - lastPrevVal) / lastPrevVal) * 100
+          : null;
+        const lastDiffAvgPct = storeAvg > 0 ? ((latestItem.val - storeAvg) / storeAvg) * 100 : 0;
+
+        map[store.id] = {
+          hasAlert: false,
+          severity: 'normal',
+          badgeText: '',
+          diffAvgPct: lastDiffAvgPct,
+          momPct: lastMomPct,
+          latestConsumption: latestItem.val,
+          avgConsumption: storeAvg
+        };
+      } else {
+        // Choose which alert to feature on the badge:
+        // If the latest month in the window has an alert, feature that one.
+        // Otherwise, feature the most severe alert in the window (critical > warning > drop),
+        // adding the short month name so the user immediately identifies when it happened.
+        const latestMonthAlert = alertsInWindow.find(a => a.period === latestItem.period);
+        let featured = latestMonthAlert;
+        if (!featured) {
+          featured = alertsInWindow.find(a => a.severity === 'critical')
+            || alertsInWindow.find(a => a.severity === 'warning')
+            || alertsInWindow[alertsInWindow.length - 1];
+        }
+
+        let badgeText = featured.badgeText;
+        if (featured.period !== latestItem.period && windowItems.length > 1) {
+          const shortMonth = this.getShortMonthName(featured.period);
+          badgeText = `${badgeText} (${shortMonth})`;
+        }
+
+        map[store.id] = {
+          hasAlert: true,
+          severity: featured.severity,
+          badgeText,
+          diffAvgPct: featured.diffAvgPct,
+          momPct: featured.momPct,
+          latestConsumption: latestItem.val,
+          avgConsumption: storeAvg
+        };
+      }
     }
 
     return map;
@@ -1238,11 +1351,23 @@ export class StoreReportComponent {
     const avg = this.metrics().avgConsumption;
     const utility = this.selectedUtility();
 
-    const diffAvgPct = avg > 0 ? ((latest.consumption - avg) / avg) * 100 : 0;
-    const momDiffPct = prev && prev.consumption > 0 ? ((latest.consumption - prev.consumption) / prev.consumption) * 100 : null;
+    // Check if the latest month has an alert, or find the most critical alert in the selected range
+    const alertMonths = data.filter(d => d.alertLevel !== 'normal');
+    let targetItem = latest;
+    let targetPrev = prev;
+    if (latest.alertLevel === 'normal' && alertMonths.length > 0) {
+      const criticalItem = alertMonths.find(d => d.alertLevel === 'critical');
+      const warningItem = alertMonths.find(d => d.alertLevel === 'warning');
+      targetItem = criticalItem || warningItem || alertMonths[alertMonths.length - 1];
+      const targetIdx = data.indexOf(targetItem);
+      targetPrev = targetIdx > 0 ? data[targetIdx - 1] : null;
+    }
 
-    const hasAlert = latest.alertLevel !== 'normal';
-    const severity = latest.alertLevel;
+    const diffAvgPct = avg > 0 ? ((targetItem.consumption - avg) / avg) * 100 : 0;
+    const momDiffPct = targetPrev && targetPrev.consumption > 0 ? ((targetItem.consumption - targetPrev.consumption) / targetPrev.consumption) * 100 : null;
+
+    const hasAlert = targetItem.alertLevel !== 'normal';
+    const severity = targetItem.alertLevel;
 
     let badgeTitle = 'Consumo Estável';
     let title = 'Consumo em Conformidade com o Histórico';
@@ -1280,9 +1405,9 @@ export class StoreReportComponent {
       badgeTitle,
       title,
       recommendation,
-      latestMonthLabel: latest.monthLabel,
-      prevMonthLabel: prev ? prev.monthLabel : '',
-      latestConsumption: latest.consumption,
+      latestMonthLabel: targetItem.monthLabel,
+      prevMonthLabel: targetPrev ? targetPrev.monthLabel : '',
+      latestConsumption: targetItem.consumption,
       avgConsumption: avg,
       diffAvgPct,
       momDiffPct
@@ -1466,10 +1591,32 @@ export class StoreReportComponent {
     if (this.endPeriod() < period) {
        this.endPeriod.set(period);
     }
+    this.checkCurrentStoreAfterFilterChange();
   }
 
   setEndPeriod(period: string) {
     this.endPeriod.set(period);
+    this.checkCurrentStoreAfterFilterChange();
+  }
+
+  private checkCurrentStoreAfterFilterChange() {
+    if (this.statusFilter() === 'alert') {
+      const list = this.filteredStores();
+      if (list.length > 0 && !list.some(s => s.id === this.selectedStoreId())) {
+        this.selectedStoreId.set(list[0].id);
+      }
+    }
+  }
+
+  getShortMonthName(yyyy_mm: string): string {
+    const parts = yyyy_mm.split('-');
+    if (parts.length !== 2) return yyyy_mm;
+    const monthNames = [
+      'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
+      'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'
+    ];
+    const monthIdx = parseInt(parts[1], 10) - 1;
+    return monthNames[monthIdx] || parts[1];
   }
 
   doesStoreUseUtility(): boolean {
