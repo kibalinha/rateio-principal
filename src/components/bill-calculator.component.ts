@@ -347,20 +347,71 @@ type ColumnDef = {
                     <div class="grid grid-cols-1 gap-2">
                       @for (key of ['bss1', 'bss2', 'bss3', 'bss4']; track key) {
                         <div class="flex items-center gap-2">
-                           <label class="text-xs text-slate-600 w-1/2 uppercase">{{ key }}</label>
+                           <label class="text-xs text-slate-600 dark:text-slate-300 w-1/2 uppercase">{{ key }}</label>
                            <input type="number" step="0.0001" [disabled]="!canConfigure()" 
                            [ngModel]="luzConsumption()[key]" (ngModelChange)="updateLuzCons(key, $event)" 
-                           class="w-1/2 px-2 py-1 text-sm border border-slate-300 rounded text-right font-mono focus:ring-1 focus:ring-warning disabled:bg-slate-100" placeholder="0">
+                           class="w-1/2 px-2 py-1 text-sm border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded text-right font-mono focus:ring-1 focus:ring-warning disabled:bg-slate-100 dark:disabled:bg-slate-900" placeholder="0">
                         </div>
                       }
                     </div>
-                  } @else {
+                  } @else if (utilityType() === 'agua') {
                     <div class="flex items-center gap-2">
-                      <label class="text-xs text-slate-600 w-1/2">Total (m³)</label>
+                      <label class="text-xs text-slate-600 dark:text-slate-300 w-1/2">Total Hidrômetro (m³)</label>
                       <input type="number" step="0.0001" [disabled]="!canConfigure()" 
-                      [ngModel]="utilityType() === 'agua' ? aguaTotalReading() : gasTotalReading()" 
-                      (ngModelChange)="utilityType() === 'agua' ? aguaTotalReading.set($event) : gasTotalReading.set($event)" 
-                      class="w-1/2 px-2 py-1 text-sm border border-slate-300 rounded text-right font-mono focus:ring-1 focus:ring-accent disabled:bg-slate-100" placeholder="0">
+                      [ngModel]="aguaTotalReading()" 
+                      (ngModelChange)="aguaTotalReading.set($event)" 
+                      class="w-1/2 px-2 py-1 text-sm border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded text-right font-mono focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 dark:disabled:bg-slate-900" placeholder="0">
+                    </div>
+                  } @else {
+                    <!-- Gás: Fatura Concessionária + Distribuição Automática -->
+                    <div class="space-y-3">
+                      <div class="flex items-center gap-2">
+                        <label class="text-xs font-semibold text-slate-700 dark:text-slate-300 w-1/2">Fatura Concessionária (m³)</label>
+                        <input type="number" step="0.0001" [disabled]="!canConfigure()" 
+                        [ngModel]="gasTotalReading()" 
+                        (ngModelChange)="gasTotalReading.set($event)" 
+                        class="w-1/2 px-2 py-1 text-sm border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded text-right font-mono font-bold focus:ring-1 focus:ring-red-500 disabled:bg-slate-100 dark:disabled:bg-slate-900" placeholder="0">
+                      </div>
+
+                      @if (gasDistributionStats(); as gStats) {
+                        <div class="p-2.5 rounded-lg border text-xs transition-colors"
+                             [class]="gStats.isEnabled ? 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-900/60' : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'">
+                          <div class="flex items-center justify-between gap-2">
+                            <label class="flex items-center gap-1.5 cursor-pointer font-bold text-[11px]"
+                                   [class]="gStats.isEnabled ? 'text-red-900 dark:text-red-300' : 'text-slate-600 dark:text-slate-400'">
+                              <input type="checkbox" 
+                                     [ngModel]="gasAutoDistribute()" 
+                                     (ngModelChange)="gasAutoDistribute.set($event)"
+                                     [disabled]="!canConfigure()"
+                                     class="rounded text-red-600 focus:ring-red-500 cursor-pointer">
+                              <span>Rateio 100% Proporcional</span>
+                            </label>
+                            <span class="text-[10px] px-1.5 py-0.2 rounded font-bold"
+                                  [class]="gStats.isEnabled ? 'bg-red-200/80 dark:bg-red-900/80 text-red-900 dark:text-red-200' : 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400'">
+                              {{ gStats.isEnabled ? 'Ativo' : 'Desativado' }}
+                            </span>
+                          </div>
+
+                          @if (gStats.concessionaria > 0 && gStats.rawTotal > 0) {
+                            <div class="mt-2 pt-2 border-t border-red-200/60 dark:border-red-900/40 space-y-1 font-mono text-[10px]">
+                              <div class="flex justify-between text-slate-600 dark:text-slate-400">
+                                <span>Medido em Campo:</span>
+                                <strong class="text-slate-800 dark:text-slate-200">{{ gStats.rawTotal | number:'1.2-2' }} m³</strong>
+                              </div>
+                              <div class="flex justify-between text-slate-600 dark:text-slate-400">
+                                <span>Fator Rateio (F):</span>
+                                <strong class="text-red-700 dark:text-red-400">{{ gStats.factor | number:'1.4-4' }}x</strong>
+                              </div>
+                              <div class="flex justify-between text-slate-600 dark:text-slate-400">
+                                <span>Diferença:</span>
+                                <span [class]="gStats.diffM3 >= 0 ? 'text-amber-700 dark:text-amber-400 font-semibold' : 'text-blue-700 dark:text-blue-400 font-semibold'">
+                                  {{ gStats.diffM3 > 0 ? '+' : '' }}{{ gStats.diffM3 | number:'1.2-2' }} m³ ({{ gStats.diffPct > 0 ? '+' : '' }}{{ gStats.diffPct | number:'1.1-1' }}%)
+                                </span>
+                              </div>
+                            </div>
+                          }
+                        </div>
+                      }
                     </div>
                   }
                 </div>
@@ -493,6 +544,78 @@ type ColumnDef = {
                        Processar
                     </button>
                  </div>
+              </div>
+            }
+
+            <!-- GAS 100% PROPORTIONAL DISTRIBUTION BANNER -->
+            @if (utilityType() === 'gas' && gasDistributionStats(); as gStats) {
+              <div class="px-4 py-3.5 border-b flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs transition-colors"
+                   [class]="gStats.isEnabled 
+                     ? 'bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-950/40 dark:to-orange-950/30 border-red-200 dark:border-red-900/60' 
+                     : 'bg-slate-100 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700'">
+                
+                <div class="flex items-center gap-2.5">
+                  <div class="p-2 rounded-xl bg-red-100 dark:bg-red-900/60 text-red-700 dark:text-red-300 text-lg shrink-0">
+                    🔥
+                  </div>
+                  <div>
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <strong class="font-bold text-slate-800 dark:text-white text-xs sm:text-sm">
+                        Distribuição Automática de Gás (100% Rateável)
+                      </strong>
+                      @if (gStats.isEnabled && gStats.isBalanced) {
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                          ✓ 100% Equilibrado
+                        </span>
+                      } @else if (!gStats.isEnabled) {
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400">
+                          Medição Pura de Campo (Desativado)
+                        </span>
+                      }
+                    </div>
+                    <p class="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5">
+                      @if (gStats.isEnabled) {
+                        O volume total da concessionária é rateado proporcionalmente entre os lojistas, eliminando sobras e fechando 100% da fatura.
+                      } @else {
+                        Modo manual: cada loja recebe apenas o consumo bruto medido no relógio sem ajuste proporcional.
+                      }
+                    </p>
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end shrink-0 flex-wrap">
+                  <!-- Quick Stats Chips -->
+                  <div class="flex items-center gap-2 font-mono text-[11px]">
+                    <div class="px-2.5 py-1 rounded bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700 shadow-2xs">
+                      <span class="text-slate-400 text-[10px] block font-sans">Concessionária</span>
+                      <strong class="text-slate-800 dark:text-slate-100">{{ gStats.concessionaria | number:'1.1-2' }} m³</strong>
+                    </div>
+                    <div class="px-2.5 py-1 rounded bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700 shadow-2xs">
+                      <span class="text-slate-400 text-[10px] block font-sans">Soma Campo</span>
+                      <strong class="text-slate-800 dark:text-slate-100">{{ gStats.rawTotal | number:'1.1-2' }} m³</strong>
+                    </div>
+                    @if (gStats.concessionaria > 0 && gStats.rawTotal > 0) {
+                      <div class="px-2.5 py-1 rounded bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700 shadow-2xs"
+                           [title]="'Fator Proporcional: ' + gStats.factor.toFixed(4) + 'x'">
+                        <span class="text-slate-400 text-[10px] block font-sans">Fator (F)</span>
+                        <strong class="text-red-600 dark:text-red-400 font-bold">{{ gStats.factor | number:'1.4-4' }}x</strong>
+                      </div>
+                    }
+                  </div>
+
+                  <!-- Toggle Button -->
+                  @if (canConfigure()) {
+                    <button type="button" 
+                      (click)="gasAutoDistribute.set(!gasAutoDistribute())"
+                      class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
+                      [class]="gStats.isEnabled 
+                        ? 'bg-red-600 hover:bg-red-700 text-white' 
+                        : 'bg-slate-800 hover:bg-slate-700 text-white'">
+                      <span>{{ gStats.isEnabled ? '✓ 100% Rateável' : '⚡ Ativar 100%' }}</span>
+                    </button>
+                  }
+                </div>
+
               </div>
             }
 
@@ -652,7 +775,7 @@ type ColumnDef = {
                        <th class="p-3 font-semibold uppercase text-xs text-center w-16 border-r border-teal-600">Ajuste</th>
                     }
                     <th class="p-3 font-semibold uppercase text-xs text-right w-24 border-r border-teal-600">
-                        {{ utilityType() === 'gas' ? 'Cons. FCC' : 'Consumo' }}
+                        {{ utilityType() === 'gas' ? 'Cons. Rateado' : 'Consumo' }}
                     </th>
                     <th class="p-3 font-semibold uppercase text-xs text-right w-16 border-r border-teal-600">Var (%)</th>
                     @if (utilityType() === 'gas') {
@@ -746,8 +869,15 @@ type ColumnDef = {
                             <input type="number" step="0.000001" [ngModel]="item.adjustment" (ngModelChange)="updateDetailedReading(item.storeId, 'adjustment', $event)" (paste)="onPasteCell($event, item.storeId, 'adjustment')" [disabled]="!canConfigure()" class="w-full text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 text-slate-500 dark:text-slate-400 disabled:opacity-50" placeholder="1">
                           </td>
                       }
-                      <td class="p-3 text-right font-mono font-bold text-slate-800 dark:text-slate-100 border-r border-slate-100 dark:border-slate-800 text-sm">
-                        {{ item.consumption | number:'1.0-4' }}
+                      <td class="p-3 text-right font-mono border-r border-slate-100 dark:border-slate-800">
+                        <div class="font-bold text-slate-800 dark:text-slate-100 text-sm">
+                          {{ item.consumption | number:'1.0-4' }}
+                        </div>
+                        @if (item.isGasDistributed) {
+                          <div class="text-[10px] text-red-600 dark:text-red-400 font-sans font-normal" [title]="'Medição bruta em campo: ' + (item.rawConsumption | number:'1.0-4') + ' m³ (ajustado pelo fator ' + (item.gasFactor | number:'1.4-4') + 'x)'">
+                            campo: {{ item.rawConsumption | number:'1.0-2' }}
+                          </div>
+                        }
                       </td>
                       <td class="p-3 text-right font-mono text-[10px] border-r border-slate-100 dark:border-slate-800" 
                           [class.text-red-500]="item.variation > 0" 
@@ -1016,6 +1146,9 @@ type ColumnDef = {
                              <div>
                                 <span class="text-[10px] text-slate-400 block">Consumo</span>
                                 <strong class="font-mono text-slate-900 dark:text-white">{{ item.consumption | number:'1.0-2' }} {{ getUnit() }}</strong>
+                                @if (item.isGasDistributed) {
+                                  <span class="text-[9px] text-red-600 dark:text-red-400 block font-sans">campo: {{ item.rawConsumption | number:'1.0-1' }}</span>
+                                }
                              </div>
                              <div class="text-right">
                                 <span class="text-[10px] text-slate-400 block">Custo Est.</span>
@@ -1330,8 +1463,11 @@ type ColumnDef = {
                       @if (stepStore.isRead) {
                         <div class="bg-teal-50 dark:bg-teal-950/40 p-3 rounded-xl border border-teal-200 dark:border-teal-800 grid grid-cols-2 gap-2 text-xs">
                           <div>
-                            <span class="text-[10px] text-teal-600 dark:text-teal-400 block">Diferença / Consumo</span>
-                            <strong class="font-mono text-base text-teal-900 dark:text-teal-100">+{{ stepStore.readingDiff | number:'1.0-2' }} {{ getUnit() }}</strong>
+                            <span class="text-[10px] text-teal-600 dark:text-teal-400 block">Consumo Faturado</span>
+                            <strong class="font-mono text-base text-teal-900 dark:text-teal-100">{{ stepStore.consumption | number:'1.0-2' }} {{ getUnit() }}</strong>
+                            @if (stepStore.isGasDistributed) {
+                              <span class="text-[9px] text-red-600 dark:text-red-400 block font-sans">campo: {{ stepStore.rawConsumption | number:'1.0-1' }}</span>
+                            }
                           </div>
                           <div class="text-right">
                             <span class="text-[10px] text-teal-600 dark:text-teal-400 block">Custo Estimado</span>
@@ -2386,6 +2522,7 @@ export class BillCalculatorComponent implements OnDestroy {
     { id: 'g3', name: 'Fluxo de caixa', value: 0 },
   ]);
   gasTotalReading = signal<number>(0);
+  gasAutoDistribute = signal<boolean>(true); // Rateio 100% Proporcional Automático (Concessionária vs Campo)
 
   // -- COMPLEX CONSUMPTION STORAGE --
   readings = signal<{
@@ -2761,6 +2898,8 @@ export class BillCalculatorComponent implements OnDestroy {
         
         readingsToSave[row.storeId] = {
             ...original,
+            rawConsumption: row.rawConsumption,
+            gasFactor: row.gasFactor,
             calculatedConsumption: row.consumption 
         };
     });
@@ -2774,7 +2913,8 @@ export class BillCalculatorComponent implements OnDestroy {
       lastUpdated: new Date().toISOString(),
       isLocked: this.isLocked(),
       lockedAt: this.lockedAt() || undefined,
-      lockedBy: this.lockedBy() || undefined
+      lockedBy: this.lockedBy() || undefined,
+      gasAutoDistribute: type === 'gas' ? this.gasAutoDistribute() : undefined
     };
 
     this.historyService.saveBill(type, month, dataToSave);
@@ -2830,7 +2970,10 @@ export class BillCalculatorComponent implements OnDestroy {
 
       if (type === 'luz') this.luzCostItems.set(existingData.costItems);
       else if (type === 'agua') this.aguaCostItems.set(existingData.costItems);
-      else if (type === 'gas') this.gasCostItems.set(existingData.costItems);
+      else if (type === 'gas') {
+        this.gasCostItems.set(existingData.costItems);
+        this.gasAutoDistribute.set(existingData.gasAutoDistribute !== undefined ? existingData.gasAutoDistribute : true);
+      }
 
       if (type === 'luz') this.luzConsumption.set(existingData.consumptionInput);
       else if (type === 'agua') this.aguaTotalReading.set(existingData.consumptionInput);
@@ -3109,8 +3252,35 @@ export class BillCalculatorComponent implements OnDestroy {
     const prevReadings = this.previousReadings(); 
     const histAvgMap = this.historicalAverages();
 
+    // Se for Gás, pré-calculamos a soma bruta do consumo medido em campo para todas as lojas
+    let totalRawGas = 0;
+    if (type === 'gas') {
+      const storeMap = readingsStore[type] as Map<string, StoreReading>;
+      stores.forEach(s => {
+        const d = storeMap.get(s.id) || this.createDefaultReading();
+        const p = prevReadings.get(s.id) || { reading: 0, consumption: 0 };
+        if (d.virtual && d.virtual > 0) {
+          totalRawGas += d.virtual;
+        } else {
+          let diff = (d.reading || 0) - (p.reading || 0);
+          if (diff < 0) diff = 0;
+          const adj = d.adjustment !== undefined ? d.adjustment : 1.347;
+          const adjAdd = d.adjustmentAdd || 0;
+          const mfcm = d.fcm || 1.0727;
+          totalRawGas += ((diff * adj) + adjAdd) * mfcm;
+        }
+      });
+    }
+
+    const gasConcessionaria = this.gasTotalReading() || 0;
+    const isGasAuto = this.gasAutoDistribute();
+    const gasFactor = (type === 'gas' && isGasAuto && gasConcessionaria > 0 && totalRawGas > 0)
+      ? (gasConcessionaria / totalRawGas)
+      : 1.0;
+
     return stores.map(store => {
       let consumption = 0;
+      let rawConsumption = 0;
       let cost = 0;
       
       let prevReading = 0;
@@ -3141,19 +3311,26 @@ export class BillCalculatorComponent implements OnDestroy {
          adjustment = data.adjustment || 1;
       }
 
-      // CALCULATION LOGIC
+      // CALCULATION LOGIC: Medição bruta de campo
       if (virtual > 0) {
-          consumption = virtual;
+          rawConsumption = virtual;
       } else {
           let diff = currentReading - prevReading;
           if (diff < 0) diff = 0;
 
           if (type === 'gas') {
               const initial = (diff * adjustment) + adjustmentAdd;
-              consumption = initial * fcm;
+              rawConsumption = initial * fcm;
           } else {
-              consumption = diff * constant * adjustment;
+              rawConsumption = diff * constant * adjustment;
           }
+      }
+
+      // Distribuição Proporcional Automática no Gás (100% Rateável)
+      if (type === 'gas' && isGasAuto && gasConcessionaria > 0 && totalRawGas > 0) {
+          consumption = rawConsumption * gasFactor;
+      } else {
+          consumption = rawConsumption;
       }
 
       if (prevData.consumption > 0) {
@@ -3252,6 +3429,9 @@ export class BillCalculatorComponent implements OnDestroy {
         routeOrder: store.routeOrder,
         active: store.active !== false,
         consumption,
+        rawConsumption,
+        gasFactor,
+        isGasDistributed: type === 'gas' && isGasAuto && gasConcessionaria > 0 && totalRawGas > 0 && Math.abs(gasFactor - 1) > 0.0001,
         cost,
         prevReading,
         currentReading,
@@ -3281,6 +3461,36 @@ export class BillCalculatorComponent implements OnDestroy {
       if (orderA !== orderB) return orderA - orderB;
       return a.luc.localeCompare(b.luc, undefined, { numeric: true });
     });
+  });
+
+  // --- GAS DISTRIBUTION SUMMARY & BALANCING STATS ---
+  gasDistributionStats = computed(() => {
+    if (this.utilityType() !== 'gas') return null;
+    const concessionaria = this.gasTotalReading() || 0;
+    const table = this.tableData();
+    const rawTotal = table.reduce((acc, item) => acc + (item.rawConsumption !== undefined ? item.rawConsumption : item.consumption), 0);
+    const distributedTotal = table.reduce((acc, item) => acc + item.consumption, 0);
+    const diffM3 = concessionaria - rawTotal;
+    const diffPct = rawTotal > 0 ? ((concessionaria - rawTotal) / rawTotal) * 100 : 0;
+    const factor = (concessionaria > 0 && rawTotal > 0) ? (concessionaria / rawTotal) : 1.0;
+    const isEnabled = this.gasAutoDistribute();
+    const totalBill = this.totalBillAmount();
+    const totalDistributedCost = this.totalDistributedCost();
+    const costDiff = totalBill - totalDistributedCost;
+
+    return {
+      concessionaria,
+      rawTotal,
+      distributedTotal,
+      diffM3,
+      diffPct,
+      factor,
+      isEnabled,
+      isBalanced: Math.abs(concessionaria - distributedTotal) < 0.01 && concessionaria > 0,
+      totalBill,
+      totalDistributedCost,
+      costDiff
+    };
   });
 
   // --- FIELD COMPUTED FILTERS & STATS ---
@@ -4049,10 +4259,13 @@ export class BillCalculatorComponent implements OnDestroy {
   });
 
   commonAreaConsumption = computed(() => {
+     if (this.utilityType() === 'gas' && this.gasAutoDistribute()) {
+        return 0; // Gás é 100% rateado entre os lojistas
+     }
      const total = this.totalConsumption();
      const tenants = this.totalDistributedConsumption();
      const ac = this.airConditioningConsumption();
-     return total - tenants - ac; 
+     return Math.max(0, total - tenants - ac); 
   });
 
   commonAreaCost = computed(() => {
@@ -4188,6 +4401,8 @@ export class BillCalculatorComponent implements OnDestroy {
       constant: item.constant || 1,
       adjustment: item.adjustment || 1,
       consumption: item.consumption || 0,
+      rawConsumption: item.rawConsumption,
+      gasFactor: item.gasFactor,
       unitPrice: this.calculatedUnitPrice() || 0,
       totalCost: item.cost || 0,
       variationPct: item.variation,
@@ -4233,6 +4448,7 @@ export class BillCalculatorComponent implements OnDestroy {
       '🔢 *Leitura Anterior:* ' + v.prevReading.toLocaleString('pt-BR') + ' ' + v.unit,
       '🔢 *Leitura Atual:* ' + v.currentReading.toLocaleString('pt-BR') + ' ' + v.unit,
       '📊 *Consumo Faturado:* ' + v.consumption.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + v.unit,
+      (v.utilityType === 'gas' && v.gasFactor && Math.abs(v.gasFactor - 1) > 0.0001) ? ('⚖️ _Consumo rateado conforme fatura da concessionária (Fator: ' + v.gasFactor.toFixed(4) + 'x)_') : '',
       '💵 *Tarifa de Rateio:* R$ ' + v.unitPrice.toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) + ' / ' + v.unit,
       '💰 *VALOR A PAGAR:* R$ ' + v.totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
       v.note ? '📝 *Observação de Campo:* ' + v.note : '',

@@ -13,6 +13,8 @@ export type StoreReading = {
   fcm?: number;           // Fator de Correção do Medidor (FCM)
   fluxoCost?: number;     // Recuperação de Fluxo (R$)
 
+  rawConsumption?: number;// Consumo medido bruto antes do rateio proporcional (Gás)
+  gasFactor?: number;     // Fator de rateio proporcional aplicado (Gás)
   calculatedConsumption: number; // Consumo Final calculado/salvo
   note?: string;          // Observação de campo (ex: 'Relógio embaçado', 'Loja em reforma')
   hasPhoto?: boolean;     // Comprovante / Foto de Evidência gravada no IndexedDB
@@ -31,6 +33,7 @@ export interface BillData {
   isLocked?: boolean;
   lockedAt?: string;
   lockedBy?: string;
+  gasAutoDistribute?: boolean; // Rateio 100% proporcional automático no Gás
 }
 
 @Injectable({

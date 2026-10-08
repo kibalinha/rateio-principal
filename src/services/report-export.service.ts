@@ -20,6 +20,8 @@ export interface StoreVoucherData {
   constant: number;
   adjustment: number;
   consumption: number;
+  rawConsumption?: number;
+  gasFactor?: number;
   unitPrice: number;
   totalCost: number;
   variationPct?: number;
@@ -158,6 +160,10 @@ export class ReportExportService {
       } else if (options.utilityType === 'gas') {
         item['Ajuste Adic.'] = row.adjustmentAdd || 0;
         item['FCM'] = row.fcm || 1;
+        if (row.rawConsumption !== undefined && Math.abs((row.gasFactor || 1) - 1) > 0.0001) {
+          item['Medição Campo (m³)'] = Number((row.rawConsumption || 0).toFixed(4));
+          item['Fator Rateio (x)'] = Number((row.gasFactor || 1).toFixed(4));
+        }
       }
 
       if (row.virtual > 0) {
@@ -197,6 +203,10 @@ export class ReportExportService {
     } else if (options.utilityType === 'gas') {
       totalsRow['Ajuste Adic.'] = '';
       totalsRow['FCM'] = '';
+      if (options.tableData.some(r => r.rawConsumption !== undefined && Math.abs((r.gasFactor || 1) - 1) > 0.0001)) {
+        totalsRow['Medição Campo (m³)'] = Number(options.tableData.reduce((acc, r) => acc + (r.rawConsumption !== undefined ? r.rawConsumption : (r.consumption || 0)), 0).toFixed(4));
+        totalsRow['Fator Rateio (x)'] = '—';
+      }
     }
     totalsRow[`Consumo Calculado (${options.unit})`] = Number(options.totalStoreConsumption.toFixed(4));
     totalsRow['Variação vs Mês Anterior (%)'] = '';
@@ -794,6 +804,13 @@ Todas as fotos foram conferidas pelo leiturista e processadas via OCR/inspeção
       ['Consumo Total Faturado', `${data.consumption.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${data.unit}`],
       ['Tarifa Unitária Rateada', `R$ ${data.unitPrice.toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })} por ${data.unit}`],
     ];
+
+    if (data.utilityType === 'gas' && data.gasFactor && Math.abs(data.gasFactor - 1) > 0.0001) {
+      if (data.rawConsumption !== undefined) {
+        items.push(['Medição Bruta em Campo', `${data.rawConsumption.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 4 })} ${data.unit}`]);
+      }
+      items.push(['Fator de Fechamento da Fatura', `${data.gasFactor.toFixed(4)}x (100% Rateável)`]);
+    }
 
     if (data.variationPct !== undefined && !isNaN(data.variationPct)) {
       items.push(['Variação vs Mês Anterior', `${data.variationPct >= 0 ? '+' : ''}${data.variationPct.toFixed(1)}%`]);
