@@ -28,6 +28,9 @@ export interface BillData {
   manualBill?: number;
   manualConsumption?: number;
   lastUpdated: string;
+  isLocked?: boolean;
+  lockedAt?: string;
+  lockedBy?: string;
 }
 
 @Injectable({

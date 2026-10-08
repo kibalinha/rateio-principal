@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, effect, untracked, OnDestroy } from '@angular/core';
+﻿import { Component, inject, signal, computed, effect, untracked, OnDestroy } from '@angular/core';
 import { CommonModule, DecimalPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { StoreService, Store } from '../services/store.service';
@@ -137,6 +137,19 @@ type ColumnDef = {
              <span class="hidden sm:inline">Chaves IA</span>
            </button>
 
+           <!-- Botão Travar / Fechar Mês (apenas Admin) -->
+           @if (authService.isAdmin()) {
+             <button 
+               type="button"
+               (click)="toggleLockBill()" 
+               [class]="isLocked() ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-800 hover:bg-amber-200' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-200'"
+               class="px-3 py-2 border rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+               [title]="isLocked() ? 'Mês travado. Clique para reabrir edições.' : 'Fechar e congelar rateio do mês.'">
+               <span>{{ isLocked() ? '🔒' : '🔓' }}</span>
+               <span class="hidden sm:inline">{{ isLocked() ? 'Reabrir Mês' : 'Fechar Mês' }}</span>
+             </button>
+           }
+
            <!-- Botão Exportar Excel no Topo -->
            <button 
              type="button"
@@ -154,6 +167,27 @@ type ColumnDef = {
            </button>
         </div>
       </div>
+
+      <!-- Locked Month Notice Banner -->
+      @if (isLocked()) {
+        <div class="p-3.5 bg-slate-900 text-white rounded-xl border border-slate-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-md animate-fade-in">
+          <div class="flex items-center gap-2.5">
+            <span class="text-xl">🔒</span>
+            <div>
+              <div class="font-bold text-sm text-amber-400">Rateio Consolidado e Congelado</div>
+              <div class="text-slate-300 text-xs">As medições e custos deste mês foram fechados para cobrança. Edições de leituras e fotos estão desabilitadas.</div>
+              @if (lockedAt()) {
+                <div class="text-slate-400 text-[11px] mt-0.5">Fechado em {{ lockedAt() | date:'short' }} {{ lockedBy() ? 'por ' + lockedBy() : '' }}</div>
+              }
+            </div>
+          </div>
+          @if (authService.isAdmin()) {
+            <button type="button" (click)="toggleLockBill()" class="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold rounded-lg text-xs cursor-pointer whitespace-nowrap transition-colors shadow-xs shrink-0">
+              🔓 Reabrir Rateio
+            </button>
+          }
+        </div>
+      }
 
       <!-- Offline Notice Banner for Field Technicians -->
       @if (!indexedDb.isOnline()) {
@@ -237,7 +271,7 @@ type ColumnDef = {
                         <input type="text" 
                           [ngModel]="item.name" 
                           (ngModelChange)="updateItemName(item.id, $event)"
-                          [disabled]="!authService.canConfigureBill()"
+                          [disabled]="!canConfigure()"
                           class="w-full px-2 py-1 text-xs border border-transparent bg-transparent hover:bg-white dark:hover:bg-slate-700 hover:border-slate-300 dark:hover:border-slate-600 focus:bg-white dark:focus:bg-slate-700 focus:border-accent rounded transition-colors text-slate-700 dark:text-slate-200 disabled:opacity-75"
                           placeholder="Nome">
                         
@@ -245,7 +279,7 @@ type ColumnDef = {
                           step="0.01"
                           [ngModel]="item.value" 
                           (ngModelChange)="updateItemValue(item.id, $event)"
-                          [disabled]="!authService.canConfigureBill()"
+                          [disabled]="!canConfigure()"
                           class="w-24 px-2 py-1 text-sm border border-slate-300 dark:border-slate-700 rounded text-right font-mono focus:ring-1 focus:ring-warning bg-white dark:bg-slate-800 text-slate-900 dark:text-white disabled:bg-slate-100 dark:disabled:bg-slate-900" 
                           placeholder="0.00">
                         
@@ -276,7 +310,7 @@ type ColumnDef = {
                       @for (key of ['bss1', 'bss2', 'bss3', 'bss4']; track key) {
                         <div class="flex items-center gap-2">
                            <label class="text-xs text-slate-600 w-1/2 uppercase">{{ key }}</label>
-                           <input type="number" step="0.0001" [disabled]="!authService.canConfigureBill()" 
+                           <input type="number" step="0.0001" [disabled]="!canConfigure()" 
                            [ngModel]="luzConsumption()[key]" (ngModelChange)="updateLuzCons(key, $event)" 
                            class="w-1/2 px-2 py-1 text-sm border border-slate-300 rounded text-right font-mono focus:ring-1 focus:ring-warning disabled:bg-slate-100" placeholder="0">
                         </div>
@@ -285,7 +319,7 @@ type ColumnDef = {
                   } @else {
                     <div class="flex items-center gap-2">
                       <label class="text-xs text-slate-600 w-1/2">Total (m³)</label>
-                      <input type="number" step="0.0001" [disabled]="!authService.canConfigureBill()" 
+                      <input type="number" step="0.0001" [disabled]="!canConfigure()" 
                       [ngModel]="utilityType() === 'agua' ? aguaTotalReading() : gasTotalReading()" 
                       (ngModelChange)="utilityType() === 'agua' ? aguaTotalReading.set($event) : gasTotalReading.set($event)" 
                       class="w-1/2 px-2 py-1 text-sm border border-slate-300 rounded text-right font-mono focus:ring-1 focus:ring-accent disabled:bg-slate-100" placeholder="0">
@@ -587,7 +621,7 @@ type ColumnDef = {
                               [ngModel]="item.currentReading" 
                               (ngModelChange)="updateDetailedReading(item.storeId, 'reading', $event)" 
                               (paste)="onPasteCell($event, item.storeId, 'reading')" 
-                              [disabled]="!authService.canEditReadings()" 
+                              [disabled]="!canEdit()" 
                               class="w-full text-right bg-white dark:bg-slate-950 dark:text-white border-2 rounded px-1.5 py-1 focus:ring-2 font-bold disabled:bg-transparent disabled:border-none disabled:text-slate-500 transition-colors"
                               [class.border-rose-500]="item.validationAlert.severity === 'critical'"
                               [class.ring-2]="item.validationAlert.hasAlert"
@@ -604,26 +638,26 @@ type ColumnDef = {
                       
                       @if (utilityType() === 'luz') {
                           <td class="p-3 border-r border-slate-100 dark:border-slate-800">
-                              <input type="number" step="0.0001" [ngModel]="item.constant" (ngModelChange)="updateDetailedReading(item.storeId, 'constant', $event)" (paste)="onPasteCell($event, item.storeId, 'constant')" [disabled]="!authService.canConfigureBill()" class="w-full text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 text-slate-600 dark:text-slate-300 disabled:opacity-50" placeholder="1">
+                              <input type="number" step="0.0001" [ngModel]="item.constant" (ngModelChange)="updateDetailedReading(item.storeId, 'constant', $event)" (paste)="onPasteCell($event, item.storeId, 'constant')" [disabled]="!canConfigure()" class="w-full text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 text-slate-600 dark:text-slate-300 disabled:opacity-50" placeholder="1">
                           </td>
                       }
                       <td class="p-3 border-r border-slate-100 dark:border-slate-800">
-                          <input type="number" step="0.0001" [ngModel]="item.virtual" (ngModelChange)="updateDetailedReading(item.storeId, 'virtual', $event)" (paste)="onPasteCell($event, item.storeId, 'virtual')" [disabled]="!authService.canConfigureBill()" class="w-full text-right bg-transparent border border-slate-200 dark:border-slate-700 rounded px-1 py-0.5 focus:border-teal-500 text-blue-600 dark:text-blue-400 placeholder-slate-300 disabled:border-none disabled:text-slate-400" placeholder="-">
+                          <input type="number" step="0.0001" [ngModel]="item.virtual" (ngModelChange)="updateDetailedReading(item.storeId, 'virtual', $event)" (paste)="onPasteCell($event, item.storeId, 'virtual')" [disabled]="!canConfigure()" class="w-full text-right bg-transparent border border-slate-200 dark:border-slate-700 rounded px-1 py-0.5 focus:border-teal-500 text-blue-600 dark:text-blue-400 placeholder-slate-300 disabled:border-none disabled:text-slate-400" placeholder="-">
                       </td>
 
                       @if (utilityType() === 'gas') {
                           <td class="p-3 border-r border-slate-100 dark:border-slate-800">
-                              <input type="number" step="0.000001" [ngModel]="item.adjustment" (ngModelChange)="updateDetailedReading(item.storeId, 'adjustment', $event)" (paste)="onPasteCell($event, item.storeId, 'adjustment')" [disabled]="!authService.canConfigureBill()" class="w-full text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 text-slate-500 dark:text-slate-400 disabled:opacity-50" placeholder="1.347">
+                              <input type="number" step="0.000001" [ngModel]="item.adjustment" (ngModelChange)="updateDetailedReading(item.storeId, 'adjustment', $event)" (paste)="onPasteCell($event, item.storeId, 'adjustment')" [disabled]="!canConfigure()" class="w-full text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 text-slate-500 dark:text-slate-400 disabled:opacity-50" placeholder="1.347">
                           </td>
                           <td class="p-3 border-r border-slate-100 dark:border-slate-800">
-                              <input type="number" step="0.000001" [ngModel]="item.adjustmentAdd" (ngModelChange)="updateDetailedReading(item.storeId, 'adjustmentAdd', $event)" (paste)="onPasteCell($event, item.storeId, 'adjustmentAdd')" [disabled]="!authService.canConfigureBill()" class="w-full text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 text-slate-500 dark:text-slate-400 disabled:opacity-50" placeholder="0">
+                              <input type="number" step="0.000001" [ngModel]="item.adjustmentAdd" (ngModelChange)="updateDetailedReading(item.storeId, 'adjustmentAdd', $event)" (paste)="onPasteCell($event, item.storeId, 'adjustmentAdd')" [disabled]="!canConfigure()" class="w-full text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 text-slate-500 dark:text-slate-400 disabled:opacity-50" placeholder="0">
                           </td>
                            <td class="p-3 border-r border-slate-100 dark:border-slate-800">
-                              <input type="number" step="0.000001" [ngModel]="item.fcm" (ngModelChange)="updateDetailedReading(item.storeId, 'fcm', $event)" (paste)="onPasteCell($event, item.storeId, 'fcm')" [disabled]="!authService.canConfigureBill()" class="w-full text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 text-slate-500 dark:text-slate-400 disabled:opacity-50" placeholder="1.0727">
+                              <input type="number" step="0.000001" [ngModel]="item.fcm" (ngModelChange)="updateDetailedReading(item.storeId, 'fcm', $event)" (paste)="onPasteCell($event, item.storeId, 'fcm')" [disabled]="!canConfigure()" class="w-full text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 text-slate-500 dark:text-slate-400 disabled:opacity-50" placeholder="1.0727">
                           </td>
                       } @else {
                           <td class="p-3 border-r border-slate-100 dark:border-slate-800">
-                            <input type="number" step="0.000001" [ngModel]="item.adjustment" (ngModelChange)="updateDetailedReading(item.storeId, 'adjustment', $event)" (paste)="onPasteCell($event, item.storeId, 'adjustment')" [disabled]="!authService.canConfigureBill()" class="w-full text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 text-slate-500 dark:text-slate-400 disabled:opacity-50" placeholder="1">
+                            <input type="number" step="0.000001" [ngModel]="item.adjustment" (ngModelChange)="updateDetailedReading(item.storeId, 'adjustment', $event)" (paste)="onPasteCell($event, item.storeId, 'adjustment')" [disabled]="!canConfigure()" class="w-full text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 text-slate-500 dark:text-slate-400 disabled:opacity-50" placeholder="1">
                           </td>
                       }
                       <td class="p-3 text-right font-mono font-bold text-slate-800 dark:text-slate-100 border-r border-slate-100 dark:border-slate-800 text-sm">
@@ -636,7 +670,7 @@ type ColumnDef = {
                       </td>
                       @if (utilityType() === 'gas') {
                           <td class="p-3 border-r border-slate-100 dark:border-slate-800">
-                              <input type="number" step="0.01" [ngModel]="item.fluxoCost" (ngModelChange)="updateDetailedReading(item.storeId, 'fluxoCost', $event)" (paste)="onPasteCell($event, item.storeId, 'fluxoCost')" [disabled]="!authService.canConfigureBill()" class="w-full text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 text-slate-600 dark:text-slate-300 disabled:opacity-50" placeholder="0.00">
+                              <input type="number" step="0.01" [ngModel]="item.fluxoCost" (ngModelChange)="updateDetailedReading(item.storeId, 'fluxoCost', $event)" (paste)="onPasteCell($event, item.storeId, 'fluxoCost')" [disabled]="!canConfigure()" class="w-full text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 text-slate-600 dark:text-slate-300 disabled:opacity-50" placeholder="0.00">
                           </td>
                       }
                       <!-- Observação de Campo Desktop -->
@@ -817,7 +851,7 @@ type ColumnDef = {
                                    step="0.0001"
                                    [ngModel]="item.currentReading" 
                                    (ngModelChange)="updateDetailedReading(item.storeId, 'reading', $event)"
-                                   [disabled]="!authService.canEditReadings()"
+                                   [disabled]="!canEdit()"
                                    class="w-full text-right text-xl font-mono p-2.5 border-2 rounded-xl focus:ring-2 font-bold bg-white dark:bg-slate-950 text-slate-900 dark:text-white disabled:bg-slate-100 dark:disabled:bg-slate-800 transition-colors"
                                    [class.border-rose-500]="item.validationAlert.severity === 'critical'"
                                    [class.ring-2]="item.validationAlert.hasAlert"
@@ -1135,7 +1169,7 @@ type ColumnDef = {
                           step="0.0001"
                           [ngModel]="stepStore.currentReading" 
                           (ngModelChange)="updateDetailedReading(stepStore.storeId, 'reading', $event)"
-                          [disabled]="!authService.canEditReadings()"
+                          [disabled]="!canEdit()"
                           class="w-full text-center text-3xl font-mono font-bold p-3.5 border-2 rounded-2xl focus:ring-4 transition-all bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                           [class.border-rose-500]="stepStore.validationAlert.severity === 'critical'"
                           [class.ring-4]="stepStore.validationAlert.hasAlert"
@@ -1390,7 +1424,7 @@ type ColumnDef = {
                               step="0.0001"
                               [ngModel]="currentACConsumption()" 
                               (ngModelChange)="setAirConditioning($event)"
-                              [disabled]="!authService.canConfigureBill()"
+                              [disabled]="!canConfigure()"
                               class="w-24 px-2 py-1 text-sm bg-white border border-orange-300 rounded text-right font-mono focus:ring-1 focus:ring-orange-500 disabled:bg-transparent disabled:border-transparent"
                               placeholder="0">
                             <span class="text-xs font-mono">{{ getUnit() }}</span>
@@ -1799,6 +1833,13 @@ export class BillCalculatorComponent implements OnDestroy {
   showPhotoModal = signal<boolean>(false);
   isCapturingPhoto = signal<string | null>(null);
   isConfirmingPhotoDelete = signal<boolean>(false);
+
+  // --- LOCK / MONTH CONSOLIDATION STATE ---
+  isLocked = signal<boolean>(false);
+  lockedAt = signal<string | null>(null);
+  lockedBy = signal<string | null>(null);
+  canEdit = computed(() => !this.isLocked() && this.authService.canEditReadings());
+  canConfigure = computed(() => !this.isLocked() && this.authService.canConfigureBill());
 
   // --- AI API KEY CONFIGURATION MODAL ---
   showAiKeyModal = signal<boolean>(false);
@@ -2278,7 +2319,10 @@ export class BillCalculatorComponent implements OnDestroy {
                         type === 'agua' ? this.aguaTotalReading() : this.gasTotalReading(),
       acInput: this.currentACConsumption(),
       readings: readingsToSave, 
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      isLocked: this.isLocked(),
+      lockedAt: this.lockedAt() || undefined,
+      lockedBy: this.lockedBy() || undefined
     };
 
     this.historyService.saveBill(type, month, dataToSave);
@@ -2290,6 +2334,35 @@ export class BillCalculatorComponent implements OnDestroy {
     }, 400);
   }
 
+  toggleLockBill() {
+    if (!this.authService.isAdmin()) {
+      alert('Apenas administradores podem fechar ou reabrir um mês de rateio.');
+      return;
+    }
+
+    const currentLock = this.isLocked();
+    const typeLabel = this.utilityType().toUpperCase();
+    const month = this.selectedMonth();
+
+    if (!currentLock) {
+      const confirmLock = confirm(`Deseja realmente FECHAR e CONGELAR o rateio de ${typeLabel} (${month})?\n\nIsso bloqueará alterações em medições e custos para fechamento financeiro.`);
+      if (!confirmLock) return;
+      this.isLocked.set(true);
+      this.lockedAt.set(new Date().toISOString());
+      this.lockedBy.set(this.authService.user()?.email || 'Administrador');
+      this.internalSave();
+      this.indexedDb.showToast(`🔒 Rateio de ${typeLabel} (${month}) fechado e congelado com sucesso!`);
+    } else {
+      const confirmUnlock = confirm(`Deseja REABRIR o rateio de ${typeLabel} (${month}) para novas alterações?`);
+      if (!confirmUnlock) return;
+      this.isLocked.set(false);
+      this.lockedAt.set(null);
+      this.lockedBy.set(null);
+      this.internalSave();
+      this.indexedDb.showToast(`🔓 Rateio de ${typeLabel} (${month}) reaberto para edições.`);
+    }
+  }
+
   loadDataForCurrentSelection() {
     this.isProgrammaticLoading = true;
     const type = this.utilityType();
@@ -2299,6 +2372,10 @@ export class BillCalculatorComponent implements OnDestroy {
     const existingData = this.historyService.getBill(type, month);
 
     if (existingData) {
+      this.isLocked.set(!!existingData.isLocked);
+      this.lockedAt.set(existingData.lockedAt || null);
+      this.lockedBy.set(existingData.lockedBy || null);
+
       if (type === 'luz') this.luzCostItems.set(existingData.costItems);
       else if (type === 'agua') this.aguaCostItems.set(existingData.costItems);
       else if (type === 'gas') this.gasCostItems.set(existingData.costItems);
@@ -2330,6 +2407,9 @@ export class BillCalculatorComponent implements OnDestroy {
       this.resetFormValues(type);
       this.lastSaved.set(null);
       this.dataLoaded.set(false); // New month, empty data
+      this.isLocked.set(false);
+      this.lockedAt.set(null);
+      this.lockedBy.set(null);
     }
 
     // 2. Load Previous Month Data
