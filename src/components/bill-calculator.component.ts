@@ -137,6 +137,26 @@ type ColumnDef = {
              <span class="hidden sm:inline">Chaves IA</span>
            </button>
 
+            <!-- Botão Processar OCR em Lote -->
+            @if (pendingOcrCount() > 0 || isBatchOcrRunning()) {
+              <button 
+                type="button"
+                (click)="openBatchOcrModal()" 
+                [disabled]="isLocked()"
+                class="px-3 py-2 bg-gradient-to-r from-indigo-600 to-teal-600 hover:from-indigo-700 hover:to-teal-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                [class.animate-pulse]="isBatchOcrRunning()"
+                title="Processar fotos pendentes em lote por inteligência artificial">
+                @if (isBatchOcrRunning()) {
+                  <span class="animate-spin text-xs">⏳</span>
+                  <span>{{ batchOcrProgress().current }}/{{ batchOcrProgress().total }}</span>
+                } @else {
+                  <span>⚡</span>
+                  <span class="hidden sm:inline">Processar Fotos</span>
+                  <span class="bg-white/20 px-1.5 py-0.2 rounded-full font-mono text-[10px]">{{ pendingOcrCount() }}</span>
+                }
+              </button>
+            }
+
            <!-- Botão Travar / Fechar Mês (apenas Admin) -->
            @if (authService.isAdmin()) {
              <button 
@@ -456,6 +476,14 @@ type ColumnDef = {
                       <strong class="text-teal-700 dark:text-teal-400">{{ fieldStats().completed }} de {{ fieldStats().total }}</strong> lojas lidas
                       @if (fieldStats().pending === 0 && fieldStats().total > 0) {
                         <span class="bg-green-100 dark:bg-green-950/60 text-green-700 dark:text-green-300 text-[10px] px-2 py-0.5 rounded-full font-bold border border-green-300 dark:border-green-800">✓ 100% Concluído</span>
+                      }
+                      @if (pendingOcrCount() > 0 && !isLocked()) {
+                        <button type="button" 
+                          (click)="openBatchOcrModal()"
+                          class="bg-indigo-100 dark:bg-indigo-950/70 hover:bg-indigo-200 dark:hover:bg-indigo-900 text-indigo-800 dark:text-indigo-200 text-[10px] px-2 py-0.5 rounded-full font-bold border border-indigo-300 dark:border-indigo-800 flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                          title="Clique para processar fotos em lote com IA">
+                          <span>⚡ {{ pendingOcrCount() }} foto(s) com OCR pendente</span>
+                        </button>
                       }
                     </span>
                     <span class="font-mono font-bold text-slate-600 dark:text-slate-400">{{ fieldStats().progressPct }}%</span>
@@ -1793,6 +1821,123 @@ type ColumnDef = {
         </div>
       }
 
+      <!-- Modal de Processamento em Lote com IA (Batch OCR) -->
+      @if (showBatchOcrModal() || isBatchOcrRunning()) {
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            
+            <div class="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div class="flex items-center gap-2.5">
+                <span class="text-2xl">⚡</span>
+                <div>
+                  <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <span>Processamento de Fotos em Lote</span>
+                    @if (isBatchOcrRunning()) {
+                      <span class="animate-pulse bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                        Em execução
+                      </span>
+                    }
+                  </h3>
+                  <p class="text-xs text-slate-500 dark:text-slate-400">Extração automática de leituras por IA (Qwen 3.8 / Gemini)</p>
+                </div>
+              </div>
+              @if (!isBatchOcrRunning()) {
+                <button (click)="closeBatchOcrModal()" class="text-slate-400 hover:text-slate-600 text-lg p-1">✕</button>
+              }
+            </div>
+
+            <!-- Progresso Geral -->
+            <div class="space-y-3">
+              <div class="flex justify-between items-center text-xs">
+                <span class="font-bold text-slate-700 dark:text-slate-300">
+                  Progresso: {{ batchOcrProgress().current }} de {{ batchOcrProgress().total }} fotos
+                </span>
+                <span class="font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                  {{ batchOcrProgress().progressPct }}%
+                </span>
+              </div>
+
+              <!-- Barra de Progresso -->
+              <div class="w-full bg-slate-100 dark:bg-slate-800 h-3 rounded-full overflow-hidden shadow-inner border border-slate-200 dark:border-slate-700">
+                <div class="h-full bg-gradient-to-r from-indigo-500 via-teal-500 to-emerald-500 rounded-full transition-all duration-300"
+                     [style.width.%]="batchOcrProgress().progressPct"></div>
+              </div>
+
+              <!-- Loja Atual em Processamento -->
+              @if (isBatchOcrRunning() && batchOcrProgress().currentStoreName) {
+                <div class="p-3 bg-indigo-50/70 dark:bg-indigo-950/40 rounded-xl border border-indigo-200 dark:border-indigo-800 flex items-center justify-between gap-3 text-xs animate-pulse">
+                  <div class="flex items-center gap-2">
+                    <span class="animate-spin text-base">⏳</span>
+                    <div>
+                      <div class="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <span class="font-mono bg-white dark:bg-slate-800 px-1.5 py-0.2 rounded border border-indigo-200 dark:border-indigo-800 font-bold text-indigo-700 dark:text-indigo-300">{{ batchOcrProgress().currentLuc }}</span>
+                        <span>{{ batchOcrProgress().currentStoreName }}</span>
+                      </div>
+                      <span class="text-[11px] text-slate-500 dark:text-slate-400">Consultando {{ batchOcrProgress().currentModel }}...</span>
+                    </div>
+                  </div>
+                </div>
+              }
+
+              <!-- Contadores de Resultados em Tempo Real -->
+              <div class="grid grid-cols-2 gap-3 pt-1">
+                <div class="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center gap-2.5">
+                  <span class="text-xl">✅</span>
+                  <div>
+                    <span class="text-[10px] uppercase font-bold text-emerald-800 dark:text-emerald-300 block">Identificadas</span>
+                    <strong class="text-base font-mono font-bold text-emerald-700 dark:text-emerald-300">{{ batchOcrProgress().successCount }}</strong>
+                  </div>
+                </div>
+
+                <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center gap-2.5">
+                  <span class="text-xl">⚠️</span>
+                  <div>
+                    <span class="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-400 block">Falhas / Ilegíveis</span>
+                    <strong class="text-base font-mono font-bold text-slate-700 dark:text-slate-300">{{ batchOcrProgress().failCount }}</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Rodapé / Ações -->
+            <div class="flex justify-between items-center pt-3 border-t border-slate-100 dark:border-slate-800">
+              @if (isBatchOcrRunning()) {
+                <span class="text-[11px] text-slate-400 italic">Processando em segundo plano...</span>
+                <button 
+                  type="button" 
+                  (click)="cancelBatchOcr()" 
+                  class="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition-colors cursor-pointer shadow-xs">
+                  ⏹️ Cancelar Fila
+                </button>
+              } @else {
+                <button 
+                  type="button" 
+                  (click)="closeBatchOcrModal()" 
+                  class="px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer">
+                  Fechar
+                </button>
+                <div class="flex gap-2">
+                  <button 
+                    type="button" 
+                    (click)="executeBatchOcr(true)" 
+                    class="px-3.5 py-2 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs hover:bg-slate-300 dark:hover:bg-slate-600 cursor-pointer"
+                    title="Reprocessar todas as fotos deste mês mesmo as que já possuem leitura">
+                    🔄 Reprocessar Todas
+                  </button>
+                  <button 
+                    type="button" 
+                    (click)="executeBatchOcr(false)" 
+                    class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition-all cursor-pointer">
+                    ⚡ Processar Pendentes ({{ pendingOcrCount() }})
+                  </button>
+                </div>
+              }
+            </div>
+
+          </div>
+        </div>
+      }
+
       <!-- Mobile Floating Quick Route Bar -->
       <div class="md:hidden fixed bottom-16 left-3 right-3 z-30 pointer-events-none flex justify-center">
         <div class="pointer-events-auto bg-slate-900/90 text-white backdrop-blur-md px-3.5 py-2 rounded-full shadow-xl border border-slate-700 flex items-center gap-3 text-xs">
@@ -1882,6 +2027,38 @@ export class BillCalculatorComponent implements OnDestroy {
   groqInputKey = signal<string>('');
   geminiInputKey = signal<string>('');
   pendingOcrStoreId = signal<string | null>(null);
+
+  // --- BATCH OCR QUEUE STATE ---
+  showBatchOcrModal = signal<boolean>(false);
+  isBatchOcrRunning = signal<boolean>(false);
+  cancelBatchOcrRequested = signal<boolean>(false);
+  batchOcrProgress = signal<{
+    current: number;
+    total: number;
+    progressPct: number;
+    currentStoreName: string;
+    currentLuc: string;
+    successCount: number;
+    failCount: number;
+    currentModel: string;
+  }>({
+    current: 0,
+    total: 0,
+    progressPct: 0,
+    currentStoreName: '',
+    currentLuc: '',
+    successCount: 0,
+    failCount: 0,
+    currentModel: ''
+  });
+
+  pendingOcrCount = computed(() => {
+    return this.tableData().filter(s => s.hasPhoto && (!s.isRead || s.currentReading === 0)).length;
+  });
+
+  totalPhotosCount = computed(() => {
+    return this.tableData().filter(s => s.hasPhoto).length;
+  });
 
   // --- OCR DUAL-ENGINE STATE (QWEN 3.8 27B GROQ + GEMINI 3.8 FLASH FALLBACK) ---
   isReadingOcr = signal<string | null>(null); // storeId sendo analisado
@@ -3300,6 +3477,157 @@ export class BillCalculatorComponent implements OnDestroy {
       delete next[storeId];
       return next;
     });
+  }
+
+  // --- BATCH OCR QUEUE EXECUTION ---
+  openBatchOcrModal() {
+    if (!this.geminiService.hasConfiguredApiKey()) {
+      this.openAiKeyModal();
+      this.indexedDb.showToast('⚙️ Configure sua chave Groq ou Gemini para ativar a leitura por IA.');
+      return;
+    }
+    const pending = this.pendingOcrCount();
+    const totalWithPhotos = this.totalPhotosCount();
+    if (totalWithPhotos === 0) {
+      this.indexedDb.showToast('Nenhuma foto capturada neste mês para processar.');
+      return;
+    }
+    this.batchOcrProgress.set({
+      current: 0,
+      total: pending > 0 ? pending : totalWithPhotos,
+      progressPct: 0,
+      currentStoreName: '',
+      currentLuc: '',
+      successCount: 0,
+      failCount: 0,
+      currentModel: 'Qwen 3.8 27B (Groq) + Gemini'
+    });
+    this.showBatchOcrModal.set(true);
+  }
+
+  closeBatchOcrModal() {
+    if (this.isBatchOcrRunning()) return;
+    this.showBatchOcrModal.set(false);
+  }
+
+  cancelBatchOcr() {
+    this.cancelBatchOcrRequested.set(true);
+  }
+
+  async executeBatchOcr(reprocessAll: boolean = false) {
+    if (!this.geminiService.hasConfiguredApiKey()) {
+      this.openAiKeyModal();
+      this.indexedDb.showToast('⚙️ Configure sua chave Groq ou Gemini para ativar a leitura por IA.');
+      return;
+    }
+
+    if (this.isLocked()) {
+      this.indexedDb.showToast('🔒 Mês bloqueado para edições.');
+      return;
+    }
+
+    const candidates = this.tableData().filter(s => {
+      if (!s.hasPhoto) return false;
+      if (reprocessAll) return true;
+      return !s.isRead || s.currentReading === 0;
+    });
+
+    if (candidates.length === 0) {
+      this.indexedDb.showToast('Nenhuma foto pendente encontrada para processamento.');
+      return;
+    }
+
+    this.isBatchOcrRunning.set(true);
+    this.cancelBatchOcrRequested.set(false);
+    this.showBatchOcrModal.set(true);
+
+    let success = 0;
+    let fail = 0;
+    const total = candidates.length;
+
+    this.batchOcrProgress.set({
+      current: 0,
+      total,
+      progressPct: 0,
+      currentStoreName: candidates[0]?.storeName || '',
+      currentLuc: candidates[0]?.luc || '',
+      successCount: 0,
+      failCount: 0,
+      currentModel: 'Qwen 3.8 27B / Gemini 3.8'
+    });
+
+    for (let i = 0; i < candidates.length; i++) {
+      if (this.cancelBatchOcrRequested()) {
+        this.indexedDb.showToast(`⏹️ Fila cancelada pelo usuário. (${success} leitura(s) salvas)`);
+        break;
+      }
+
+      const storeItem = candidates[i];
+      let photo = this.meterPhotos()[storeItem.storeId];
+
+      if (!photo) {
+        const type = this.utilityType();
+        const month = this.selectedMonth();
+        const diskRec = await this.indexedDb.getMeterPhoto(type, month, storeItem.storeId);
+        if (diskRec) {
+          photo = diskRec;
+          this.meterPhotos.update(prev => ({ ...prev, [storeItem.storeId]: diskRec }));
+        }
+      }
+
+      const pct = Math.round(((i + 1) / total) * 100);
+      this.batchOcrProgress.set({
+        current: i + 1,
+        total,
+        progressPct: pct,
+        currentStoreName: storeItem.storeName,
+        currentLuc: storeItem.luc,
+        successCount: success,
+        failCount: fail,
+        currentModel: 'Qwen 3.8 27B (Groq) + Gemini'
+      });
+
+      if (photo && photo.photoDataUrl) {
+        try {
+          const ocrResult = await this.geminiService.extractMeterReading(
+            photo.photoDataUrl,
+            this.utilityType()
+          );
+
+          if (ocrResult.success && ocrResult.reading !== null) {
+            this.updateDetailedReading(storeItem.storeId, 'reading', ocrResult.reading);
+            photo.readingValue = ocrResult.reading;
+            await this.indexedDb.saveMeterPhoto(photo);
+            if (this.indexedDb.isOnline()) {
+              this.supabaseService.syncMeterPhoto(photo).catch(() => {});
+            }
+            this.meterPhotos.update(prev => ({ ...prev, [storeItem.storeId]: { ...photo } }));
+            success++;
+          } else {
+            fail++;
+          }
+        } catch (e) {
+          fail++;
+        }
+      } else {
+        fail++;
+      }
+
+      this.batchOcrProgress.update(p => ({
+        ...p,
+        successCount: success,
+        failCount: fail
+      }));
+
+      // Pequeno intervalo para proteger contra limites de requisições de API (rate limit)
+      if (i < candidates.length - 1) {
+        await new Promise(r => setTimeout(r, 350));
+      }
+    }
+
+    this.isBatchOcrRunning.set(false);
+    this.internalSave();
+    this.indexedDb.showToast(`⚡ Fila finalizada: ${success} leitura(s) extraídas com sucesso, ${fail} não detectadas.`);
   }
 
   openPhotoViewer(storeId: string) {
