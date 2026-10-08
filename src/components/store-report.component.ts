@@ -1023,19 +1023,7 @@ export class StoreReportComponent {
         const prevPeriodKey = pIdx > 0 ? allPeriods[pIdx - 1] : null;
         const prevVal = prevPeriodKey ? getStoreConsumption(prevPeriodKey) : null;
 
-        // Check for 0 consumption on active store with historic consumption
-        if (val === 0 && store.active !== false && storeAvg > 0) {
-          alertsInWindow.push({
-            period: p,
-            severity: 'drop',
-            badgeText: '📉 Consumo Zero',
-            diffAvgPct: -100,
-            momPct: -100,
-            val: 0
-          });
-          continue;
-        }
-
+        // Ignora consumo zero ou negativo (consumo zero pode ocorrer em diversas situações e não gera alerta)
         if (val <= 0) continue;
 
         const diffAvgPct = storeAvg > 0 ? ((val - storeAvg) / storeAvg) * 100 : 0;
