@@ -20,9 +20,7 @@ export interface MeterOcrResult {
 export class GeminiService {
   private ai: GoogleGenAI | null = null;
 
-  constructor() {
-    this.initGeminiClient();
-  }
+  constructor() {}
 
   private getGeminiApiKey(): string {
     if (typeof process !== 'undefined' && process.env) {
@@ -70,17 +68,23 @@ export class GeminiService {
     return '';
   }
 
-  private initGeminiClient(): GoogleGenAI {
+  private initGeminiClient(): GoogleGenAI | null {
     if (!this.ai) {
       const apiKey = this.getGeminiApiKey();
-      this.ai = new GoogleGenAI({
-        apiKey,
-        httpOptions: {
-          headers: {
-            'User-Agent': 'aistudio-build'
+      if (!apiKey) return null;
+      try {
+        this.ai = new GoogleGenAI({
+          apiKey,
+          httpOptions: {
+            headers: {
+              'User-Agent': 'aistudio-build'
+            }
           }
-        }
-      });
+        });
+      } catch (err) {
+        console.warn('Não foi possível inicializar o cliente Gemini:', err);
+        return null;
+      }
     }
     return this.ai;
   }
@@ -307,6 +311,17 @@ Se o visor estiver ilegível, escuro ou sem medidor visível:
   ): Promise<MeterOcrResult> {
     try {
       const client = this.initGeminiClient();
+      if (!client) {
+        return {
+          success: false,
+          reading: null,
+          confidence: 'low',
+          error: 'Chave de API do Gemini não configurada.',
+          provider: 'gemini',
+          modelName: 'Gemini 2.5 Flash',
+          fallbackUsed: isFallback
+        };
+      }
 
       const utilDesc = utilityType === 'luz' 
         ? 'energia elétrica (kWh)' 

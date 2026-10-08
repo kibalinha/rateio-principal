@@ -554,8 +554,9 @@ FOR ALL USING (bucket_id = 'meter-photos') WITH CHECK (bucket_id = 'meter-photos
    */
   subscribeToStores(onChange: () => void): () => void {
     const client = this.getClient();
+    const channelName = `stores_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const channel = client
-      .channel('realtime_stores_changes')
+      .channel(channelName)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'stores' },
@@ -567,7 +568,9 @@ FOR ALL USING (bucket_id = 'meter-photos') WITH CHECK (bucket_id = 'meter-photos
       .subscribe();
 
     return () => {
-      client.removeChannel(channel);
+      try {
+        client.removeChannel(channel);
+      } catch {}
     };
   }
 
@@ -576,8 +579,9 @@ FOR ALL USING (bucket_id = 'meter-photos') WITH CHECK (bucket_id = 'meter-photos
    */
   subscribeToBills(onChange: () => void): () => void {
     const client = this.getClient();
+    const channelName = `bills_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const channel = client
-      .channel('realtime_bills_changes')
+      .channel(channelName)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'bills' },
@@ -589,7 +593,9 @@ FOR ALL USING (bucket_id = 'meter-photos') WITH CHECK (bucket_id = 'meter-photos
       .subscribe();
 
     return () => {
-      client.removeChannel(channel);
+      try {
+        client.removeChannel(channel);
+      } catch {}
     };
   }
 
@@ -598,8 +604,9 @@ FOR ALL USING (bucket_id = 'meter-photos') WITH CHECK (bucket_id = 'meter-photos
    */
   subscribeToPhotos(onChange: (payload?: any) => void): () => void {
     const client = this.getClient();
+    const channelName = `photos_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const channel = client
-      .channel('realtime_photos_changes')
+      .channel(channelName)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'meter_photos' },
@@ -611,7 +618,9 @@ FOR ALL USING (bucket_id = 'meter-photos') WITH CHECK (bucket_id = 'meter-photos
       .subscribe();
 
     return () => {
-      client.removeChannel(channel);
+      try {
+        client.removeChannel(channel);
+      } catch {}
     };
   }
 

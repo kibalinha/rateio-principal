@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, effect, untracked } from '@angular/core';
+import { Component, inject, signal, computed, effect, untracked, OnDestroy } from '@angular/core';
 import { CommonModule, DecimalPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { StoreService, Store } from '../services/store.service';
@@ -1667,7 +1667,8 @@ type ColumnDef = {
     </div>
   `
 })
-export class BillCalculatorComponent {
+export class BillCalculatorComponent implements OnDestroy {
+  private photoSubscriptionUnsubscribe: (() => void) | null = null;
   storeService = inject(StoreService);
   historyService = inject(HistoryService);
   authService = inject(AuthService); // Inject Auth
@@ -1899,7 +1900,7 @@ export class BillCalculatorComponent {
     });
 
     // 5. Inscrição em tempo real para fotos de medidores do Supabase (inserção, edição e exclusão)
-    this.supabaseService.subscribeToPhotos(async (payload) => {
+    this.photoSubscriptionUnsubscribe = this.supabaseService.subscribeToPhotos(async (payload) => {
       const type = this.utilityType();
       const month = this.selectedMonth();
 
@@ -1939,6 +1940,15 @@ export class BillCalculatorComponent {
         this.meterPhotos.set(nextPhotos);
       }
     });
+  }
+
+  ngOnDestroy() {
+    if (this.photoSubscriptionUnsubscribe) {
+      try {
+        this.photoSubscriptionUnsubscribe();
+      } catch {}
+      this.photoSubscriptionUnsubscribe = null;
+    }
   }
 
   isMobile() {
