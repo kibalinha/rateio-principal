@@ -5,6 +5,7 @@ import { StoreService, Store } from '../services/store.service';
 import { HistoryService } from '../services/history.service';
 import { ReportExportService } from '../services/report-export.service';
 import { IndexedDbService, MeterPhotoRecord } from '../services/indexed-db.service';
+import { ThemeService } from '../services/theme.service';
 
 type UtilityType = 'luz' | 'agua' | 'gas';
 type StatusFilter = 'active' | 'inactive' | 'alert' | 'all';
@@ -234,13 +235,13 @@ export interface StoreAlertInfo {
               (click)="selectPreviousStore()" 
               [disabled]="currentStoreIndex() <= 0"
               title="Loja Anterior na lista"
-              class="px-3 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 disabled:opacity-40 disabled:pointer-events-none border border-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1">
+              class="px-3 py-2 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 disabled:opacity-40 disabled:pointer-events-none border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1">
               <span>◀</span>
               <span class="hidden sm:inline">Anterior</span>
             </button>
 
             <!-- Store index counter -->
-            <div class="px-2.5 py-2 text-xs font-semibold text-slate-600 bg-slate-50 border border-slate-200 rounded-xl whitespace-nowrap">
+            <div class="px-2.5 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl whitespace-nowrap">
               @if (filteredStores().length > 0 && currentStoreIndex() >= 0) {
                 <span>{{ currentStoreIndex() + 1 }} de {{ filteredStores().length }}</span>
               } @else {
@@ -253,14 +254,14 @@ export interface StoreAlertInfo {
               (click)="selectNextStore()" 
               [disabled]="currentStoreIndex() >= filteredStores().length - 1 || currentStoreIndex() < 0"
               title="Próxima Loja na lista"
-              class="px-3 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 disabled:opacity-40 disabled:pointer-events-none border border-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1">
+              class="px-3 py-2 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 disabled:opacity-40 disabled:pointer-events-none border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1">
               <span class="hidden sm:inline">Próxima</span>
               <span>▶</span>
             </button>
           </div>
 
           <!-- Utility Filter Checkbox -->
-          <div class="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl shrink-0">
+          <div class="flex items-center gap-2 px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shrink-0">
             <input 
               type="checkbox" 
               id="filterByUtility" 
@@ -268,7 +269,7 @@ export interface StoreAlertInfo {
               (change)="toggleOnlyWithUtility()"
               class="rounded text-teal-600 focus:ring-teal-500 cursor-pointer"
             />
-            <label for="filterByUtility" class="text-xs font-semibold text-slate-700 cursor-pointer select-none">
+            <label for="filterByUtility" class="text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer select-none">
               Apenas com {{ getUtilityLabel() }}
             </label>
           </div>
@@ -278,27 +279,27 @@ export interface StoreAlertInfo {
       </div>
 
       <!-- Controls Panel (Utility, Period Selection & Export Actions) -->
-      <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+      <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 transition-colors">
         <div class="grid grid-cols-1 md:grid-cols-4 gap-5 items-end">
 
           <!-- Utility Selector -->
           <div class="flex flex-col">
-            <label class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+            <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1">
               <span>🔌</span> Utilidade / Consumo
             </label>
-            <div class="flex bg-slate-100 p-1 rounded-xl w-full">
+            <div class="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl w-full">
               <button (click)="setUtility('luz')" 
-                [class]="selectedUtility() === 'luz' ? 'bg-white text-amber-600 shadow-sm font-bold' : 'text-slate-500 hover:text-slate-800 font-semibold'"
+                [class]="selectedUtility() === 'luz' ? 'bg-white dark:bg-slate-700 text-amber-600 dark:text-amber-400 shadow-sm font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 font-semibold'"
                 class="flex-1 py-2 rounded-lg text-xs transition-all flex items-center justify-center gap-1">
                 ⚡ Luz
               </button>
               <button (click)="setUtility('agua')" 
-                [class]="selectedUtility() === 'agua' ? 'bg-white text-blue-600 shadow-sm font-bold' : 'text-slate-500 hover:text-slate-800 font-semibold'"
+                [class]="selectedUtility() === 'agua' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 font-semibold'"
                 class="flex-1 py-2 rounded-lg text-xs transition-all flex items-center justify-center gap-1">
                 💧 Água
               </button>
               <button (click)="setUtility('gas')" 
-                [class]="selectedUtility() === 'gas' ? 'bg-white text-red-600 shadow-sm font-bold' : 'text-slate-500 hover:text-slate-800 font-semibold'"
+                [class]="selectedUtility() === 'gas' ? 'bg-white dark:bg-slate-700 text-red-600 dark:text-red-400 shadow-sm font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 font-semibold'"
                 class="flex-1 py-2 rounded-lg text-xs transition-all flex items-center justify-center gap-1">
                 🔥 Gás
               </button>
@@ -307,13 +308,13 @@ export interface StoreAlertInfo {
 
           <!-- Start Month Selector -->
           <div class="flex flex-col">
-            <label class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+            <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1">
               <span>📅</span> Período Inicial (De)
             </label>
             <select 
               [value]="startPeriod()" 
               (change)="setStartPeriod($any($event.target).value)"
-              class="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-xl focus:ring-2 focus:ring-slate-400 p-2.5 font-semibold w-full outline-none">
+              class="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-100 text-sm rounded-xl focus:ring-2 focus:ring-slate-400 dark:focus:ring-slate-600 p-2.5 font-semibold w-full outline-none">
               @for (period of availablePeriodsList(); track period) {
                 <option [value]="period">{{ formatMonthLabel(period) }}</option>
               }
@@ -322,13 +323,13 @@ export interface StoreAlertInfo {
 
           <!-- End Month Selector -->
           <div class="flex flex-col">
-            <label class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+            <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1">
               <span>📅</span> Período Final (Até)
             </label>
             <select 
               [value]="endPeriod()" 
               (change)="setEndPeriod($any($event.target).value)"
-              class="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-xl focus:ring-2 focus:ring-slate-400 p-2.5 font-semibold w-full outline-none">
+              class="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-100 text-sm rounded-xl focus:ring-2 focus:ring-slate-400 dark:focus:ring-slate-600 p-2.5 font-semibold w-full outline-none">
               @for (period of filteredEndPeriods(); track period) {
                 <option [value]="period">{{ formatMonthLabel(period) }}</option>
               }
@@ -337,7 +338,7 @@ export interface StoreAlertInfo {
 
           <!-- Export Actions -->
           <div class="flex flex-col">
-            <label class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+            <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1">
               <span>📤</span> Exportar para o Lojista
             </label>
             <div class="flex items-center gap-2 w-full">
@@ -380,33 +381,33 @@ export interface StoreAlertInfo {
 
       <!-- Selected Store Badge & Details -->
       @if (selectedStore(); as store) {
-        <div class="bg-white px-5 py-3.5 rounded-xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-4">
+        <div class="bg-white dark:bg-slate-900 px-5 py-3.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-wrap items-center justify-between gap-4 transition-colors">
           <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-lg bg-slate-900 text-white flex items-center justify-center font-bold text-sm">
+            <div class="w-10 h-10 rounded-lg bg-slate-900 dark:bg-slate-800 text-white flex items-center justify-center font-bold text-sm border border-slate-700">
               {{ store.name.substring(0, 2).toUpperCase() }}
             </div>
             <div>
               <div class="flex items-center gap-2">
-                <h3 class="font-bold text-slate-800 text-base leading-tight">{{ store.name }}</h3>
+                <h3 class="font-bold text-slate-800 dark:text-white text-base leading-tight">{{ store.name }}</h3>
                 @if (store.active === false) {
-                  <span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-300">
+                  <span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-700">
                     ○ Inativa {{ store.deactivatedAt ? '(' + store.deactivatedAt + ')' : '' }}
                   </span>
                 } @else {
-                  <span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  <span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
                     ● Ativa
                   </span>
                 }
               </div>
               <div class="flex flex-wrap items-center gap-2 text-xs font-mono mt-1">
-                <span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-semibold border border-slate-200">LUC: {{ store.luc }}</span>
-                <span class="text-slate-300">•</span>
-                <span class="text-slate-600 bg-slate-50 px-2 py-0.5 rounded border border-slate-200 font-semibold">
+                <span class="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded font-semibold border border-slate-200 dark:border-slate-700">LUC: {{ store.luc }}</span>
+                <span class="text-slate-300 dark:text-slate-600">•</span>
+                <span class="text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 font-semibold">
                   Contrato: {{ store.contrato || 'Não informado' }}
                 </span>
                 @if (store.deactivationReason) {
-                  <span class="text-slate-300">•</span>
-                  <span class="text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 text-[11px]">
+                  <span class="text-slate-300 dark:text-slate-600">•</span>
+                  <span class="text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded border border-amber-200 dark:border-amber-800 text-[11px]">
                     {{ store.deactivationReason }}
                   </span>
                 }
@@ -416,16 +417,16 @@ export interface StoreAlertInfo {
 
           <div class="flex items-center gap-2 text-xs">
             <span class="text-slate-400 font-medium">Serviços habilitados:</span>
-            <span class="px-2 py-0.5 rounded text-[11px] font-bold" [class]="store.usesLuz ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-400 line-through'">⚡ Luz</span>
-            <span class="px-2 py-0.5 rounded text-[11px] font-bold" [class]="store.usesAgua ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-400 line-through'">💧 Água</span>
-            <span class="px-2 py-0.5 rounded text-[11px] font-bold" [class]="store.usesGas ? 'bg-red-100 text-red-800' : 'bg-slate-100 text-slate-400 line-through'">🔥 Gás</span>
+            <span class="px-2 py-0.5 rounded text-[11px] font-bold" [class]="store.usesLuz ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-300/40' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 line-through'">⚡ Luz</span>
+            <span class="px-2 py-0.5 rounded text-[11px] font-bold" [class]="store.usesAgua ? 'bg-blue-100 dark:bg-blue-950/70 text-blue-800 dark:text-blue-300 border border-blue-300/40' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 line-through'">💧 Água</span>
+            <span class="px-2 py-0.5 rounded text-[11px] font-bold" [class]="store.usesGas ? 'bg-red-100 dark:bg-red-950/70 text-red-800 dark:text-red-300 border border-red-300/40' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 line-through'">🔥 Gás</span>
           </div>
         </div>
       }
 
       <!-- Warning if selected store doesn't use the selected utility -->
       @if (selectedStore() && !doesStoreUseUtility()) {
-        <div class="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-xl text-sm flex items-center gap-2">
+        <div class="bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 p-4 rounded-xl text-sm flex items-center gap-2">
           <span>⚠️</span>
           <span>A loja <strong>{{ selectedStore()?.name }}</strong> não está configurada para ratear <strong>{{ getUtilityLabel() }}</strong>. Os dados mostrados abaixo podem ser inexistentes ou nulos.</span>
         </div>
@@ -438,13 +439,13 @@ export interface StoreAlertInfo {
             <!-- Alerta Crítico ou de Atenção Ativo -->
             <div class="p-5 rounded-2xl border shadow-sm transition-all"
               [class]="diag.severity === 'critical' 
-                ? 'bg-rose-50/90 border-rose-300 text-rose-950' 
+                ? 'bg-rose-50/90 dark:bg-rose-950/50 border-rose-300 dark:border-rose-900 text-rose-950 dark:text-rose-100' 
                 : diag.severity === 'warning' 
-                  ? 'bg-amber-50/90 border-amber-300 text-amber-950'
-                  : 'bg-sky-50/90 border-sky-300 text-sky-950'">
+                  ? 'bg-amber-50/90 dark:bg-amber-950/50 border-amber-300 dark:border-amber-900 text-amber-950 dark:text-amber-100'
+                  : 'bg-sky-50/90 dark:bg-sky-950/50 border-sky-300 dark:border-sky-900 text-sky-950 dark:text-sky-100'">
               
               <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 pb-4 border-b"
-                [class]="diag.severity === 'critical' ? 'border-rose-200' : diag.severity === 'warning' ? 'border-amber-200' : 'border-sky-200'">
+                [class]="diag.severity === 'critical' ? 'border-rose-200 dark:border-rose-800' : diag.severity === 'warning' ? 'border-amber-200 dark:border-amber-800' : 'border-sky-200 dark:border-sky-800'">
                 
                 <div class="flex items-center gap-3">
                   <div class="w-12 h-12 rounded-xl flex items-center justify-center text-2xl shadow-xs"
@@ -456,7 +457,7 @@ export interface StoreAlertInfo {
                   <div>
                     <div class="flex items-center gap-2">
                       <span class="px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider"
-                        [class]="diag.severity === 'critical' ? 'bg-rose-200 text-rose-900' : diag.severity === 'warning' ? 'bg-amber-200 text-amber-900' : 'bg-sky-200 text-sky-900'">
+                        [class]="diag.severity === 'critical' ? 'bg-rose-200 dark:bg-rose-900 text-rose-900 dark:text-rose-200' : diag.severity === 'warning' ? 'bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-200' : 'bg-sky-200 dark:bg-sky-900 text-sky-900 dark:text-sky-200'">
                         {{ diag.badgeTitle }}
                       </span>
                       <span class="text-xs font-semibold opacity-75">Diagnóstico Automático ({{ diag.latestMonthLabel }})</span>
@@ -465,8 +466,8 @@ export interface StoreAlertInfo {
                   </div>
                 </div>
 
-                <div class="text-xs font-medium px-3 py-1.5 rounded-xl bg-white/70 border backdrop-blur-xs flex items-center gap-2 self-stretch lg:self-auto justify-between lg:justify-start"
-                  [class]="diag.severity === 'critical' ? 'border-rose-200 text-rose-800' : diag.severity === 'warning' ? 'border-amber-200 text-amber-800' : 'border-sky-200 text-sky-800'">
+                <div class="text-xs font-medium px-3 py-1.5 rounded-xl bg-white/70 dark:bg-slate-900/80 border backdrop-blur-xs flex items-center gap-2 self-stretch lg:self-auto justify-between lg:justify-start"
+                  [class]="diag.severity === 'critical' ? 'border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300' : diag.severity === 'warning' ? 'border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300' : 'border-sky-200 dark:border-sky-800 text-sky-800 dark:text-sky-300'">
                   <span>Mês de Referência:</span>
                   <span class="font-bold">{{ diag.latestMonthLabel }}</span>
                 </div>
@@ -474,36 +475,36 @@ export interface StoreAlertInfo {
 
               <!-- Comparative Metric Badges Grid -->
               <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 my-4">
-                <div class="bg-white/80 p-3 rounded-xl border border-black/5 shadow-2xs">
-                  <div class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Último Consumo</div>
-                  <div class="text-lg font-black text-slate-900 mt-0.5">
-                    {{ diag.latestConsumption | number:'1.0-2' }} <span class="text-xs font-normal text-slate-500">{{ getUnit() }}</span>
+                <div class="bg-white/80 dark:bg-slate-800/80 p-3 rounded-xl border border-black/5 dark:border-white/10 shadow-2xs">
+                  <div class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Último Consumo</div>
+                  <div class="text-lg font-black text-slate-900 dark:text-white mt-0.5">
+                    {{ diag.latestConsumption | number:'1.0-2' }} <span class="text-xs font-normal text-slate-500 dark:text-slate-400">{{ getUnit() }}</span>
                   </div>
-                  <div class="text-[10px] text-slate-400 mt-0.5">{{ diag.latestMonthLabel }}</div>
+                  <div class="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{{ diag.latestMonthLabel }}</div>
                 </div>
 
-                <div class="bg-white/80 p-3 rounded-xl border border-black/5 shadow-2xs">
-                  <div class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Média Histórica</div>
-                  <div class="text-lg font-black text-slate-700 mt-0.5">
-                    {{ diag.avgConsumption | number:'1.0-2' }} <span class="text-xs font-normal text-slate-500">{{ getUnit() }}</span>
+                <div class="bg-white/80 dark:bg-slate-800/80 p-3 rounded-xl border border-black/5 dark:border-white/10 shadow-2xs">
+                  <div class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Média Histórica</div>
+                  <div class="text-lg font-black text-slate-700 dark:text-slate-200 mt-0.5">
+                    {{ diag.avgConsumption | number:'1.0-2' }} <span class="text-xs font-normal text-slate-500 dark:text-slate-400">{{ getUnit() }}</span>
                   </div>
-                  <div class="text-[10px] text-slate-400 mt-0.5">Média da loja no shopping</div>
+                  <div class="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">Média da loja no shopping</div>
                 </div>
 
-                <div class="bg-white/80 p-3 rounded-xl border border-black/5 shadow-2xs">
-                  <div class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Desvio vs Média</div>
+                <div class="bg-white/80 dark:bg-slate-800/80 p-3 rounded-xl border border-black/5 dark:border-white/10 shadow-2xs">
+                  <div class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Desvio vs Média</div>
                   <div class="text-lg font-black mt-0.5 flex items-center gap-1"
-                    [class]="diag.diffAvgPct > 0 ? (diag.diffAvgPct >= 40 ? 'text-rose-600' : 'text-amber-600') : 'text-sky-600'">
+                    [class]="diag.diffAvgPct > 0 ? (diag.diffAvgPct >= 40 ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400') : 'text-sky-600 dark:text-sky-400'">
                     <span>{{ diag.diffAvgPct > 0 ? '+' : '' }}{{ diag.diffAvgPct | number:'1.1-1' }}%</span>
                     <span class="text-sm">{{ diag.diffAvgPct > 0 ? '🔺' : '🔻' }}</span>
                   </div>
-                  <div class="text-[10px] text-slate-400 mt-0.5">Variação da média</div>
+                  <div class="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">Variação da média</div>
                 </div>
 
-                <div class="bg-white/80 p-3 rounded-xl border border-black/5 shadow-2xs">
-                  <div class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Salto MoM</div>
+                <div class="bg-white/80 dark:bg-slate-800/80 p-3 rounded-xl border border-black/5 dark:border-white/10 shadow-2xs">
+                  <div class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Salto MoM</div>
                   <div class="text-lg font-black mt-0.5 flex items-center gap-1"
-                    [class]="diag.momDiffPct !== null ? (diag.momDiffPct > 0 ? (diag.momDiffPct >= 40 ? 'text-rose-600' : 'text-amber-600') : 'text-sky-600') : 'text-slate-400'">
+                    [class]="diag.momDiffPct !== null ? (diag.momDiffPct > 0 ? (diag.momDiffPct >= 40 ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400') : 'text-sky-600 dark:text-sky-400') : 'text-slate-400 dark:text-slate-500'">
                     @if (diag.momDiffPct !== null) {
                       <span>{{ diag.momDiffPct > 0 ? '+' : '' }}{{ diag.momDiffPct | number:'1.1-1' }}%</span>
                       <span class="text-sm">{{ diag.momDiffPct > 0 ? '🔺' : '🔻' }}</span>
@@ -511,13 +512,13 @@ export interface StoreAlertInfo {
                       <span>—</span>
                     }
                   </div>
-                  <div class="text-[10px] text-slate-400 mt-0.5">Vs mês anterior</div>
+                  <div class="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">Vs mês anterior</div>
                 </div>
               </div>
 
               <!-- Actionable Technical Recommendation -->
-              <div class="bg-white/90 p-3.5 rounded-xl border flex items-start gap-3 text-xs leading-relaxed"
-                [class]="diag.severity === 'critical' ? 'border-rose-200 text-rose-900' : diag.severity === 'warning' ? 'border-amber-200 text-amber-900' : 'border-sky-200 text-sky-900'">
+              <div class="bg-white/90 dark:bg-slate-800/90 p-3.5 rounded-xl border flex items-start gap-3 text-xs leading-relaxed"
+                [class]="diag.severity === 'critical' ? 'border-rose-200 dark:border-rose-800 text-rose-900 dark:text-rose-200' : diag.severity === 'warning' ? 'border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200' : 'border-sky-200 dark:border-sky-800 text-sky-900 dark:text-sky-200'">
                 <span class="text-base shrink-0">💡</span>
                 <div>
                   <strong class="font-bold">Recomendação da Equipe de Operações:</strong>
@@ -528,23 +529,23 @@ export interface StoreAlertInfo {
             </div>
           } @else {
             <!-- Consumo Estável / Normal -->
-            <div class="p-4 rounded-xl border border-emerald-200 bg-emerald-50/70 text-emerald-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+            <div class="p-4 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-950 dark:text-emerald-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
               <div class="flex items-center gap-3">
                 <div class="w-9 h-9 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
                   ✓
                 </div>
                 <div>
-                  <h4 class="font-bold text-sm text-emerald-900 flex items-center gap-2">
+                  <h4 class="font-bold text-sm text-emerald-900 dark:text-emerald-200 flex items-center gap-2">
                     <span>Consumo Estável e Regular</span>
-                    <span class="px-2 py-0.2 rounded-full text-[10px] font-black bg-emerald-200 text-emerald-800">NORMAL</span>
+                    <span class="px-2 py-0.2 rounded-full text-[10px] font-black bg-emerald-200 dark:bg-emerald-900/80 text-emerald-800 dark:text-emerald-200">NORMAL</span>
                   </h4>
-                  <p class="text-xs text-emerald-800 mt-0.5">
+                  <p class="text-xs text-emerald-800 dark:text-emerald-300 mt-0.5">
                     O consumo mais recente (<strong>{{ diag.latestConsumption | number:'1.0-2' }} {{ getUnit() }}</strong> em {{ diag.latestMonthLabel }}) varia apenas 
                     <strong>{{ diag.diffAvgPct > 0 ? '+' : '' }}{{ diag.diffAvgPct | number:'1.1-1' }}%</strong> em relação à média histórica ({{ diag.avgConsumption | number:'1.0-2' }} {{ getUnit() }}).
                   </p>
                 </div>
               </div>
-              <div class="text-[11px] font-semibold text-emerald-700 bg-white/80 px-2.5 py-1 rounded-lg border border-emerald-200 whitespace-nowrap self-end sm:self-auto">
+              <div class="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 bg-white/80 dark:bg-slate-900/80 px-2.5 py-1 rounded-lg border border-emerald-200 dark:border-emerald-800 whitespace-nowrap self-end sm:self-auto">
                 Sem desvios atípicos
               </div>
             </div>
@@ -556,51 +557,51 @@ export interface StoreAlertInfo {
       <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
         
         <!-- Quantity Card -->
-        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+        <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 transition-colors">
           <div class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1 flex justify-between items-center">
             <span>Consumo Acumulado</span>
-            <span class="text-slate-300">📈</span>
+            <span class="text-slate-300 dark:text-slate-600">📈</span>
           </div>
           <div class="text-3xl font-extrabold" [class]="getUtilityColorText()">
             {{ metrics().totalConsumption | number:'1.0-2' }} <span class="text-xs font-semibold text-slate-400">{{ getUnit() }}</span>
           </div>
-          <div class="text-xs text-slate-400 mt-2">No período selecionado</div>
+          <div class="text-xs text-slate-400 dark:text-slate-500 mt-2">No período selecionado</div>
         </div>
 
         <!-- Medium Quantity Card -->
-        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+        <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 transition-colors">
           <div class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1 flex justify-between items-center">
             <span>Média Histórica</span>
-            <span class="text-slate-300">📊</span>
+            <span class="text-slate-300 dark:text-slate-600">📊</span>
           </div>
-          <div class="text-3xl font-extrabold text-slate-700">
+          <div class="text-3xl font-extrabold text-slate-700 dark:text-slate-200">
             {{ metrics().avgConsumption | number:'1.0-2' }} <span class="text-xs font-semibold text-slate-400">{{ getUnit() }}</span>
           </div>
-          <div class="text-xs text-slate-400 mt-2">Base de referência da loja</div>
+          <div class="text-xs text-slate-400 dark:text-slate-500 mt-2">Base de referência da loja</div>
         </div>
 
         <!-- Costs Card -->
-        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+        <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 transition-colors">
           <div class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1 flex justify-between items-center">
             <span>Valor Total Pago</span>
             <span class="text-green-500">💰</span>
           </div>
-          <div class="text-3xl font-extrabold text-slate-800">
+          <div class="text-3xl font-extrabold text-slate-800 dark:text-white">
             {{ metrics().totalCost | currency:'BRL':'symbol':'1.2-2' }}
           </div>
-          <div class="text-xs text-slate-400 mt-2">Rateio proporcional total</div>
+          <div class="text-xs text-slate-400 dark:text-slate-500 mt-2">Rateio proporcional total</div>
         </div>
 
         <!-- Medium Costs Card -->
-        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+        <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 transition-colors">
           <div class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1 flex justify-between items-center">
             <span>Gasto Médio Mensal</span>
-            <span class="text-slate-300">📉</span>
+            <span class="text-slate-300 dark:text-slate-600">📉</span>
           </div>
-          <div class="text-3xl font-extrabold text-slate-600">
+          <div class="text-3xl font-extrabold text-slate-600 dark:text-slate-300">
             {{ metrics().avgCost | currency:'BRL':'symbol':'1.2-2' }}
           </div>
-          <div class="text-xs text-slate-400 mt-2">Por mês com leitura</div>
+          <div class="text-xs text-slate-400 dark:text-slate-500 mt-2">Por mês com leitura</div>
         </div>
 
       </div>
@@ -609,24 +610,24 @@ export interface StoreAlertInfo {
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
         <!-- Consumption Chart Card -->
-        <div class="bg-white p-6 rounded-2xl shadow-md border border-slate-100 flex flex-col">
+        <div class="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-md border border-slate-100 dark:border-slate-800 flex flex-col transition-colors">
           <div class="flex justify-between items-center mb-6">
             <div>
-              <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <h3 class="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
                 <span class="w-2.5 h-6 rounded bg-slate-400" [class]="getUtilityColorBg()"></span>
                 Histórico de Consumo ({{ getUnit() }})
               </h3>
-              <p class="text-xs text-slate-400 mt-0.5">Pontos com anel colorido indicam desvios da média</p>
+              <p class="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Pontos com anel colorido indicam desvios da média</p>
             </div>
-            <div class="flex items-center gap-2 text-[11px] font-medium text-slate-500">
+            <div class="flex items-center gap-2 text-[11px] font-medium text-slate-500 dark:text-slate-400">
               <span class="inline-block w-3 h-0.5 border-t-2 border-dashed border-slate-400"></span>
               <span>Linha de Média</span>
             </div>
           </div>
 
-          <div class="relative w-full h-80 bg-slate-50/50 rounded-2xl border border-slate-100/40 flex items-center justify-center overflow-hidden">
+          <div class="relative w-full h-80 bg-slate-50/50 dark:bg-slate-950/60 rounded-2xl border border-slate-100/40 dark:border-slate-800/60 flex items-center justify-center overflow-hidden">
             @if (chartData().length === 0) {
-              <div class="text-slate-400 text-sm italic py-12 flex flex-col items-center gap-2">
+              <div class="text-slate-400 dark:text-slate-500 text-sm italic py-12 flex flex-col items-center gap-2">
                 <span>📭</span>
                 <span>Nenhum consumo registrado neste período</span>
               </div>
@@ -636,21 +637,21 @@ export interface StoreAlertInfo {
         </div>
 
         <!-- Cost Chart Card -->
-        <div class="bg-white p-6 rounded-2xl shadow-md border border-slate-100 flex flex-col">
+        <div class="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-md border border-slate-100 dark:border-slate-800 flex flex-col transition-colors">
           <div class="flex justify-between items-center mb-6">
             <div>
-              <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <h3 class="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
                 <span class="w-2.5 h-6 rounded bg-emerald-500"></span>
                 Histórico de Custo (R$)
               </h3>
-              <p class="text-xs text-slate-400 mt-0.5">Valor faturado proporcional ao consumo</p>
+              <p class="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Valor faturado proporcional ao consumo</p>
             </div>
-            <span class="text-xs font-medium text-slate-400">valor proporcional</span>
+            <span class="text-xs font-medium text-slate-400 dark:text-slate-500">valor proporcional</span>
           </div>
 
-          <div class="relative w-full h-80 bg-slate-50/50 rounded-2xl border border-slate-100/40 flex items-center justify-center overflow-hidden">
+          <div class="relative w-full h-80 bg-slate-50/50 dark:bg-slate-950/60 rounded-2xl border border-slate-100/40 dark:border-slate-800/60 flex items-center justify-center overflow-hidden">
             @if (chartData().length === 0) {
-              <div class="text-slate-400 text-sm italic py-12 flex flex-col items-center gap-2">
+              <div class="text-slate-400 dark:text-slate-500 text-sm italic py-12 flex flex-col items-center gap-2">
                 <span>📭</span>
                 <span>Nenhum gasto registrado neste período</span>
               </div>
@@ -662,27 +663,27 @@ export interface StoreAlertInfo {
       </div>
 
       <!-- Detailed Report Table com Destaques Visuais de Alertas -->
-      <div class="bg-white p-6 rounded-2xl shadow-md border border-slate-100">
+      <div class="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-md border border-slate-100 dark:border-slate-800 transition-colors">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <div>
-            <h3 class="text-lg font-bold text-slate-800">Detalhamento por Mês & Diagnóstico</h3>
-            <p class="text-xs text-slate-500 mt-0.5">
+            <h3 class="text-lg font-bold text-slate-800 dark:text-white">Detalhamento por Mês & Diagnóstico</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               Valores acompanhados de comparação com a média histórica e variações mês a mês (MoM)
             </p>
           </div>
           
           <!-- Legend of alert badges -->
-          <div class="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-slate-500">
-            <span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-200">🚨 Crítico (≥+40%)</span>
-            <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">⚠️ Elevado (≥+20%)</span>
-            <span class="px-2 py-0.5 rounded bg-sky-100 text-sky-800 border border-sky-200">📉 Queda Forte (≤-25%)</span>
-            <span class="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">✓ Estável</span>
+          <div class="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+            <span class="px-2 py-0.5 rounded bg-rose-100 dark:bg-rose-950/70 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800">🚨 Crítico (≥+40%)</span>
+            <span class="px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">⚠️ Elevado (≥+20%)</span>
+            <span class="px-2 py-0.5 rounded bg-sky-100 dark:bg-sky-950/70 text-sky-800 dark:text-sky-300 border border-sky-200 dark:border-sky-800">📉 Queda Forte (≤-25%)</span>
+            <span class="px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">✓ Estável</span>
           </div>
         </div>
         
-        <div class="overflow-x-auto rounded-xl border border-slate-200">
+        <div class="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
           <table class="w-full text-left text-sm border-collapse">
-            <thead class="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 text-xs uppercase tracking-wider">
+            <thead class="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold border-b border-slate-200 dark:border-slate-700 text-xs uppercase tracking-wider">
               <tr>
                 <th class="p-3.5 pl-6">Mês Relevante</th>
                 <th class="p-3.5 text-right">Consumo da Loja</th>
@@ -695,18 +696,18 @@ export interface StoreAlertInfo {
                 <th class="p-3.5 text-right pr-6">Fatura (%)</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-slate-100 text-slate-600">
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-800 text-slate-600 dark:text-slate-300">
               @for (item of chartData(); track item.key) {
                 <tr [class]="item.alertLevel === 'critical' 
-                  ? 'bg-rose-50/60 hover:bg-rose-50 font-medium' 
+                  ? 'bg-rose-50/60 dark:bg-rose-950/30 hover:bg-rose-50 dark:hover:bg-rose-950/50 font-medium' 
                   : item.alertLevel === 'warning' 
-                    ? 'bg-amber-50/40 hover:bg-amber-50' 
+                    ? 'bg-amber-50/40 dark:bg-amber-950/20 hover:bg-amber-50 dark:hover:bg-amber-950/40' 
                     : item.alertLevel === 'drop'
-                      ? 'bg-sky-50/30 hover:bg-sky-50'
-                      : 'hover:bg-slate-50 transition-colors'">
+                      ? 'bg-sky-50/30 dark:bg-sky-950/20 hover:bg-sky-50 dark:hover:bg-sky-950/40' 
+                      : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors'">
                   
                   <!-- Month -->
-                  <td class="p-3.5 pl-6 font-bold text-slate-800 whitespace-nowrap">
+                  <td class="p-3.5 pl-6 font-bold text-slate-800 dark:text-white whitespace-nowrap">
                     <div class="flex items-center gap-2">
                       @if (item.alertLevel === 'critical') {
                         <span class="text-rose-600 text-sm">🚨</span>
@@ -720,7 +721,7 @@ export interface StoreAlertInfo {
                   </td>
 
                   <!-- Consumption -->
-                  <td class="p-3.5 text-right font-mono font-bold text-slate-800 whitespace-nowrap">
+                  <td class="p-3.5 text-right font-mono font-bold text-slate-800 dark:text-white whitespace-nowrap">
                     {{ item.consumption | number:'1.0-2' }} <span class="text-xs font-normal text-slate-400">{{ getUnit() }}</span>
                   </td>
 
@@ -728,12 +729,12 @@ export interface StoreAlertInfo {
                   <td class="p-3.5 text-center whitespace-nowrap">
                     <span class="px-2 py-0.5 rounded-full text-xs font-bold inline-flex items-center gap-1 font-mono"
                       [class]="item.diffFromAvgPct >= 40 
-                        ? 'bg-rose-100 text-rose-800 border border-rose-300' 
+                        ? 'bg-rose-100 dark:bg-rose-950/80 text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-700' 
                         : item.diffFromAvgPct >= 20 
-                          ? 'bg-amber-100 text-amber-800 border border-amber-300' 
+                          ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700' 
                           : item.diffFromAvgPct <= -25 
-                            ? 'bg-sky-100 text-sky-800 border border-sky-300' 
-                            : 'bg-slate-100 text-slate-700'">
+                            ? 'bg-sky-100 dark:bg-sky-950/80 text-sky-800 dark:text-sky-300 border border-sky-300 dark:border-sky-700' 
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'">
                       <span>{{ item.diffFromAvgPct > 0 ? '+' : '' }}{{ item.diffFromAvgPct | number:'1.0-1' }}%</span>
                       @if (item.diffFromAvgPct > 15) { <span>🔺</span> }
                       @else if (item.diffFromAvgPct < -15) { <span>🔻</span> }
@@ -745,26 +746,26 @@ export interface StoreAlertInfo {
                     @if (item.momDiffPct !== null) {
                       <span class="px-2 py-0.5 rounded font-bold"
                         [class]="item.momDiffPct >= 40 
-                          ? 'bg-rose-100 text-rose-700' 
+                          ? 'bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300' 
                           : item.momDiffPct >= 20 
-                            ? 'bg-amber-100 text-amber-700' 
+                            ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300' 
                             : item.momDiffPct <= -30 
-                              ? 'bg-sky-100 text-sky-700' 
-                              : 'text-slate-600'">
+                              ? 'bg-sky-100 dark:bg-sky-950/80 text-sky-700 dark:text-sky-300' 
+                              : 'text-slate-600 dark:text-slate-300'">
                         {{ item.momDiffPct > 0 ? '+' : '' }}{{ item.momDiffPct | number:'1.1-1' }}%
                       </span>
                     } @else {
-                      <span class="text-slate-300 font-normal">—</span>
+                      <span class="text-slate-300 dark:text-slate-600 font-normal">—</span>
                     }
                   </td>
 
                   <!-- Unit Price -->
-                  <td class="p-3.5 text-right font-mono text-slate-400 whitespace-nowrap">
+                  <td class="p-3.5 text-right font-mono text-slate-400 dark:text-slate-500 whitespace-nowrap">
                     {{ item.unitPrice | currency:'BRL':'symbol':'1.4-4' }}
                   </td>
 
                   <!-- Cost -->
-                  <td class="p-3.5 text-right font-bold text-slate-800 whitespace-nowrap">
+                  <td class="p-3.5 text-right font-bold text-slate-800 dark:text-white whitespace-nowrap">
                     {{ item.cost | currency:'BRL' }}
                   </td>
 
@@ -783,7 +784,7 @@ export interface StoreAlertInfo {
                         📉 Queda Atípica
                       </span>
                     } @else {
-                      <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                      <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
                         ✓ Padrão Normal
                       </span>
                     }
@@ -794,7 +795,7 @@ export interface StoreAlertInfo {
                     @if (item.photo) {
                       <button type="button" 
                         (click)="openPhotoViewer(item.photo)" 
-                        class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95"
+                        class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900/60 text-teal-800 dark:text-teal-300 border border-teal-200 dark:border-teal-800 text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95"
                         title="Ver comprovante fotográfico gravado no IndexedDB">
                         <img [src]="item.photo.photoDataUrl" 
                              alt="Comprovante" 
@@ -802,15 +803,15 @@ export interface StoreAlertInfo {
                         <span>📷 Ver Foto</span>
                       </button>
                     } @else {
-                      <span class="text-xs text-slate-300 font-mono">—</span>
+                      <span class="text-xs text-slate-300 dark:text-slate-600 font-mono">—</span>
                     }
                   </td>
 
                   <!-- Pct in bill -->
                   <td class="p-3.5 text-right pr-6 whitespace-nowrap">
                     <div class="flex items-center justify-end gap-2">
-                      <span class="text-xs text-slate-500 font-medium">{{ item.pctBill | number:'1.1-1' }}%</span>
-                      <div class="w-14 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                      <span class="text-xs text-slate-500 dark:text-slate-400 font-medium">{{ item.pctBill | number:'1.1-1' }}%</span>
+                      <div class="w-14 bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
                         <div class="h-1.5 rounded-full" [class]="getUtilityColorBg()" [style.width.%]="item.pctBill"></div>
                       </div>
                     </div>
@@ -818,7 +819,7 @@ export interface StoreAlertInfo {
                 </tr>
               } @empty {
                 <tr>
-                  <td colspan="9" class="p-8 text-center text-slate-400 italic">
+                  <td colspan="9" class="p-8 text-center text-slate-400 dark:text-slate-500 italic">
                     Nenhum lançamento encontrado para a loja e utilidade selecionadas no período.
                   </td>
                 </tr>
@@ -832,7 +833,7 @@ export interface StoreAlertInfo {
       @if (showPhotoModal() && activeReportPhoto(); as photo) {
         <div class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
           <div class="absolute inset-0 bg-black/85 backdrop-blur-sm" (click)="closePhotoViewer()"></div>
-          <div class="bg-white rounded-2xl shadow-2xl overflow-hidden w-full max-w-lg relative z-10 max-h-[92vh] flex flex-col border border-slate-700 animate-fade-in">
+          <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl overflow-hidden w-full max-w-lg relative z-10 max-h-[92vh] flex flex-col border border-slate-700 animate-fade-in">
             <div class="bg-slate-900 text-white p-3.5 sm:p-4 flex justify-between items-center border-b border-slate-800">
               <div class="flex items-center gap-2.5">
                 <span class="text-xs font-mono font-extrabold bg-teal-500 text-slate-950 px-2 py-0.5 rounded shadow-2xs">
@@ -858,25 +859,25 @@ export interface StoreAlertInfo {
                 <strong class="text-white">{{ photo.readingValue || 0 }}</strong>
               </div>
             </div>
-            <div class="p-3.5 sm:p-4 bg-slate-50 border-t border-slate-200 flex flex-col gap-2.5">
-              <div class="flex justify-between items-center text-xs text-slate-600">
+            <div class="p-3.5 sm:p-4 bg-slate-50 dark:bg-slate-800/90 border-t border-slate-200 dark:border-slate-800 flex flex-col gap-2.5">
+              <div class="flex justify-between items-center text-xs text-slate-600 dark:text-slate-300">
                 <span class="flex items-center gap-1">
                   <span>📅 Capturada em:</span>
-                  <strong class="font-mono text-slate-800">{{ photo.capturedAt | date:'dd/MM/yyyy HH:mm:ss' }}</strong>
+                  <strong class="font-mono text-slate-800 dark:text-white">{{ photo.capturedAt | date:'dd/MM/yyyy HH:mm:ss' }}</strong>
                 </span>
-                <span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-300">
+                <span class="bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-700">
                   ✓ Comprovante IndexedDB
                 </span>
               </div>
               <div class="flex items-center gap-2 pt-1">
                 <button type="button" 
                   (click)="downloadActivePhoto()" 
-                  class="flex-1 py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer">
+                  class="flex-1 py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer border border-slate-700">
                   <span>⬇️ Baixar Foto Comprovante</span>
                 </button>
                 <button type="button" 
                   (click)="closePhotoViewer()" 
-                  class="py-2.5 px-4 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-bold transition-colors cursor-pointer">
+                  class="py-2.5 px-4 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-xl text-xs font-bold transition-colors cursor-pointer">
                   Fechar
                 </button>
               </div>
@@ -897,6 +898,7 @@ export class StoreReportComponent {
   historyService = inject(HistoryService);
   exportService = inject(ReportExportService);
   indexedDb = inject(IndexedDbService);
+  themeService = inject(ThemeService);
 
   // Meter Evidence Photos (IndexedDB)
   reportPhotos = signal<Record<string, MeterPhotoRecord>>({});
@@ -1346,6 +1348,7 @@ export class StoreReportComponent {
       this.startPeriod();
       this.endPeriod();
       this.chartData();
+      this.themeService.isDarkMode();
 
       untracked(() => {
         setTimeout(() => {
@@ -1579,6 +1582,7 @@ export class StoreReportComponent {
     const data = this.chartData();
     if (data.length === 0) return;
 
+    const isDark = this.themeService.isDarkMode();
     const margin = { top: 30, right: 30, bottom: 40, left: 55 };
     const width = element.clientWidth - margin.left - margin.right;
     const height = element.clientHeight - margin.top - margin.bottom;
@@ -1598,13 +1602,18 @@ export class StoreReportComponent {
       .domain(data.map(d => d.monthLabel))
       .padding(0.4);
 
-    svg.append('g')
+    const xAxisG = svg.append('g')
       .attr('transform', `translate(0,${height})`)
-      .call(d3.axisBottom(x))
-      .selectAll('text')
-      .style('opacity', 0.6)
+      .call(d3.axisBottom(x));
+      
+    xAxisG.selectAll('text')
+      .style('opacity', isDark ? 0.9 : 0.7)
       .style('font-size', '10px')
-      .style('font-weight', 'medium');
+      .style('font-weight', '500')
+      .style('fill', isDark ? '#94a3b8' : '#64748b');
+
+    xAxisG.selectAll('.domain, .tick line')
+      .style('stroke', isDark ? '#334155' : '#cbd5e1');
 
     // Y Axis
     const maxVal = d3.max(data, d => d.consumption) as number || 100;
@@ -1612,17 +1621,26 @@ export class StoreReportComponent {
       .domain([0, maxVal * 1.2])
       .range([height, 0]);
 
-    svg.append('g')
-      .call(d3.axisLeft(y).ticks(5).tickFormat(d => `${d}`))
-      .selectAll('text')
-      .style('opacity', 0.6)
-      .style('font-size', '10px');
+    const yAxisG = svg.append('g')
+      .call(d3.axisLeft(y).ticks(5).tickFormat(d => `${d}`));
+      
+    yAxisG.selectAll('text')
+      .style('opacity', isDark ? 0.9 : 0.7)
+      .style('font-size', '10px')
+      .style('fill', isDark ? '#94a3b8' : '#64748b');
+
+    yAxisG.selectAll('.domain, .tick line')
+      .style('stroke', isDark ? '#334155' : '#cbd5e1');
 
     // Horizontal grids
-    svg.append('g')
+    const gridG = svg.append('g')
       .attr('class', 'grid')
-      .attr('opacity', 0.08)
+      .attr('opacity', isDark ? 0.15 : 0.08)
       .call(d3.axisLeft(y).tickSize(-width).tickFormat(() => ''));
+      
+    gridG.selectAll('line')
+      .style('stroke', isDark ? '#475569' : '#cbd5e1');
+    gridG.select('.domain').remove();
 
     // Historical Average Reference Line
     const avg = this.metrics().avgConsumption;
@@ -1633,10 +1651,10 @@ export class StoreReportComponent {
         .attr('x2', width)
         .attr('y1', avgY)
         .attr('y2', avgY)
-        .attr('stroke', '#64748b')
+        .attr('stroke', isDark ? '#94a3b8' : '#64748b')
         .attr('stroke-dasharray', '5,4')
         .attr('stroke-width', 1.5)
-        .attr('opacity', 0.7);
+        .attr('opacity', 0.8);
 
       svg.append('text')
         .attr('x', width)
@@ -1645,7 +1663,7 @@ export class StoreReportComponent {
         .text(`Média: ${avg.toFixed(1)} ${this.getUnit()}`)
         .style('font-size', '10px')
         .style('font-weight', 'bold')
-        .style('fill', '#64748b');
+        .style('fill', isDark ? '#cbd5e1' : '#64748b');
     }
 
     // Curve Path (Area representing consumption)
@@ -1657,7 +1675,7 @@ export class StoreReportComponent {
 
     // Color code based on utility selection
     let gradientStart = '#f59e0b'; // warning
-    let gradientStop = '#ffffff';
+    let gradientStop = isDark ? '#020617' : '#ffffff';
 
     if (this.selectedUtility() === 'agua') {
       gradientStart = '#3b82f6';
@@ -1677,7 +1695,7 @@ export class StoreReportComponent {
     linearGradient.append('stop')
       .attr('offset', '0%')
       .attr('stop-color', gradientStart)
-      .attr('stop-opacity', 0.45);
+      .attr('stop-opacity', isDark ? 0.4 : 0.45);
 
     linearGradient.append('stop')
       .attr('offset', '100%')
@@ -1727,7 +1745,7 @@ export class StoreReportComponent {
       .attr('cx', d => x(d.monthLabel)!)
       .attr('cy', d => y(d.consumption)!)
       .attr('r', d => d.alertLevel === 'critical' ? 6 : 4.5)
-      .attr('fill', d => d.alertLevel === 'critical' ? '#e11d48' : d.alertLevel === 'warning' ? '#f59e0b' : '#ffffff')
+      .attr('fill', d => d.alertLevel === 'critical' ? '#e11d48' : d.alertLevel === 'warning' ? '#f59e0b' : (isDark ? '#0f172a' : '#ffffff'))
       .attr('stroke', d => d.alertLevel === 'critical' ? '#9f1239' : gradientStart)
       .attr('stroke-width', 2)
       .style('cursor', 'pointer')
@@ -1743,7 +1761,7 @@ export class StoreReportComponent {
            .text(tipText)
            .style('font-size', '11px')
            .style('font-weight', 'bold')
-           .style('fill', d.alertLevel === 'critical' ? '#e11d48' : '#334155');
+           .style('fill', d.alertLevel === 'critical' ? '#e11d48' : (isDark ? '#f1f5f9' : '#334155'));
       })
       .on('mouseout', function(e, d) {
          d3.select(this).attr('r', d.alertLevel === 'critical' ? 6 : 4.5);
@@ -1762,7 +1780,7 @@ export class StoreReportComponent {
         .text(d => `${Math.round(d.consumption)}`)
         .style('font-size', '9px')
         .style('font-weight', 'bold')
-        .style('fill', d => d.alertLevel === 'critical' ? '#e11d48' : '#64748b');
+        .style('fill', d => d.alertLevel === 'critical' ? '#e11d48' : (isDark ? '#94a3b8' : '#64748b'));
     }
   }
 
@@ -1774,6 +1792,7 @@ export class StoreReportComponent {
     const data = this.chartData();
     if (data.length === 0) return;
 
+    const isDark = this.themeService.isDarkMode();
     const margin = { top: 30, right: 30, bottom: 40, left: 60 };
     const width = element.clientWidth - margin.left - margin.right;
     const height = element.clientHeight - margin.top - margin.bottom;
@@ -1793,12 +1812,17 @@ export class StoreReportComponent {
       .domain(data.map(d => d.monthLabel))
       .padding(0.35);
 
-    svg.append('g')
+    const xAxisG = svg.append('g')
       .attr('transform', `translate(0,${height})`)
-      .call(d3.axisBottom(x))
-      .selectAll('text')
-      .style('opacity', 0.6)
-      .style('font-size', '10px');
+      .call(d3.axisBottom(x));
+      
+    xAxisG.selectAll('text')
+      .style('opacity', isDark ? 0.9 : 0.7)
+      .style('font-size', '10px')
+      .style('fill', isDark ? '#94a3b8' : '#64748b');
+
+    xAxisG.selectAll('.domain, .tick line')
+      .style('stroke', isDark ? '#334155' : '#cbd5e1');
 
     // Y Axis
     const maxVal = d3.max(data, d => d.cost) as number || 1000;
@@ -1806,17 +1830,26 @@ export class StoreReportComponent {
       .domain([0, maxVal * 1.15])
       .range([height, 0]);
 
-    svg.append('g')
-      .call(d3.axisLeft(y).ticks(5).tickFormat(d => `R$${d}`))
-      .selectAll('text')
-      .style('opacity', 0.6)
-      .style('font-size', '10px');
+    const yAxisG = svg.append('g')
+      .call(d3.axisLeft(y).ticks(5).tickFormat(d => `R$${d}`));
+      
+    yAxisG.selectAll('text')
+      .style('opacity', isDark ? 0.9 : 0.7)
+      .style('font-size', '10px')
+      .style('fill', isDark ? '#94a3b8' : '#64748b');
+
+    yAxisG.selectAll('.domain, .tick line')
+      .style('stroke', isDark ? '#334155' : '#cbd5e1');
 
     // Horizontal Grid
-    svg.append('g')
+    const gridG = svg.append('g')
       .attr('class', 'grid')
-      .attr('opacity', 0.08)
+      .attr('opacity', isDark ? 0.15 : 0.08)
       .call(d3.axisLeft(y).tickSize(-width).tickFormat(() => ''));
+
+    gridG.selectAll('line')
+      .style('stroke', isDark ? '#475569' : '#cbd5e1');
+    gridG.select('.domain').remove();
 
     // Draw Bar chart with pleasant rounded bars
     svg.selectAll('mybar')
@@ -1829,7 +1862,7 @@ export class StoreReportComponent {
       .attr('height', d => height - y(d.cost))
       .attr('fill', '#10b981')
       .attr('rx', 4)
-      .attr('opacity', 0.8)
+      .attr('opacity', isDark ? 0.9 : 0.8)
       .on('mouseover', function() {
          d3.select(this)
            .transition()
@@ -1840,7 +1873,7 @@ export class StoreReportComponent {
          d3.select(this)
            .transition()
            .duration(150)
-           .attr('opacity', 0.8);
+           .attr('opacity', isDark ? 0.9 : 0.8);
       });
 
     // Top values text
@@ -1854,6 +1887,6 @@ export class StoreReportComponent {
       .text(d => `R$${Math.round(d.cost)}`)
       .style('font-size', '9px')
       .style('font-weight', 'bold')
-      .style('fill', '#475569');
+      .style('fill', isDark ? '#cbd5e1' : '#475569');
   }
 }
