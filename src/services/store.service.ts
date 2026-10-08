@@ -7,6 +7,7 @@ export interface Store {
   luc: string;       // Código da Loja (LUC)
   contrato?: string; // Número do Contrato
   name: string;      // Nome da Loja
+  routeOrder?: number; // Ordem física no corredor / rota do leiturista (1, 2, 3...)
   
   // Status de Atividade (Preservação de Histórico)
   active: boolean;             // true = Ativa no rateio atual, false = Inativa

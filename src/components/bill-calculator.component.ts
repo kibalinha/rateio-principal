@@ -1,4 +1,4 @@
-﻿import { Component, inject, signal, computed, effect, untracked, OnDestroy } from '@angular/core';
+import { Component, inject, signal, computed, effect, untracked, OnDestroy } from '@angular/core';
 import { CommonModule, DecimalPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { StoreService, Store } from '../services/store.service';
@@ -486,8 +486,8 @@ type ColumnDef = {
                 </div>
               </div>
 
-              <!-- Search Bar & Status Filter Chips -->
-              <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+              <!-- Search Bar, Status Filter Chips & Sort Selector -->
+              <div class="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2.5">
                 <!-- Search Box -->
                 <div class="relative flex-1">
                   <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 text-xs">🔍</span>
@@ -503,49 +503,71 @@ type ColumnDef = {
                   }
                 </div>
 
-                <!-- Filter Chips -->
-                <div class="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 shrink-0">
-                  <button type="button" 
-                    (click)="statusFilter.set('all')"
-                    [class]="statusFilter() === 'all' ? 'bg-slate-800 dark:bg-slate-700 text-white font-bold shadow-xs' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'"
-                    class="px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap transition-all cursor-pointer">
-                    Todas ({{ fieldStats().total }})
-                  </button>
+                <div class="flex items-center gap-2 flex-wrap shrink-0">
+                  <!-- Sort Selector -->
+                  <div class="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs">
+                    <span class="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 px-1.5 hidden sm:inline">Ordem:</span>
+                    <button type="button" (click)="sortBy.set('route')"
+                      [class]="sortBy() === 'route' ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 font-bold shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'"
+                      class="px-2 py-1 rounded text-xs transition-all cursor-pointer flex items-center gap-1" title="Ordem física da rota de leitura">
+                      <span>📍 Rota</span>
+                    </button>
+                    <button type="button" (click)="sortBy.set('luc')"
+                      [class]="sortBy() === 'luc' ? 'bg-white dark:bg-slate-700 text-teal-700 dark:text-teal-300 font-bold shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'"
+                      class="px-2 py-1 rounded text-xs transition-all cursor-pointer flex items-center gap-1" title="Ordem por número do LUC">
+                      <span>🏢 LUC</span>
+                    </button>
+                    <button type="button" (click)="sortBy.set('name')"
+                      [class]="sortBy() === 'name' ? 'bg-white dark:bg-slate-700 text-teal-700 dark:text-teal-300 font-bold shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'"
+                      class="px-2 py-1 rounded text-xs transition-all cursor-pointer flex items-center gap-1" title="Ordem alfabética pelo nome da loja">
+                      <span>🔤 Nome</span>
+                    </button>
+                  </div>
 
-                  <button type="button" 
-                    (click)="statusFilter.set('pending')"
-                    [class]="statusFilter() === 'pending' ? 'bg-amber-600 text-white font-bold shadow-xs' : 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-950/60 border border-amber-200 dark:border-amber-800'"
-                    class="px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap transition-all cursor-pointer font-medium flex items-center gap-1">
-                    <span>⚠️ Pendentes</span>
-                    <span class="px-1.5 py-0.2 rounded-full text-[10px]"
-                          [class]="statusFilter() === 'pending' ? 'bg-amber-700 text-white' : 'bg-amber-200/80 dark:bg-amber-900 text-amber-900 dark:text-amber-200'">
-                      {{ fieldStats().pending }}
-                    </span>
-                  </button>
-
-                  <button type="button" 
-                    (click)="statusFilter.set('completed')"
-                    [class]="statusFilter() === 'completed' ? 'bg-green-600 text-white font-bold shadow-xs' : 'bg-green-50 dark:bg-green-950/40 text-green-800 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-950/60 border border-green-200 dark:border-green-800'"
-                    class="px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap transition-all cursor-pointer font-medium flex items-center gap-1">
-                    <span>✅ Lidas</span>
-                    <span class="px-1.5 py-0.2 rounded-full text-[10px]"
-                          [class]="statusFilter() === 'completed' ? 'bg-green-700 text-white' : 'bg-green-200/80 dark:bg-green-900 text-green-900 dark:text-green-200'">
-                      {{ fieldStats().completed }}
-                    </span>
-                  </button>
-
-                  @if (fieldStats().alerts > 0) {
+                  <!-- Filter Chips -->
+                  <div class="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
                     <button type="button" 
-                      (click)="statusFilter.set('alert')"
-                      [class]="statusFilter() === 'alert' ? 'bg-red-600 text-white font-bold shadow-xs' : 'bg-red-50 dark:bg-rose-950/50 text-red-700 dark:text-rose-300 hover:bg-red-100 dark:hover:bg-rose-950/70 border border-red-200 dark:border-rose-800'"
+                      (click)="statusFilter.set('all')"
+                      [class]="statusFilter() === 'all' ? 'bg-slate-800 dark:bg-slate-700 text-white font-bold shadow-xs' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'"
+                      class="px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap transition-all cursor-pointer">
+                      Todas ({{ fieldStats().total }})
+                    </button>
+
+                    <button type="button" 
+                      (click)="statusFilter.set('pending')"
+                      [class]="statusFilter() === 'pending' ? 'bg-amber-600 text-white font-bold shadow-xs' : 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-950/60 border border-amber-200 dark:border-amber-800'"
                       class="px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap transition-all cursor-pointer font-medium flex items-center gap-1">
-                      <span>🚨 Alertas</span>
+                      <span>⚠️ Pendentes</span>
                       <span class="px-1.5 py-0.2 rounded-full text-[10px]"
-                            [class]="statusFilter() === 'alert' ? 'bg-red-700 text-white' : 'bg-red-200/80 dark:bg-rose-900 text-red-900 dark:text-rose-200'">
-                        {{ fieldStats().alerts }}
+                            [class]="statusFilter() === 'pending' ? 'bg-amber-700 text-white' : 'bg-amber-200/80 dark:bg-amber-900 text-amber-900 dark:text-amber-200'">
+                        {{ fieldStats().pending }}
                       </span>
                     </button>
-                  }
+
+                    <button type="button" 
+                      (click)="statusFilter.set('completed')"
+                      [class]="statusFilter() === 'completed' ? 'bg-green-600 text-white font-bold shadow-xs' : 'bg-green-50 dark:bg-green-950/40 text-green-800 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-950/60 border border-green-200 dark:border-green-800'"
+                      class="px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap transition-all cursor-pointer font-medium flex items-center gap-1">
+                      <span>✅ Lidas</span>
+                      <span class="px-1.5 py-0.2 rounded-full text-[10px]"
+                            [class]="statusFilter() === 'completed' ? 'bg-green-700 text-white' : 'bg-green-200/80 dark:bg-green-900 text-green-900 dark:text-green-200'">
+                        {{ fieldStats().completed }}
+                      </span>
+                    </button>
+
+                    @if (fieldStats().alerts > 0) {
+                      <button type="button" 
+                        (click)="statusFilter.set('alert')"
+                        [class]="statusFilter() === 'alert' ? 'bg-red-600 text-white font-bold shadow-xs' : 'bg-red-50 dark:bg-rose-950/50 text-red-700 dark:text-rose-300 hover:bg-red-100 dark:hover:bg-rose-950/70 border border-red-200 dark:border-rose-800'"
+                        class="px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap transition-all cursor-pointer font-medium flex items-center gap-1">
+                        <span>🚨 Alertas</span>
+                        <span class="px-1.5 py-0.2 rounded-full text-[10px]"
+                              [class]="statusFilter() === 'alert' ? 'bg-red-700 text-white' : 'bg-red-200/80 dark:bg-rose-900 text-red-900 dark:text-rose-200'">
+                          {{ fieldStats().alerts }}
+                        </span>
+                      </button>
+                    }
+                  </div>
                 </div>
               </div>
             </div>
@@ -603,6 +625,9 @@ type ColumnDef = {
                             }
                           </div>
                           <div class="text-[10px] text-slate-400 font-mono flex items-center gap-1.5 mt-0.5">
+                            @if (item.routeOrder) {
+                              <span class="bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 px-1.5 py-0.2 rounded font-bold shadow-2xs" title="Posição {{ item.routeOrder }} na rota de leitura">#{{ item.routeOrder }}</span>
+                            }
                             <span class="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-1 py-0.5 rounded font-semibold">{{ item.luc }}</span>
                             @if (item.contrato) {
                               <span class="text-slate-300 dark:text-slate-600">•</span>
@@ -757,7 +782,12 @@ type ColumnDef = {
                         <div class="flex justify-between items-start mb-2.5">
                            <div class="flex-1 pr-2">
                              <div class="flex items-center gap-1.5 flex-wrap">
-                               <span class="text-xs font-mono font-extrabold text-white bg-slate-900 dark:bg-slate-800 px-2 py-0.5 rounded-md shadow-xs border border-transparent dark:border-slate-700">
+                               @if (item.routeOrder) {
+                                <span class="text-xs font-mono font-extrabold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/80 px-2 py-0.5 rounded-md shadow-xs border border-indigo-200 dark:border-indigo-800" title="Ordem da Rota">
+                                  #{{ item.routeOrder }}
+                                </span>
+                              }
+                              <span class="text-xs font-mono font-extrabold text-white bg-slate-900 dark:bg-slate-800 px-2 py-0.5 rounded-md shadow-xs border border-transparent dark:border-slate-700">
                                  {{ item.luc }}
                                </span>
                                 @if (item.contrato) {
@@ -1052,7 +1082,12 @@ type ColumnDef = {
                       
                       <!-- Step Indicator Header -->
                       <div class="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-3">
-                        <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-2 flex-wrap">
+                          @if (stepStore.routeOrder) {
+                            <span class="text-xs font-bold px-2 py-0.5 bg-indigo-100 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300 rounded-full font-mono border border-indigo-200 dark:border-indigo-800" title="Ordem da Rota">
+                              📍 Rota #{{ stepStore.routeOrder }}
+                            </span>
+                          }
                           <span class="text-xs font-bold px-2 py-0.5 bg-teal-100 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 rounded-full font-mono border border-teal-200 dark:border-teal-800">
                             Loja {{ stepIndex() + 1 }} de {{ tableData().length }}
                           </span>
@@ -1070,7 +1105,7 @@ type ColumnDef = {
                           class="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded p-1 font-mono text-slate-700 dark:text-slate-200 max-w-[130px]">
                           @for (st of tableData(); track st.storeId; let sIdx = $index) {
                             <option [value]="sIdx">
-                              {{ st.luc }} - {{ st.storeName }} {{ st.isRead ? '✓' : '' }}
+                              {{ st.routeOrder ? '#' + st.routeOrder + ' ' : '' }}{{ st.luc }} - {{ st.storeName }} {{ st.isRead ? '✓' : '' }}
                             </option>
                           }
                         </select>
@@ -1822,6 +1857,7 @@ export class BillCalculatorComponent implements OnDestroy {
   // --- FIELD / MOBILE ENHANCED STATE ---
   searchQuery = signal<string>('');
   statusFilter = signal<'all' | 'pending' | 'completed' | 'alert'>('all');
+  sortBy = signal<'route' | 'luc' | 'name'>('route');
   mobileViewMode = signal<'cards' | 'step'>('cards');
   stepIndex = signal<number>(0);
   activeNoteStoreId = signal<string | null>(null);
@@ -2797,6 +2833,7 @@ export class BillCalculatorComponent implements OnDestroy {
         luc: store.luc,
         contrato: store.contrato || '',
         storeName: store.name,
+        routeOrder: store.routeOrder,
         active: store.active !== false,
         consumption,
         cost,
@@ -2822,6 +2859,11 @@ export class BillCalculatorComponent implements OnDestroy {
         validationAlert,
         readingDiff
       };
+    }).sort((a, b) => {
+      const orderA = a.routeOrder !== undefined && a.routeOrder !== null ? a.routeOrder : 9999;
+      const orderB = b.routeOrder !== undefined && b.routeOrder !== null ? b.routeOrder : 9999;
+      if (orderA !== orderB) return orderA - orderB;
+      return a.luc.localeCompare(b.luc, undefined, { numeric: true });
     });
   });
 
@@ -2840,6 +2882,7 @@ export class BillCalculatorComponent implements OnDestroy {
     let list = this.tableData();
     const filter = this.statusFilter();
     const q = this.searchQuery().trim().toLowerCase();
+    const sort = this.sortBy();
 
     if (filter === 'pending') {
       list = list.filter(item => !item.isRead);
@@ -2857,7 +2900,21 @@ export class BillCalculatorComponent implements OnDestroy {
       );
     }
 
-    return list;
+    const sorted = [...list];
+    if (sort === 'route') {
+      sorted.sort((a, b) => {
+        const orderA = a.routeOrder !== undefined && a.routeOrder !== null ? a.routeOrder : 9999;
+        const orderB = b.routeOrder !== undefined && b.routeOrder !== null ? b.routeOrder : 9999;
+        if (orderA !== orderB) return orderA - orderB;
+        return a.luc.localeCompare(b.luc, undefined, { numeric: true });
+      });
+    } else if (sort === 'luc') {
+      sorted.sort((a, b) => a.luc.localeCompare(b.luc, undefined, { numeric: true }));
+    } else if (sort === 'name') {
+      sorted.sort((a, b) => a.storeName.localeCompare(b.storeName));
+    }
+
+    return sorted;
   });
 
   currentStepStore = computed(() => {

@@ -151,7 +151,7 @@ interface ParsedStoreRow {
               }
             </div>
             
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
               <div>
                 <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
                   LUC (Espaço da Loja) <span class="text-red-500">*</span>
@@ -183,6 +183,19 @@ interface ParsedStoreRow {
                   [(ngModel)]="newStoreName" 
                   class="w-full px-3 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-accent focus:border-accent bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100" 
                   placeholder="Ex: Burger King ou Madero">
+              </div>
+
+              <div>
+                <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1 flex items-center justify-between">
+                  <span>📍 Ordem na Rota</span>
+                  <span class="text-[10px] text-indigo-600 dark:text-indigo-400 font-normal lowercase">(caminho)</span>
+                </label>
+                <input 
+                  type="number" 
+                  min="1"
+                  [(ngModel)]="newRouteOrder" 
+                  class="w-full px-3 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-mono bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100" 
+                  placeholder="Ex: 1, 2, 3...">
               </div>
             </div>
             
@@ -405,7 +418,8 @@ interface ParsedStoreRow {
           <table class="w-full text-left border-collapse">
             <thead>
               <tr class="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 text-xs uppercase tracking-wider font-semibold">
-                <th class="p-3.5 pl-4 w-28">LUC</th>
+                <th class="p-3.5 pl-4 w-20 text-center" title="Sequência física de leitura no shopping">Rota</th>
+                <th class="p-3.5 w-28">LUC</th>
                 <th class="p-3.5 w-32">Contrato</th>
                 <th class="p-3.5">Nome da Loja</th>
                 <th class="p-3.5 text-center w-36">Situação</th>
@@ -419,7 +433,16 @@ interface ParsedStoreRow {
             <tbody class="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
               @for (store of filteredStores(); track store.id) {
                 <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group" [class.bg-slate-50/50]="store.active === false" [class.dark:bg-slate-850/30]="store.active === false">
-                  <td class="p-3.5 pl-4 font-mono font-bold text-slate-700 dark:text-slate-200">
+                  <td class="p-3.5 pl-4 text-center">
+                    @if (store.routeOrder) {
+                      <span class="inline-flex items-center justify-center min-w-7 px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 shadow-2xs" title="Posição {{ store.routeOrder }} na rota de leitura">
+                        #{{ store.routeOrder }}
+                      </span>
+                    } @else {
+                      <span class="text-slate-300 dark:text-slate-600 text-xs">-</span>
+                    }
+                  </td>
+                  <td class="p-3.5 font-mono font-bold text-slate-700 dark:text-slate-200">
                     <span class="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700">
                       {{ store.luc }}
                     </span>
@@ -613,6 +636,7 @@ export class StoreManagerComponent {
   newLuc = '';
   newContrato = '';
   newStoreName = '';
+  newRouteOrder: number | null = null;
   newIsActive = true;
   newUsesLuz = true;
   newUsesAgua = true;
@@ -654,13 +678,21 @@ export class StoreManagerComponent {
      }
 
      const query = this.searchTerm().trim().toLowerCase();
-     if (!query) return list;
+     let result = list;
+     if (query) {
+       result = list.filter(s => 
+         s.luc.toLowerCase().includes(query) ||
+         (s.contrato && s.contrato.toLowerCase().includes(query)) ||
+         s.name.toLowerCase().includes(query)
+       );
+     }
 
-     return list.filter(s => 
-       s.luc.toLowerCase().includes(query) ||
-       (s.contrato && s.contrato.toLowerCase().includes(query)) ||
-       s.name.toLowerCase().includes(query)
-     );
+     return [...result].sort((a, b) => {
+       const orderA = a.routeOrder !== undefined && a.routeOrder !== null ? a.routeOrder : 9999;
+       const orderB = b.routeOrder !== undefined && b.routeOrder !== null ? b.routeOrder : 9999;
+       if (orderA !== orderB) return orderA - orderB;
+       return a.luc.localeCompare(b.luc, undefined, { numeric: true });
+     });
   });
 
   // Real-time analysis of the imported data compared with current active stores
@@ -779,6 +811,7 @@ export class StoreManagerComponent {
     this.newLuc = '';
     this.newContrato = '';
     this.newStoreName = '';
+    this.newRouteOrder = null;
     this.newIsActive = true;
     
     const tab = this.activeTab();
@@ -796,6 +829,7 @@ export class StoreManagerComponent {
     this.newLuc = store.luc;
     this.newContrato = store.contrato || '';
     this.newStoreName = store.name;
+    this.newRouteOrder = store.routeOrder !== undefined && store.routeOrder !== null ? store.routeOrder : null;
     this.newIsActive = store.active !== false;
     this.newUsesLuz = store.usesLuz;
     this.newUsesAgua = store.usesAgua;
@@ -814,6 +848,9 @@ export class StoreManagerComponent {
         luc: this.newLuc.trim(),
         contrato: this.newContrato.trim(),
         name: this.newStoreName.trim(),
+        routeOrder: this.newRouteOrder !== null && this.newRouteOrder !== undefined && (this.newRouteOrder as any) !== '' 
+          ? Number(this.newRouteOrder) 
+          : undefined,
         active: this.newIsActive,
         usesLuz: this.newUsesLuz,
         usesAgua: this.newUsesAgua,

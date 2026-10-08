@@ -223,7 +223,7 @@ FOR ALL USING (bucket_id = 'meter-photos') WITH CHECK (bucket_id = 'meter-photos
     if (!stores || stores.length === 0) return true;
     try {
       const client = this.getClient();
-      const records = stores.map(s => ({
+      const recordsWithRoute = stores.map(s => ({
         id: s.id,
         luc: s.luc,
         contrato: s.contrato || null,
@@ -234,14 +234,27 @@ FOR ALL USING (bucket_id = 'meter-photos') WITH CHECK (bucket_id = 'meter-photos
         uses_luz: s.usesLuz !== false,
         uses_agua: s.usesAgua !== false,
         uses_gas: s.usesGas === true,
+        route_order: s.routeOrder !== undefined && s.routeOrder !== null ? Number(s.routeOrder) : null,
         updated_at: new Date().toISOString()
       }));
 
-      const { error } = await client.from('stores').upsert(records, { onConflict: 'id' });
+      const { error } = await client.from('stores').upsert(recordsWithRoute, { onConflict: 'id' });
       if (error) {
         if (error.code === 'PGRST205') {
           this.isTableReady.set(false);
           return false;
+        }
+        // Fallback transparente se a coluna route_order ainda não foi criada no Supabase
+        if (error.message?.includes('route_order') || error.code === '42703' || error.code === 'PGRST204') {
+          const fallbackRecords = recordsWithRoute.map(({ route_order, ...rest }) => rest);
+          const { error: fallbackErr } = await client.from('stores').upsert(fallbackRecords, { onConflict: 'id' });
+          if (!fallbackErr) {
+            this.isTableReady.set(true);
+            this.isConnected.set(true);
+            this.addLog(`✓ ${stores.length} lojas sincronizadas no Supabase (modo compatível).`);
+            this.lastSyncTimestamp.set(new Date().toISOString());
+            return true;
+          }
         }
         console.error('Erro ao salvar lojas no Supabase:', error);
         return false;
@@ -297,6 +310,7 @@ FOR ALL USING (bucket_id = 'meter-photos') WITH CHECK (bucket_id = 'meter-photos
         luc: String(row.luc),
         contrato: row.contrato ? String(row.contrato) : undefined,
         name: String(row.name),
+        routeOrder: row.route_order !== undefined && row.route_order !== null ? Number(row.route_order) : undefined,
         active: row.active !== false,
         deactivatedAt: row.deactivated_at || undefined,
         deactivationReason: row.deactivation_reason || undefined,
