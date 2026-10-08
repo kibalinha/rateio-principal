@@ -5,7 +5,7 @@ import { SupabaseService } from './supabase.service';
 export type StoreReading = {
   reading: number;       // Leitura Atual
   constant: number;      // Constante do medidor (Luz)
-  virtual: number;       // Consumo Virtual (override)
+  virtual?: number | null; // Consumo Virtual (override)
   adjustment: number;    // Fator de ajuste Multiplicador (Luz/Água/Gás - Ajuste X)
   
   // Novos campos opcionais para Gás

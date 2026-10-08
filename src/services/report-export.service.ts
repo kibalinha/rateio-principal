@@ -170,8 +170,8 @@ export class ReportExportService {
         }
       }
 
-      if (row.virtual > 0) {
-        item['Consumo Virtual'] = row.virtual;
+      if (row.virtual !== undefined && row.virtual !== null && !isNaN(Number(row.virtual))) {
+        item['Consumo Virtual'] = Number(row.virtual);
       }
 
       item[`Consumo Calculado (${options.unit})`] = Number((row.consumption || 0).toFixed(4));

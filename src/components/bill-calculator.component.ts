@@ -917,7 +917,7 @@ export interface AnomalyModalData {
                           </td>
                       }
                       <td class="p-3 border-r border-slate-100 dark:border-slate-800">
-                          <input type="number" step="0.0001" [ngModel]="item.virtual" (ngModelChange)="updateDetailedReading(item.storeId, 'virtual', $event)" (paste)="onPasteCell($event, item.storeId, 'virtual')" [disabled]="!canConfigure()" class="w-full text-right bg-transparent border border-slate-200 dark:border-slate-700 rounded px-1 py-0.5 focus:border-teal-500 text-blue-600 dark:text-blue-400 placeholder-slate-300 disabled:border-none disabled:text-slate-400" placeholder="-">
+                          <input type="number" step="0.0001" [ngModel]="item.virtual" (ngModelChange)="updateDetailedReading(item.storeId, 'virtual', $event)" (paste)="onPasteCell($event, item.storeId, 'virtual')" [disabled]="!canConfigure()" class="w-full text-right bg-transparent border border-slate-200 dark:border-slate-700 rounded px-1 py-0.5 focus:border-teal-500 text-blue-600 dark:text-blue-400 placeholder-slate-300 disabled:border-none disabled:text-slate-400 font-semibold" placeholder="—" title="Consumo Virtual (override manual - deixe vazio para usar medição normal)">
                       </td>
 
                       @if (utilityType() === 'gas') {
@@ -2759,6 +2759,22 @@ export interface AnomalyModalData {
                       </div>
                     }
 
+                    <!-- Consumo Virtual (Opcional - Aceita 0) -->
+                    <div class="p-2.5 rounded-xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/40 dark:bg-blue-950/20">
+                      <label class="font-bold text-blue-900 dark:text-blue-300 block mb-1 flex items-center justify-between">
+                        <span>Consumo Virtual (opcional)</span>
+                        <span class="text-[10px] text-blue-600 dark:text-blue-400 font-semibold">Aceita 0</span>
+                      </label>
+                      <select [ngModel]="columnMappings().virtual" 
+                              (ngModelChange)="updateColumnMapping('virtual', $event)"
+                              class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-blue-300 dark:border-blue-700 rounded-lg font-mono text-xs focus:ring-1 focus:ring-blue-500">
+                        <option value="">-- Nenhuma (Usar Leitura Normal) --</option>
+                        @for (h of rawExcelHeaders(); track h) {
+                          <option [value]="h">{{ h }}</option>
+                        }
+                      </select>
+                    </div>
+
                     <!-- Observação -->
                     <div>
                       <label class="font-bold text-slate-700 dark:text-slate-300 block mb-1">Observação (opcional)</label>
@@ -2810,6 +2826,7 @@ export interface AnomalyModalData {
                           <th class="p-2.5">Loja Correspondente</th>
                           <th class="p-2.5 text-right">Leitura Ant.</th>
                           <th class="p-2.5 text-right">Nova Leitura</th>
+                          <th class="p-2.5 text-right">Virtual</th>
                           <th class="p-2.5 text-right">Consumo Previsto</th>
                         </tr>
                       </thead>
@@ -2821,11 +2838,11 @@ export interface AnomalyModalData {
                             <td class="p-2.5">
                               @if (row.status === 'matched') {
                                 <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300">
-                                  ✓ Localizada
+                              ✓ Localizada
                                 </span>
                               } @else {
                                 <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300" title="{{ row.message }}">
-                                  ⚠️ Não Encontrada
+                              ⚠️ Não Encontrada
                                 </span>
                               }
                             </td>
@@ -2843,6 +2860,15 @@ export interface AnomalyModalData {
                                 [class.dark:text-teal-300]="row.reading > 0"
                                 [class.text-slate-400]="row.reading === 0">
                               {{ row.reading > 0 ? (row.reading | number:'1.0-2') : '—' }}
+                            </td>
+                            <td class="p-2.5 text-right font-mono">
+                              @if (row.virtual !== undefined) {
+                                <span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800" title="Consumo Virtual definido manualmente">
+                                  {{ row.virtual | number:'1.0-4' }}
+                                </span>
+                              } @else {
+                                <span class="text-slate-400 dark:text-slate-600">—</span>
+                              }
                             </td>
                             <td class="p-2.5 text-right font-mono font-bold text-slate-700 dark:text-slate-200">
                               {{ row.consumptionPreview | number:'1.0-2' }} {{ getUnit() }}
@@ -3566,7 +3592,7 @@ export class BillCalculatorComponent implements OnDestroy {
   }
 
   createDefaultReading(): StoreReading {
-      return { reading: 0, constant: 1, virtual: 0, adjustment: 1, calculatedConsumption: 0 };
+      return { reading: 0, constant: 1, virtual: undefined, adjustment: 1, calculatedConsumption: 0 };
   }
 
   // --- NOVO MOTOR DE IMPORTAÇÃO INTELIGENTE DE PLANILHA EXCEL (.xlsx, .xls, .csv ou Ctrl+V) ---
@@ -3606,14 +3632,14 @@ export class BillCalculatorComponent implements OnDestroy {
       // Valores adicionais opcionais
       const constant = mappings.constant ? this.parseExcelNumber(rawRow[mappings.constant]) : 1;
       const adjustment = mappings.adjustment ? this.parseExcelNumber(rawRow[mappings.adjustment]) : (type === 'gas' ? 1.347 : 1);
-      const virtual = mappings.virtual ? this.parseExcelNumber(rawRow[mappings.virtual]) : 0;
+      const virtual = mappings.virtual ? this.parseExcelOptionalNumber(rawRow[mappings.virtual]) : undefined;
       const adjustmentAdd = mappings.adjustmentAdd ? this.parseExcelNumber(rawRow[mappings.adjustmentAdd]) : 0;
       const fcm = mappings.fcm ? this.parseExcelNumber(rawRow[mappings.fcm]) : 1.0727;
       const fluxoCost = mappings.fluxoCost ? this.parseExcelNumber(rawRow[mappings.fluxoCost]) : 0;
       const note = mappings.note ? String(rawRow[mappings.note] || '').trim() : '';
 
       let consumptionPreview = 0;
-      if (virtual > 0) {
+      if (virtual !== undefined) {
         consumptionPreview = virtual;
       } else if (type === 'gas') {
         consumptionPreview = ((diff * adjustment) + adjustmentAdd) * fcm;
@@ -3638,7 +3664,9 @@ export class BillCalculatorComponent implements OnDestroy {
           fluxoCost,
           note,
           status: 'matched' as const,
-          message: reading > 0 ? `Leitura: ${reading} (${consumptionPreview.toFixed(1)} ${this.getUnit()})` : 'Leitura zerada'
+          message: virtual !== undefined 
+            ? `Consumo Virtual: ${virtual} ${this.getUnit()}` 
+            : (reading > 0 ? `Leitura: ${reading} (${consumptionPreview.toFixed(1)} ${this.getUnit()})` : 'Leitura zerada')
         };
       } else {
         return {
@@ -3678,6 +3706,22 @@ export class BillCalculatorComponent implements OnDestroy {
     }
     const parsed = parseFloat(str);
     return isNaN(parsed) ? 0 : parsed;
+  }
+
+  private parseExcelOptionalNumber(val: any): number | undefined {
+    if (val === undefined || val === null) return undefined;
+    const str = String(val).trim();
+    if (str === '' || str === '-' || str === '—') return undefined;
+    let clean = str;
+    if (clean.includes(',') && clean.includes('.')) {
+      clean = clean.replace(/\./g, '').replace(',', '.');
+    } else if (/^\d{1,3}\.\d{3}$/.test(clean)) {
+      clean = clean.replace(/\./g, '');
+    } else if (clean.includes(',')) {
+      clean = clean.replace(',', '.');
+    }
+    const parsed = parseFloat(clean);
+    return isNaN(parsed) ? undefined : parsed;
   }
 
   openExcelImportModal() {
@@ -3735,7 +3779,7 @@ export class BillCalculatorComponent implements OnDestroy {
         item['Constante'] = 1;
         item['Ajuste'] = 1;
       }
-      item['Virtual'] = 0;
+      item['Consumo Virtual'] = ''; // Deixado vazio para escolha do usuário (aceita 0; vazio = consumo normal)
       item['Observacao'] = '';
       return item;
     });
@@ -3904,7 +3948,7 @@ export class BillCalculatorComponent implements OnDestroy {
 
       if (item.constant !== undefined) updated.constant = item.constant;
       if (item.adjustment !== undefined) updated.adjustment = item.adjustment;
-      if (item.virtual !== undefined) updated.virtual = item.virtual;
+      if (this.columnMappings().virtual) updated.virtual = item.virtual;
       if (item.adjustmentAdd !== undefined) updated.adjustmentAdd = item.adjustmentAdd;
       if (item.fcm !== undefined) updated.fcm = item.fcm;
       if (item.fluxoCost !== undefined) updated.fluxoCost = item.fluxoCost;
@@ -4029,9 +4073,13 @@ export class BillCalculatorComponent implements OnDestroy {
       if (existingData.readings) {
          Object.entries(existingData.readings).forEach(([k, v]) => {
             if (typeof v === 'number') {
-                 map.set(k, { reading: v, constant: 1, virtual: 0, adjustment: 1, calculatedConsumption: 0 });
+                 map.set(k, { reading: v, constant: 1, virtual: undefined, adjustment: 1, calculatedConsumption: 0 });
             } else {
-                 map.set(k, v as StoreReading);
+                 const readingObj = { ...(v as StoreReading) };
+                 if (readingObj.virtual === 0 && readingObj.calculatedConsumption && readingObj.calculatedConsumption > 0) {
+                   readingObj.virtual = undefined;
+                 }
+                 map.set(k, readingObj);
             }
          });
       }
@@ -4334,8 +4382,9 @@ export class BillCalculatorComponent implements OnDestroy {
       stores.forEach(s => {
         const d = storeMap.get(s.id) || this.createDefaultReading();
         const p = prevReadings.get(s.id) || { reading: 0, consumption: 0 };
-        if (d.virtual && d.virtual > 0) {
-          totalRawGas += d.virtual;
+        const hasVirtual = d.virtual !== undefined && d.virtual !== null && !isNaN(Number(d.virtual));
+        if (hasVirtual) {
+          totalRawGas += Number(d.virtual);
         } else {
           let diff = (d.reading || 0) - (p.reading || 0);
           if (d.isRollover && (d.reading || 0) < (p.reading || 0) && (p.reading || 0) > 0) {
@@ -4366,7 +4415,7 @@ export class BillCalculatorComponent implements OnDestroy {
       let prevReading = 0;
       let currentReading = 0;
       let constant = 1;
-      let virtual = 0;
+      let virtual: number | undefined = undefined;
       let adjustment = 1;
       let variation = 0;
       let adjustmentAdd = 0;
@@ -4380,7 +4429,9 @@ export class BillCalculatorComponent implements OnDestroy {
       currentReading = data.reading;
       prevReading = prevData.reading;
       constant = data.constant || 1;
-      virtual = data.virtual || 0;
+      if (data.virtual !== undefined && data.virtual !== null && !isNaN(Number(data.virtual))) {
+        virtual = Number(data.virtual);
+      }
       const isConfirmed = !!data.anomalyConfirmed;
       const isRollover = !!data.isRollover;
       
@@ -4394,7 +4445,8 @@ export class BillCalculatorComponent implements OnDestroy {
       }
 
       // CALCULATION LOGIC: Medição bruta de campo (com suporte a virada de relógio)
-      if (virtual > 0) {
+      // Se virtual estiver preenchido (inclusive 0), usa como override. Caso vazio, calcula pela leitura normal.
+      if (virtual !== undefined) {
           rawConsumption = virtual;
       } else {
           let diff = currentReading - prevReading;
@@ -4859,6 +4911,20 @@ export class BillCalculatorComponent implements OnDestroy {
         }
         if (cleanValue === null || cleanValue === undefined || isNaN(cleanValue)) {
           cleanValue = 0;
+        }
+      }
+
+      if (field === 'virtual') {
+        if (value === null || value === undefined || value === '') {
+          cleanValue = undefined;
+        } else {
+          const str = String(value).trim();
+          if (str === '' || str === '-' || str === '—') {
+            cleanValue = undefined;
+          } else {
+            const parsed = typeof value === 'number' ? value : parseFloat(str.replace(',', '.'));
+            cleanValue = isNaN(parsed) ? undefined : parsed;
+          }
         }
       }
 
@@ -5530,6 +5596,11 @@ export class BillCalculatorComponent implements OnDestroy {
                   
                   // In case they copied a table, take the first column value
                   const cellStr = line.split('\t')[0]?.trim() || '';
+                  if (field === 'virtual' && (cellStr === '' || cellStr === '-' || cellStr === '—')) {
+                      const newData: StoreReading = { ...currentData, virtual: undefined };
+                      map.set(targetStoreId, newData);
+                      return;
+                  }
                   if (cellStr === '') return;
 
                   // Parse Brazilian/international numbers correctly:
