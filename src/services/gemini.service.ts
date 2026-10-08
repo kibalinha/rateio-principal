@@ -68,6 +68,30 @@ export class GeminiService {
     return '';
   }
 
+  hasConfiguredApiKey(): boolean {
+    return !!(this.getGroqApiKey() || this.getGeminiApiKey());
+  }
+
+  getSavedGroqKey(): string {
+    return this.getGroqApiKey();
+  }
+
+  getSavedGeminiKey(): string {
+    return this.getGeminiApiKey();
+  }
+
+  saveApiKeys(groqKey?: string, geminiKey?: string) {
+    if (typeof localStorage !== 'undefined') {
+      if (groqKey !== undefined) {
+        localStorage.setItem('groq_api_key', groqKey.trim());
+      }
+      if (geminiKey !== undefined) {
+        localStorage.setItem('gemini_api_key', geminiKey.trim());
+        this.ai = null; // Reseta instância anterior para aplicar a nova chave
+      }
+    }
+  }
+
   private initGeminiClient(): GoogleGenAI | null {
     if (!this.ai) {
       const apiKey = this.getGeminiApiKey();

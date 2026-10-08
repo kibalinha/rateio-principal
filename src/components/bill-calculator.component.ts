@@ -127,6 +127,16 @@ type ColumnDef = {
              {{ lastSaved() ? 'Sincronizado: ' + (lastSaved() | date:'shortTime') : '' }}
            </span>
 
+           <!-- Botão Configurar Chaves de IA -->
+           <button 
+             type="button"
+             (click)="openAiKeyModal()" 
+             class="px-3 py-2 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+             title="Configurar chaves da Groq e Gemini para leitura de medidores por IA">
+             <span>🤖</span>
+             <span class="hidden sm:inline">Chaves IA</span>
+           </button>
+
            <!-- Botão Exportar Excel no Topo -->
            <button 
              type="button"
@@ -1634,6 +1644,86 @@ type ColumnDef = {
         </div>
       }
 
+      <!-- Modal de Configuração de Chaves de IA (Groq & Gemini) -->
+      @if (showAiKeyModal()) {
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div class="flex items-center gap-2">
+                <span class="text-2xl">🤖</span>
+                <div>
+                  <h3 class="text-base font-bold text-slate-900 dark:text-white">Chaves de IA para Leitura de Medidores</h3>
+                  <p class="text-xs text-slate-500 dark:text-slate-400">Configure para leitura automática de relógios por foto (OCR)</p>
+                </div>
+              </div>
+              <button (click)="closeAiKeyModal()" class="text-slate-400 hover:text-slate-600 text-lg p-1">✕</button>
+            </div>
+
+            <div class="space-y-4 text-xs">
+              <!-- Campo Groq -->
+              <div class="space-y-1.5">
+                <div class="flex justify-between items-center">
+                  <label class="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                    <span>⚡ Groq API Key</span>
+                    <span class="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 px-1.5 py-0.2 rounded font-bold">Recomendado • Ultra Rápido</span>
+                  </label>
+                  <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" class="text-[11px] text-teal-600 dark:text-teal-400 hover:underline">
+                    Obter chave gratuita ↗
+                  </a>
+                </div>
+                <input 
+                  type="password" 
+                  [ngModel]="groqInputKey()" 
+                  (ngModelChange)="groqInputKey.set($event)"
+                  placeholder="gsk_..."
+                  class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono text-xs focus:ring-2 focus:ring-teal-500 outline-none">
+                <p class="text-[11px] text-slate-500 dark:text-slate-400">Utiliza o modelo Vision Qwen 2.5 da Groq (tempo de resposta: ~0.8s).</p>
+              </div>
+
+              <!-- Campo Gemini -->
+              <div class="space-y-1.5">
+                <div class="flex justify-between items-center">
+                  <label class="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                    <span>🤖 Google Gemini API Key</span>
+                    <span class="text-[10px] bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 px-1.5 py-0.2 rounded font-bold">Fallback Oficial</span>
+                  </label>
+                  <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" class="text-[11px] text-teal-600 dark:text-teal-400 hover:underline">
+                    Obter chave gratuita ↗
+                  </a>
+                </div>
+                <input 
+                  type="password" 
+                  [ngModel]="geminiInputKey()" 
+                  (ngModelChange)="geminiInputKey.set($event)"
+                  placeholder="AIzaSy..."
+                  class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono text-xs focus:ring-2 focus:ring-teal-500 outline-none">
+                <p class="text-[11px] text-slate-500 dark:text-slate-400">Utiliza Gemini 2.5 Flash como motor de verificação e contingência.</p>
+              </div>
+
+              <div class="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 text-[11px] text-slate-600 dark:text-slate-300 space-y-1">
+                <p class="font-bold text-slate-800 dark:text-slate-200">🔒 Armazenamento Seguro:</p>
+                <p>As chaves são salvas com segurança no LocalStorage do seu navegador e utilizadas diretamente pelo seu dispositivo para se comunicar com as APIs de OCR.</p>
+              </div>
+            </div>
+
+            <div class="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button 
+                type="button" 
+                (click)="closeAiKeyModal()" 
+                class="px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold text-xs hover:bg-slate-200 cursor-pointer">
+                Cancelar
+              </button>
+              <button 
+                type="button" 
+                (click)="saveAiKeysAndProceed()" 
+                class="px-5 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-sm cursor-pointer">
+                Salvar Chaves
+              </button>
+            </div>
+          </div>
+        </div>
+      }
+
       <!-- Mobile Floating Quick Route Bar -->
       <div class="md:hidden fixed bottom-16 left-3 right-3 z-30 pointer-events-none flex justify-center">
         <div class="pointer-events-auto bg-slate-900/90 text-white backdrop-blur-md px-3.5 py-2 rounded-full shadow-xl border border-slate-700 flex items-center gap-3 text-xs">
@@ -1709,6 +1799,12 @@ export class BillCalculatorComponent implements OnDestroy {
   showPhotoModal = signal<boolean>(false);
   isCapturingPhoto = signal<string | null>(null);
   isConfirmingPhotoDelete = signal<boolean>(false);
+
+  // --- AI API KEY CONFIGURATION MODAL ---
+  showAiKeyModal = signal<boolean>(false);
+  groqInputKey = signal<string>('');
+  geminiInputKey = signal<string>('');
+  pendingOcrStoreId = signal<string | null>(null);
 
   // --- OCR DUAL-ENGINE STATE (QWEN 3.8 27B GROQ + GEMINI 3.8 FLASH FALLBACK) ---
   isReadingOcr = signal<string | null>(null); // storeId sendo analisado
@@ -2899,9 +2995,39 @@ export class BillCalculatorComponent implements OnDestroy {
     }
   }
 
+  openAiKeyModal() {
+    this.groqInputKey.set(this.geminiService.getSavedGroqKey());
+    this.geminiInputKey.set(this.geminiService.getSavedGeminiKey());
+    this.showAiKeyModal.set(true);
+  }
+
+  closeAiKeyModal() {
+    this.showAiKeyModal.set(false);
+    this.pendingOcrStoreId.set(null);
+  }
+
+  saveAiKeysAndProceed() {
+    this.geminiService.saveApiKeys(this.groqInputKey(), this.geminiInputKey());
+    this.showAiKeyModal.set(false);
+    this.indexedDb.showToast('✓ Chaves de IA salvas com sucesso!');
+    const pendingId = this.pendingOcrStoreId();
+    if (pendingId) {
+      this.pendingOcrStoreId.set(null);
+      this.runOcrOnPhoto(pendingId);
+    }
+  }
+
   async runOcrOnPhoto(storeId: string, forceProvider?: 'qwen' | 'gemini') {
     const photo = this.meterPhotos()[storeId];
     if (!photo) return;
+
+    if (!this.geminiService.hasConfiguredApiKey()) {
+      this.pendingOcrStoreId.set(storeId);
+      this.openAiKeyModal();
+      this.indexedDb.showToast('⚙️ Configure sua chave Groq ou Gemini para ativar a leitura por IA.');
+      return;
+    }
+
     this.isReadingOcr.set(storeId);
     this.ocrCurrentModelLabel.set(
       forceProvider === 'gemini' 
