@@ -21,13 +21,13 @@ export interface MonthlyChartItem {
   hasData: boolean;
   diffFromAvgPct: number;
   momDiffPct: number | null;
-  alertLevel: 'critical' | 'warning' | 'drop' | 'normal';
+  alertLevel: 'critical' | 'warning' | 'normal';
   photo?: MeterPhotoRecord | null;
 }
 
 export interface StoreAlertInfo {
   hasAlert: boolean;
-  severity: 'critical' | 'warning' | 'drop' | 'normal';
+  severity: 'critical' | 'warning' | 'normal';
   badgeText: string;
   diffAvgPct: number;
   momPct: number | null;
@@ -183,7 +183,7 @@ export interface StoreAlertInfo {
                           @if (storeAlertsMap()[store.id]; as alert) {
                             @if (alert.hasAlert) {
                               <span class="px-1.5 py-0.5 rounded text-[10px] font-bold border flex items-center gap-0.5"
-                                [class]="alert.severity === 'critical' ? 'bg-rose-100 text-rose-800 border-rose-300' : alert.severity === 'warning' ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-sky-100 text-sky-800 border-sky-300'">
+                                [class]="alert.severity === 'critical' ? 'bg-rose-100 text-rose-800 border-rose-300' : 'bg-amber-100 text-amber-800 border-amber-300'">
                                 <span>{{ alert.badgeText }}</span>
                               </span>
                             }
@@ -441,24 +441,21 @@ export interface StoreAlertInfo {
             <div class="p-5 rounded-2xl border shadow-sm transition-all"
               [class]="diag.severity === 'critical' 
                 ? 'bg-rose-50/90 dark:bg-rose-950/50 border-rose-300 dark:border-rose-900 text-rose-950 dark:text-rose-100' 
-                : diag.severity === 'warning' 
-                  ? 'bg-amber-50/90 dark:bg-amber-950/50 border-amber-300 dark:border-amber-900 text-amber-950 dark:text-amber-100'
-                  : 'bg-sky-50/90 dark:bg-sky-950/50 border-sky-300 dark:border-sky-900 text-sky-950 dark:text-sky-100'">
+                : 'bg-amber-50/90 dark:bg-amber-950/50 border-amber-300 dark:border-amber-900 text-amber-950 dark:text-amber-100'">
               
               <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 pb-4 border-b"
-                [class]="diag.severity === 'critical' ? 'border-rose-200 dark:border-rose-800' : diag.severity === 'warning' ? 'border-amber-200 dark:border-amber-800' : 'border-sky-200 dark:border-sky-800'">
+                [class]="diag.severity === 'critical' ? 'border-rose-200 dark:border-rose-800' : 'border-amber-200 dark:border-amber-800'">
                 
                 <div class="flex items-center gap-3">
                   <div class="w-12 h-12 rounded-xl flex items-center justify-center text-2xl shadow-xs"
-                    [class]="diag.severity === 'critical' ? 'bg-rose-600 text-white' : diag.severity === 'warning' ? 'bg-amber-500 text-white' : 'bg-sky-600 text-white'">
+                    [class]="diag.severity === 'critical' ? 'bg-rose-600 text-white' : 'bg-amber-500 text-white'">
                     @if (diag.severity === 'critical') { 🚨 }
-                    @else if (diag.severity === 'warning') { ⚠️ }
-                    @else { 📉 }
+                    @else { ⚠️ }
                   </div>
                   <div>
                     <div class="flex items-center gap-2">
                       <span class="px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider"
-                        [class]="diag.severity === 'critical' ? 'bg-rose-200 dark:bg-rose-900 text-rose-900 dark:text-rose-200' : diag.severity === 'warning' ? 'bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-200' : 'bg-sky-200 dark:bg-sky-900 text-sky-900 dark:text-sky-200'">
+                        [class]="diag.severity === 'critical' ? 'bg-rose-200 dark:bg-rose-900 text-rose-900 dark:text-rose-200' : 'bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-200'">
                         {{ diag.badgeTitle }}
                       </span>
                       <span class="text-xs font-semibold opacity-75">Diagnóstico Automático ({{ diag.latestMonthLabel }})</span>
@@ -468,7 +465,7 @@ export interface StoreAlertInfo {
                 </div>
 
                 <div class="text-xs font-medium px-3 py-1.5 rounded-xl bg-white/70 dark:bg-slate-900/80 border backdrop-blur-xs flex items-center gap-2 self-stretch lg:self-auto justify-between lg:justify-start"
-                  [class]="diag.severity === 'critical' ? 'border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300' : diag.severity === 'warning' ? 'border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300' : 'border-sky-200 dark:border-sky-800 text-sky-800 dark:text-sky-300'">
+                  [class]="diag.severity === 'critical' ? 'border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300' : 'border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300'">
                   <span>Mês de Referência:</span>
                   <span class="font-bold">{{ diag.latestMonthLabel }}</span>
                 </div>
@@ -677,7 +674,6 @@ export interface StoreAlertInfo {
           <div class="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
             <span class="px-2 py-0.5 rounded bg-rose-100 dark:bg-rose-950/70 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800">🚨 Crítico (≥+40%)</span>
             <span class="px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">⚠️ Elevado (≥+20%)</span>
-            <span class="px-2 py-0.5 rounded bg-sky-100 dark:bg-sky-950/70 text-sky-800 dark:text-sky-300 border border-sky-200 dark:border-sky-800">📉 Queda Forte (≤-25%)</span>
             <span class="px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">✓ Estável</span>
           </div>
         </div>
@@ -703,9 +699,7 @@ export interface StoreAlertInfo {
                   ? 'bg-rose-50/60 dark:bg-rose-950/30 hover:bg-rose-50 dark:hover:bg-rose-950/50 font-medium' 
                   : item.alertLevel === 'warning' 
                     ? 'bg-amber-50/40 dark:bg-amber-950/20 hover:bg-amber-50 dark:hover:bg-amber-950/40' 
-                    : item.alertLevel === 'drop'
-                      ? 'bg-sky-50/30 dark:bg-sky-950/20 hover:bg-sky-50 dark:hover:bg-sky-950/40' 
-                      : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors'">
+                    : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors'">
                   
                   <!-- Month -->
                   <td class="p-3.5 pl-6 font-bold text-slate-800 dark:text-white whitespace-nowrap">
@@ -714,8 +708,6 @@ export interface StoreAlertInfo {
                         <span class="text-rose-600 text-sm">🚨</span>
                       } @else if (item.alertLevel === 'warning') {
                         <span class="text-amber-500 text-sm">⚠️</span>
-                      } @else if (item.alertLevel === 'drop') {
-                        <span class="text-sky-500 text-sm">📉</span>
                       }
                       <span>{{ item.monthLabel }}</span>
                     </div>
@@ -779,10 +771,6 @@ export interface StoreAlertInfo {
                     } @else if (item.alertLevel === 'warning') {
                       <span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500 text-white shadow-2xs">
                         ⚠️ Acima da Média
-                      </span>
-                    } @else if (item.alertLevel === 'drop') {
-                      <span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-sky-600 text-white shadow-2xs">
-                        📉 Queda Atípica
                       </span>
                     } @else {
                       <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
@@ -1005,7 +993,7 @@ export class StoreReportComponent {
       // 4. Scan all months in the selected period window for anomalies/alerts
       type AlertEntry = {
         period: string;
-        severity: 'critical' | 'warning' | 'drop';
+        severity: 'critical' | 'warning';
         badgeText: string;
         diffAvgPct: number;
         momPct: number | null;
@@ -1030,7 +1018,7 @@ export class StoreReportComponent {
         const momPct = (prevVal !== null && prevVal > 0) ? ((val - prevVal) / prevVal) * 100 : null;
 
         let hasMonthAlert = false;
-        let monthSeverity: 'critical' | 'warning' | 'drop' = 'warning';
+        let monthSeverity: 'critical' | 'warning' = 'warning';
         let monthBadge = '';
 
         if (diffAvgPct >= 40 || (momPct !== null && momPct >= 50)) {
@@ -1041,10 +1029,6 @@ export class StoreReportComponent {
           hasMonthAlert = true;
           monthSeverity = 'warning';
           monthBadge = diffAvgPct >= 20 ? `⚠️ +${Math.round(diffAvgPct)}% Média` : `⚠️ Salto +${Math.round(momPct!)}%`;
-        } else if (diffAvgPct <= -35 || (momPct !== null && momPct <= -40)) {
-          hasMonthAlert = true;
-          monthSeverity = 'drop';
-          monthBadge = `📉 Queda ${Math.round(diffAvgPct)}%`;
         }
 
         if (hasMonthAlert) {
@@ -1081,7 +1065,7 @@ export class StoreReportComponent {
       } else {
         // Choose which alert to feature on the badge:
         // If the latest month in the window has an alert, feature that one.
-        // Otherwise, feature the most severe alert in the window (critical > warning > drop),
+        // Otherwise, feature the most severe alert in the window (critical > warning),
         // adding the short month name so the user immediately identifies when it happened.
         const latestMonthAlert = alertsInWindow.find(a => a.period === latestItem.period);
         let featured = latestMonthAlert;
@@ -1296,13 +1280,13 @@ export class StoreReportComponent {
         momDiffPct = ((item.consumption - rawList[idx - 1].consumption) / rawList[idx - 1].consumption) * 100;
       }
 
-      let alertLevel: 'critical' | 'warning' | 'drop' | 'normal' = 'normal';
-      if (diffFromAvgPct >= 40 || (momDiffPct !== null && momDiffPct >= 50)) {
-        alertLevel = 'critical';
-      } else if (diffFromAvgPct >= 20 || (momDiffPct !== null && momDiffPct >= 30)) {
-        alertLevel = 'warning';
-      } else if (diffFromAvgPct <= -35 || (momDiffPct !== null && momDiffPct <= -40)) {
-        alertLevel = 'drop';
+      let alertLevel: 'critical' | 'warning' | 'normal' = 'normal';
+      if (item.consumption > 0) {
+        if (diffFromAvgPct >= 40 || (momDiffPct !== null && momDiffPct >= 50)) {
+          alertLevel = 'critical';
+        } else if (diffFromAvgPct >= 20 || (momDiffPct !== null && momDiffPct >= 30)) {
+          alertLevel = 'warning';
+        }
       }
 
       return {
@@ -1381,10 +1365,6 @@ export class StoreReportComponent {
       } else {
         recommendation = 'Aumento de gás acima do padrão: verificar se houve pico sazonal de clientes ou vazamento em válvulas de fechamento.';
       }
-    } else if (severity === 'drop') {
-      badgeTitle = 'Alerta: Queda Atípica';
-      title = `Queda Expressiva: ${diffAvgPct.toFixed(1)}% em relação à média`;
-      recommendation = 'Queda anômala de consumo: verificar com a equipe técnica se o medidor/hidrômetro parou de girar (travamento mecânico) ou se o lojista esteve fechado para reforma ou inventário.';
     }
 
     return {

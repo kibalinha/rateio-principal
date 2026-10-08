@@ -91,9 +91,7 @@ export class ReportExportService {
         ? 'Salto Crítico' 
         : item.alertLevel === 'warning' 
           ? 'Acima da Média' 
-          : item.alertLevel === 'drop' 
-            ? 'Queda Atípica' 
-            : 'Padrão Normal',
+          : 'Padrão Normal',
       '% Fatura Geral': Number(item.pctBill.toFixed(1))
     }));
 
