@@ -300,6 +300,10 @@ type ColumnDef = {
                       <button (click)="addCostItem()" class="text-xs flex items-center gap-1 text-accent font-medium hover:text-blue-700 transition-colors">
                         <span>+ Item</span>
                       </button>
+                    } @else {
+                      <span class="text-[10px] text-slate-400 dark:text-slate-500 font-medium flex items-center gap-1" title="Apenas o Administrador pode alterar custos">
+                        <span>🔒 Somente Admin</span>
+                      </span>
                     }
                   </div>
                   
@@ -339,9 +343,16 @@ type ColumnDef = {
 
                 <!-- Section 2: Consumption Inputs -->
                 <div class="space-y-3 p-4 bg-slate-50 dark:bg-slate-800/60 rounded-lg border border-slate-200 dark:border-slate-700">
-                  <h3 class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 border-b border-slate-200 dark:border-slate-700 pb-1">
-                    @if(utilityType() === 'luz') { Entrada (kWh) } @else { Consumo (m³) }
-                  </h3>
+                  <div class="flex justify-between items-center border-b border-slate-200 dark:border-slate-700 pb-1 mb-2">
+                    <h3 class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      @if(utilityType() === 'luz') { Entrada (kWh) } @else { Consumo (m³) }
+                    </h3>
+                    @if (!authService.canConfigureBill()) {
+                      <span class="text-[10px] text-slate-400 dark:text-slate-500 font-medium flex items-center gap-1" title="Apenas o Administrador pode alterar o consumo da concessionária">
+                        <span>🔒 Somente Admin</span>
+                      </span>
+                    }
+                  </div>
                   
                   @if (utilityType() === 'luz') {
                     <div class="grid grid-cols-1 gap-2">

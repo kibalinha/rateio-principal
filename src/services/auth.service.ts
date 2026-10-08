@@ -33,11 +33,12 @@ export class AuthService {
   isViewer = computed(() => this.currentUserRole() === 'VIS');
 
   // Regras de Negócio:
-  // Administradores e Técnicos podem editar medições e configurar custos/faturas
-  // Apenas Visualizadores (VIS) ficam em modo somente-leitura
+  // Administradores: podem configurar despesas, faturas, consumo da concessionária e gerenciar lojas
+  // Técnicos: preenchem apenas as leituras dos hidrômetros/medidores em campo
+  // Visualizadores (VIS): modo apenas visualização
   canEditReadings = computed(() => this.isAdmin() || this.isTech());
   canManageStores = computed(() => this.isAdmin());
-  canConfigureBill = computed(() => this.isAdmin() || this.isTech());
+  canConfigureBill = computed(() => this.isAdmin());
   canImport = computed(() => this.isAdmin());
 
   constructor() {
