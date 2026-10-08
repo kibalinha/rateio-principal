@@ -44,6 +44,10 @@ export interface CalculatorExcelOptions {
   costItems: { id: string; name: string; value: number }[];
   consumptionInput: any;
   tableData: any[];
+  airConditioningConsumption?: number;
+  airConditioningCost?: number;
+  commonAreaConsumption?: number;
+  commonAreaCost?: number;
 }
 
 export interface PackageZipOptions extends CalculatorExcelOptions {
@@ -241,17 +245,30 @@ export class ReportExportService {
     ];
 
     // 2. Sheet "Fatura_Concessionaria"
-    const summaryRows = [
+    const summaryRows: { 'Parâmetro da Fatura': string; 'Valor': any }[] = [
       { 'Parâmetro da Fatura': 'Mês de Referência', 'Valor': options.month },
       { 'Parâmetro da Fatura': 'Tipo de Utilidade', 'Valor': options.utilityLabel },
       { 'Parâmetro da Fatura': `Consumo da Concessionária (${options.unit})`, 'Valor': options.totalConsumption },
       { 'Parâmetro da Fatura': 'Valor Total da Fatura (R$)', 'Valor': Number(options.totalBill.toFixed(2)) },
       { 'Parâmetro da Fatura': 'Preço Unitário Calculado (R$)', 'Valor': Number(options.unitPrice.toFixed(4)) },
       { 'Parâmetro da Fatura': `Consumo Total Rateado Lojas (${options.unit})`, 'Valor': Number(options.totalStoreConsumption.toFixed(4)) },
-      { 'Parâmetro da Fatura': 'Valor Total Rateado Lojas (R$)', 'Valor': Number(options.totalDistributedCost.toFixed(2)) },
-      { 'Parâmetro da Fatura': 'Diferença de Rateio (R$)', 'Valor': Number((options.totalBill - options.totalDistributedCost).toFixed(2)) },
-      { 'Parâmetro da Fatura': 'Data de Exportação', 'Valor': new Date().toLocaleString('pt-BR') }
+      { 'Parâmetro da Fatura': 'Valor Total Rateado Lojas (R$)', 'Valor': Number(options.totalDistributedCost.toFixed(2)) }
     ];
+
+    if (options.utilityType !== 'gas') {
+      summaryRows.push(
+        { 'Parâmetro da Fatura': `Consumo Ar Condicionado (${options.unit})`, 'Valor': Number((options.airConditioningConsumption || 0).toFixed(4)) },
+        { 'Parâmetro da Fatura': 'Custo Ar Condicionado (R$)', 'Valor': Number((options.airConditioningCost || 0).toFixed(2)) }
+      );
+    }
+
+    summaryRows.push(
+      { 'Parâmetro da Fatura': `Consumo Áreas Comuns (${options.unit})`, 'Valor': Number((options.commonAreaConsumption || 0).toFixed(4)) },
+      { 'Parâmetro da Fatura': 'Custo Áreas Comuns (R$)', 'Valor': Number((options.commonAreaCost || 0).toFixed(2)) },
+      { 'Parâmetro da Fatura': 'Total Rateado Fechado (R$)', 'Valor': Number(((options.totalDistributedCost || 0) + (options.airConditioningCost || 0) + (options.commonAreaCost || 0)).toFixed(2)) },
+      { 'Parâmetro da Fatura': 'Diferença de Rateio (R$)', 'Valor': Number((options.totalBill - ((options.totalDistributedCost || 0) + (options.airConditioningCost || 0) + (options.commonAreaCost || 0))).toFixed(2)) },
+      { 'Parâmetro da Fatura': 'Data de Exportação', 'Valor': new Date().toLocaleString('pt-BR') }
+    );
 
     const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
 

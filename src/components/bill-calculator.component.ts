@@ -1790,14 +1790,26 @@ export interface AnomalyModalData {
           <!-- Footer Summary (ALL TYPES) -->
           <div class="rounded-xl overflow-hidden border border-orange-200 dark:border-orange-900/60 shadow-sm font-sans animate-fade-in">
              <!-- Compact Mobile Summary -->
-             <div class="md:hidden p-4 bg-orange-50 dark:bg-orange-950/60 space-y-2">
+             <div class="md:hidden p-4 bg-orange-50 dark:bg-orange-950/60 space-y-2.5">
                 <div class="flex justify-between items-center text-sm">
-                   <span class="font-bold text-orange-900 dark:text-orange-200">Áreas Comuns</span>
-                   <span class="font-mono text-orange-800 dark:text-orange-300">{{ commonAreaCost() | currency:'BRL' }}</span>
+                   <div class="flex flex-col">
+                     <span class="font-bold text-orange-900 dark:text-orange-200">Áreas Comuns</span>
+                     <span class="text-[10px] text-orange-700 dark:text-orange-400 font-mono">{{ commonAreaConsumption() | number:'1.0-4' }} {{ getUnit() }} ({{ getPercentage(commonAreaCost()) }}%)</span>
+                   </div>
+                   <span class="font-mono font-bold text-orange-800 dark:text-orange-300">{{ commonAreaCost() | currency:'BRL' }}</span>
                 </div>
-                <div class="flex justify-between items-center text-sm">
-                   <span class="font-bold text-orange-900 dark:text-orange-200">Valor SAP</span>
-                   <span class="font-mono text-orange-800 dark:text-orange-300">{{ totalDistributedCost() | currency:'BRL' }}</span>
+                @if(utilityType() !== 'gas') {
+                  <div class="flex justify-between items-center text-sm pt-2 border-t border-orange-200/60 dark:border-orange-900/40">
+                     <div class="flex flex-col">
+                       <span class="font-bold text-orange-900 dark:text-orange-200">Ar Condicionado</span>
+                       <span class="text-[10px] text-orange-700 dark:text-orange-400 font-mono">{{ airConditioningConsumption() | number:'1.0-4' }} {{ getUnit() }} ({{ getPercentage(airConditioningCost()) }}%)</span>
+                     </div>
+                     <span class="font-mono font-bold text-orange-800 dark:text-orange-300">{{ airConditioningCost() | currency:'BRL' }}</span>
+                  </div>
+                }
+                <div class="flex justify-between items-center text-sm pt-2 border-t border-orange-200/60 dark:border-orange-900/40">
+                   <span class="font-bold text-orange-900 dark:text-orange-200">Valor SAP (Lojas)</span>
+                   <span class="font-mono font-bold text-orange-800 dark:text-orange-300">{{ totalDistributedCost() | currency:'BRL' }}</span>
                 </div>
              </div>
 
@@ -2746,7 +2758,7 @@ export interface AnomalyModalData {
                     </strong>
                   </div>
                   <div>
-                    <span class="text-[10px] uppercase font-bold text-slate-400 block">Total Rateado (Lojas + AC)</span>
+                    <span class="text-[10px] uppercase font-bold text-slate-400 block">Total Rateado (Lojas + AC + Comum)</span>
                     <strong class="font-mono text-sm text-teal-700 dark:text-teal-300">
                       {{ closingChecklist().reconciliation.totalReconciled | currency:'BRL' }}
                     </strong>
@@ -4122,8 +4134,9 @@ export class BillCalculatorComponent implements OnDestroy {
     const type = this.utilityType();
     const billAmount = this.totalBillAmount() || 0;
     const distributed = this.totalDistributedCost() || 0;
+    const acCost = this.airConditioningCost() || 0;
     const commonArea = this.commonAreaCost() || 0;
-    const totalReconciled = distributed + commonArea;
+    const totalReconciled = distributed + acCost + commonArea;
     const diffFinancial = Math.abs(totalReconciled - billAmount);
     // Tolerância de até R$ 0.50 para centavos de arredondamento fiscal
     const isReconciled = billAmount > 0 ? (diffFinancial <= 0.50) : true;
@@ -5085,16 +5098,24 @@ export class BillCalculatorComponent implements OnDestroy {
 
   commonAreaConsumption = computed(() => {
      if (this.utilityType() === 'gas' && this.gasAutoDistribute()) {
-        return 0; // Gás é 100% rateado entre os lojistas
+        return 0; // Gás com rateio proporcional é 100% distribuído entre os lojistas
      }
      const total = this.totalConsumption();
      const tenants = this.totalDistributedConsumption();
      const ac = this.airConditioningConsumption();
-     return Math.max(0, total - tenants - ac); 
+     const remaining = total - tenants - ac;
+     return Math.max(0, Number(remaining.toFixed(4))); 
   });
 
   commonAreaCost = computed(() => {
-     return this.commonAreaCost ? this.commonAreaConsumption() * this.calculatedUnitPrice() : 0;
+     if (this.utilityType() === 'gas' && this.gasAutoDistribute()) {
+        return 0; // Gás com rateio proporcional é 100% distribuído entre os lojistas
+     }
+     const bill = this.totalBillAmount();
+     const storesCost = this.totalDistributedCost();
+     const acCost = this.airConditioningCost();
+     const remaining = bill - storesCost - acCost;
+     return Math.max(0, Number(remaining.toFixed(2)));
   });
 
   getPercentage(cost: number) {
@@ -5126,6 +5147,10 @@ export class BillCalculatorComponent implements OnDestroy {
         totalConsumption: this.totalConsumption(),
         totalDistributedCost: this.totalDistributedCost(),
         totalStoreConsumption: this.totalDistributedConsumption(),
+        airConditioningConsumption: this.airConditioningConsumption(),
+        airConditioningCost: this.airConditioningCost(),
+        commonAreaConsumption: this.commonAreaConsumption(),
+        commonAreaCost: this.commonAreaCost(),
         costItems: this.currentCostItems(),
         consumptionInput: inputCons,
         tableData: this.tableData()
@@ -5175,6 +5200,10 @@ export class BillCalculatorComponent implements OnDestroy {
         totalConsumption: this.totalConsumption(),
         totalDistributedCost: this.totalDistributedCost(),
         totalStoreConsumption: this.totalDistributedConsumption(),
+        airConditioningConsumption: this.airConditioningConsumption(),
+        airConditioningCost: this.airConditioningCost(),
+        commonAreaConsumption: this.commonAreaConsumption(),
+        commonAreaCost: this.commonAreaCost(),
         costItems: this.currentCostItems(),
         consumptionInput: inputCons,
         tableData: this.tableData(),
