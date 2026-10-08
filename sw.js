@@ -1,21 +1,31 @@
-const CACHE_NAME = 'shoprateio-v2-live';
+const CACHE_NAME = 'shoprateio-v3-live';
 const ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  'https://cdn.tailwindcss.com',
-  'https://cdn-icons-png.flaticon.com/512/3144/3144456.png'
+  '/tailwind.min.js',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/apple-touch-icon.png'
 ];
 
-// Install: pre-cache assets and activate immediately
+// Install: pre-cache local assets safely without breaking if one is pending
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
+    caches.open(CACHE_NAME).then((cache) => {
+      return Promise.all(
+        ASSETS.map((url) =>
+          cache.add(url).catch((err) => {
+            console.warn('[SW] Pré-carregamento do cache pulado para:', url, err);
+          })
+        )
+      );
+    })
   );
 });
 
-// Activate: clean up old caches (like shoprateio-v1) and claim clients
+// Activate: clean up old caches (v1, v2, etc.) and claim clients
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
