@@ -23,6 +23,7 @@ export type StoreReading = {
   // Auditoria Inteligente e Anti-Erro em Campo
   anomalyConfirmed?: boolean; // Confirmado intencionalmente pelo técnico
   isRollover?: boolean;       // Marcado como virada física de medidor (9999 -> 0000)
+  meterNumber?: string;       // Número de identificação/série do relógio
 };
 
 export interface BillData {

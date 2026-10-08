@@ -784,9 +784,50 @@ export interface AnomalyModalData {
               </div>
             </div>
 
-            <!-- DESKTOP TABLE VIEW (Hidden on Mobile) -->
-            <div class="hidden md:block overflow-x-auto">
-              <table class="w-full text-left border-collapse text-sm">
+            <!-- Alternador de Modos de Trabalho: Lista de Lojas vs Modo Rota Guiada -->
+            <div class="px-4 py-3 bg-slate-50 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 flex-wrap">
+              <div class="inline-flex p-1 bg-slate-200/80 dark:bg-slate-800 rounded-xl gap-1 shadow-2xs">
+                <button type="button" 
+                  (click)="mobileViewMode.set('cards')"
+                  [class]="mobileViewMode() === 'cards' ? 'bg-white dark:bg-slate-700 text-teal-800 dark:text-teal-200 font-extrabold shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'"
+                  class="px-3 py-1.5 rounded-lg text-xs transition-all flex items-center gap-1.5 cursor-pointer">
+                  <span>📋</span>
+                  <span>Lista de Lojas</span>
+                </button>
+                <button type="button" 
+                  (click)="mobileViewMode.set('step')"
+                  [class]="mobileViewMode() === 'step' ? 'bg-teal-600 text-white font-extrabold shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'"
+                  class="px-3 py-1.5 rounded-lg text-xs transition-all flex items-center gap-1.5 cursor-pointer">
+                  <span>🚶</span>
+                  <span>Modo Rota Guiada (1 por vez)</span>
+                  <span class="px-1.5 py-0.2 rounded-full text-[10px] font-mono"
+                        [class]="mobileViewMode() === 'step' ? 'bg-teal-800 text-teal-100' : 'bg-slate-300 dark:bg-slate-700 text-slate-800 dark:text-slate-200'">
+                    #{{ (currentStepStore()?.routeOrder) || (stepIndex() + 1) }}
+                  </span>
+                </button>
+              </div>
+
+              <!-- Indicador de Progresso da Rota do Shopping -->
+              <div class="flex items-center gap-3 text-xs">
+                <div class="flex flex-col text-right">
+                  <span class="font-bold text-slate-700 dark:text-slate-300">
+                    Progresso: {{ fieldStats().completed }}/{{ fieldStats().total }} lidas ({{ fieldStats().progressPct }}%)
+                  </span>
+                  <span class="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
+                    {{ fieldStats().pending }} pendentes na rota
+                  </span>
+                </div>
+                <div class="w-24 sm:w-32 bg-slate-200 dark:bg-slate-700 h-2.5 rounded-full overflow-hidden">
+                  <div class="bg-gradient-to-r from-teal-500 to-emerald-500 h-full transition-all duration-300"
+                       [style.width.%]="fieldStats().progressPct"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- DESKTOP TABLE VIEW (Visível em telas médias/grandes quando no modo Lista) -->
+            @if (mobileViewMode() === 'cards') {
+              <div class="hidden md:block overflow-x-auto">
+                <table class="w-full text-left border-collapse text-sm">
                 <thead class="bg-teal-700 text-white sticky top-0 z-10 shadow-sm">
                   <tr>
                     <th class="p-3 font-semibold uppercase text-xs w-28 border-r border-teal-600">Loja</th>
@@ -997,6 +1038,7 @@ export interface AnomalyModalData {
                 </tbody>
               </table>
             </div>
+          }
 
             <!-- MOBILE INTERFACE (Visível apenas em dispositivos móveis / telas menores) -->
             <div class="md:hidden">
@@ -1336,128 +1378,236 @@ export interface AnomalyModalData {
                 </div>
               }
 
-              <!-- MODO 2: MODO ROTA / PASSO A PASSO (FOCO TOTAL PARA O TÉCNICO CAMINHANDO NO SHOPPING) -->
+              <!-- MODO 2: MODO ROTA GUIADA (FOCO TOTAL PARA O TÉCNICO CAMINHANDO NO SHOPPING) -->
               @if (mobileViewMode() === 'step') {
-                <div class="p-4 bg-slate-100 dark:bg-slate-950 min-h-[400px] flex flex-col justify-between transition-colors">
+                <div class="p-3 sm:p-5 bg-slate-100 dark:bg-slate-950 min-h-[480px] flex flex-col justify-between transition-colors">
                   @if (currentStepStore(); as stepStore) {
-                    <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-5 space-y-4 transition-colors">
+                    <div class="max-w-2xl mx-auto w-full bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 p-4 sm:p-6 space-y-4 transition-colors">
                       
-                      <!-- Step Indicator Header -->
-                      <div class="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-3">
-                        <div class="flex items-center gap-2 flex-wrap">
-                          @if (stepStore.routeOrder) {
-                            <span class="text-xs font-bold px-2 py-0.5 bg-indigo-100 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300 rounded-full font-mono border border-indigo-200 dark:border-indigo-800" title="Ordem da Rota">
-                              📍 Rota #{{ stepStore.routeOrder }}
-                            </span>
-                          }
-                          <span class="text-xs font-bold px-2 py-0.5 bg-teal-100 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 rounded-full font-mono border border-teal-200 dark:border-teal-800">
+                      <!-- Barra Superior: Indicador da Rota e Pulos Rápidos -->
+                      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2.5 border-b border-slate-100 dark:border-slate-800 pb-3">
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                          <span class="text-xs font-black px-2.5 py-1 bg-indigo-100 dark:bg-indigo-950/80 text-indigo-900 dark:text-indigo-200 rounded-full font-mono border border-indigo-200 dark:border-indigo-800 shadow-2xs">
+                            📍 Rota #{{ stepStore.routeOrder || (stepIndex() + 1) }}
+                          </span>
+                          <span class="text-xs font-bold px-2.5 py-1 bg-teal-100 dark:bg-teal-950/80 text-teal-900 dark:text-teal-200 rounded-full font-mono border border-teal-200 dark:border-teal-800 shadow-2xs">
                             Loja {{ stepIndex() + 1 }} de {{ tableData().length }}
                           </span>
                           @if (stepStore.isRead) {
-                            <span class="text-xs font-bold text-green-600 dark:text-green-400 flex items-center gap-1">✓ Lida</span>
+                            <span class="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-1 rounded-full border border-emerald-200 dark:border-emerald-800">
+                              ✓ Lida ({{ stepStore.currentReading }})
+                            </span>
                           } @else {
-                            <span class="text-xs font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1">⏳ Pendente</span>
-                          }
-                        </div>
-
-                        <!-- Dropdown de seleção rápida de loja -->
-                        <select 
-                          [ngModel]="stepIndex()" 
-                          (ngModelChange)="setStepIndex($event)"
-                          class="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded p-1 font-mono text-slate-700 dark:text-slate-200 max-w-[130px]">
-                          @for (st of tableData(); track st.storeId; let sIdx = $index) {
-                            <option [value]="sIdx">
-                              {{ st.routeOrder ? '#' + st.routeOrder + ' ' : '' }}{{ st.luc }} - {{ st.storeName }} {{ st.isRead ? '✓' : '' }}
-                            </option>
-                          }
-                        </select>
-                      </div>
-
-                      <!-- Dados da Loja -->
-                      <div>
-                        <div class="flex items-center gap-2">
-                          <span class="text-sm font-mono font-extrabold text-white bg-slate-900 dark:bg-slate-800 px-2.5 py-0.5 rounded shadow-xs border border-transparent dark:border-slate-700">
-                            {{ stepStore.luc }}
-                          </span>
-                          @if (stepStore.contrato) {
-                            <span class="text-xs font-mono text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700">
-                              Ctr: {{ stepStore.contrato }}
+                            <span class="text-xs font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1 bg-amber-50 dark:bg-amber-950/50 px-2.5 py-1 rounded-full border border-amber-200 dark:border-amber-800">
+                              ⏳ Pendente
                             </span>
                           }
                         </div>
-                        <h3 class="text-xl font-bold text-slate-900 dark:text-white mt-1.5 leading-tight">
+
+                        <div class="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+                          <select 
+                            [ngModel]="stepIndex()" 
+                            (ngModelChange)="setStepIndex($event)"
+                            class="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl p-1.5 font-mono text-slate-800 dark:text-slate-200 max-w-[190px]">
+                            @for (st of tableData(); track st.storeId; let sIdx = $index) {
+                              <option [value]="sIdx">
+                                {{ st.routeOrder ? '#' + st.routeOrder + ' ' : '' }}{{ st.luc }} - {{ st.storeName }} {{ st.isRead ? '✓' : '' }}
+                              </option>
+                            }
+                          </select>
+
+                          <button type="button" 
+                            (click)="jumpToNextPending()" 
+                            class="px-2.5 py-1.5 bg-amber-100 dark:bg-amber-950 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-800 rounded-xl text-xs font-bold hover:bg-amber-200 transition-all cursor-pointer shadow-2xs flex items-center gap-1 shrink-0"
+                            title="Pula direto para a próxima loja que ainda não foi lida">
+                            <span>⚡</span>
+                            <span class="hidden sm:inline">Pendente</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <!-- Identificação da Loja e Relógio Físico -->
+                      <div class="bg-slate-50 dark:bg-slate-800/60 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80">
+                        <div class="flex items-center justify-between gap-2 flex-wrap mb-1">
+                          <div class="flex items-center gap-2 flex-wrap">
+                            <span class="text-sm font-mono font-black text-white bg-slate-900 dark:bg-slate-800 px-2.5 py-0.5 rounded-lg shadow-xs border border-transparent dark:border-slate-700">
+                              {{ stepStore.luc }}
+                            </span>
+                            @if (stepStore.contrato) {
+                              <span class="text-xs font-mono text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700">
+                                Ctr: {{ stepStore.contrato }}
+                              </span>
+                            }
+                          </div>
+
+                          <span class="text-xs font-mono font-bold text-teal-800 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/70 px-2.5 py-1 rounded-lg border border-teal-200 dark:border-teal-800 flex items-center gap-1">
+                            <span>🏷️ Relógio:</span>
+                            <strong>{{ stepStore.meterNumber || ('M-' + stepStore.luc) }}</strong>
+                          </span>
+                        </div>
+
+                        <h2 class="text-xl sm:text-2xl font-black text-slate-900 dark:text-white mt-1 leading-tight">
                           {{ stepStore.storeName }}
-                        </h3>
+                        </h2>
                       </div>
 
-                      <!-- Leitura Anterior (Cartão Grande) -->
-                      <div class="bg-slate-50 dark:bg-slate-800/80 p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex justify-between items-center">
-                        <span class="text-xs uppercase font-bold text-slate-500 dark:text-slate-400">Leitura Anterior:</span>
-                        <span class="font-mono text-xl font-bold text-slate-800 dark:text-slate-100">
-                          {{ stepStore.prevReading | number:'1.0-0' }} <span class="text-sm font-normal text-slate-400">{{ getUnit() }}</span>
-                        </span>
+                      <!-- COMPARATIVO FOTOGRÁFICO & EVIDÊNCIA (MÊS ANTERIOR vs ESTE MÊS) -->
+                      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        
+                        <!-- LADO 1: Foto do Mês Anterior (Referência do Técnico) -->
+                        <div class="p-3 bg-slate-50 dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col justify-between">
+                          <div>
+                            <div class="flex items-center justify-between mb-2">
+                              <span class="text-[10px] uppercase font-black text-slate-500 dark:text-slate-400 tracking-wider">
+                                📷 Mês Anterior (Referência)
+                              </span>
+                              @if (prevMonthPhotos()[stepStore.storeId]) {
+                                <span class="text-[9px] bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.2 rounded font-bold">
+                                  Foto Salva
+                                </span>
+                              }
+                            </div>
+
+                            @if (prevMonthPhotos()[stepStore.storeId]; as prevPhoto) {
+                              <div class="flex items-center gap-3">
+                                <div class="relative cursor-pointer shrink-0 group" 
+                                     (click)="openPhotoViewer(stepStore.storeId, prevPhoto)"
+                                     title="Clique para ampliar a foto do mês anterior">
+                                  <img [src]="prevPhoto.photoDataUrl" 
+                                       alt="Foto Mês Anterior" 
+                                       class="w-14 h-14 object-cover rounded-xl border-2 border-indigo-400 dark:border-indigo-600 shadow-xs group-hover:scale-105 transition-transform">
+                                  <span class="absolute -bottom-1 -right-1 bg-indigo-600 text-white rounded-full w-4 h-4 flex items-center justify-center text-[9px] font-bold shadow-xs">
+                                    🔍
+                                  </span>
+                                </div>
+                                <div class="flex flex-col text-xs space-y-0.5">
+                                  <span class="text-slate-400 dark:text-slate-400 text-[10px]">
+                                    {{ prevPhoto.capturedAt | date:'dd/MM/yy' }}
+                                  </span>
+                                  <span class="text-slate-800 dark:text-slate-200 font-mono font-bold text-sm">
+                                    {{ stepStore.prevReading | number:'1.0-0' }} <span class="text-xs font-normal text-slate-400">{{ getUnit() }}</span>
+                                  </span>
+                                  <button type="button" 
+                                    (click)="openPhotoViewer(stepStore.storeId, prevPhoto)"
+                                    class="text-[10px] text-indigo-700 dark:text-indigo-300 hover:underline font-bold text-left cursor-pointer">
+                                    Ampliar foto anterior ↗
+                                  </button>
+                                </div>
+                              </div>
+                            } @else {
+                              <div class="py-1 text-center">
+                                <span class="text-xs font-mono font-bold text-slate-700 dark:text-slate-300 block">
+                                  Leitura Anterior: {{ stepStore.prevReading | number:'1.0-0' }} {{ getUnit() }}
+                                </span>
+                                @if (stepStore.validationAlert.avgConsumption > 0) {
+                                  <span class="text-[10px] text-slate-400 block mt-0.5">
+                                    Média Histórica: {{ stepStore.validationAlert.avgConsumption | number:'1.0-1' }} {{ getUnit() }}
+                                  </span>
+                                }
+                              </div>
+                            }
+                          </div>
+                        </div>
+
+                        <!-- LADO 2: Foto Deste Mês & Leitura por Câmera / OCR -->
+                        <div class="p-3 bg-teal-50/50 dark:bg-teal-950/30 rounded-2xl border border-teal-200 dark:border-teal-800/80 flex flex-col justify-between">
+                          <div>
+                            <div class="flex items-center justify-between mb-2">
+                              <span class="text-[10px] uppercase font-black text-teal-800 dark:text-teal-300 tracking-wider">
+                                📸 Foto Atual (Este Mês)
+                              </span>
+                              @if (meterPhotos()[stepStore.storeId]) {
+                                <span class="text-[9px] bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 px-1.5 py-0.2 rounded font-bold">
+                                  ✓ Registrada
+                                </span>
+                              }
+                            </div>
+
+                            @if (meterPhotos()[stepStore.storeId]; as curPhoto) {
+                              <div class="flex items-center gap-3">
+                                <div class="relative cursor-pointer shrink-0 group" 
+                                     (click)="openPhotoViewer(stepStore.storeId)"
+                                     title="Clique para ver a foto tirada">
+                                  <img [src]="curPhoto.photoDataUrl" 
+                                       alt="Foto Medidor Atual" 
+                                       class="w-14 h-14 object-cover rounded-xl border-2 border-emerald-500 shadow-xs group-hover:scale-105 transition-transform">
+                                  <span class="absolute -bottom-1 -right-1 bg-emerald-600 text-white rounded-full w-4 h-4 flex items-center justify-center text-[9px] font-bold shadow-xs">
+                                    ✓
+                                  </span>
+                                </div>
+                                <div class="flex flex-col text-xs space-y-0.5">
+                                  <div class="flex items-center gap-1.5 text-[10px]">
+                                    <span class="text-slate-400">{{ curPhoto.capturedAt | date:'dd/MM HH:mm' }}</span>
+                                    @if (curPhoto.synced) {
+                                      <span class="text-teal-600 dark:text-teal-400 font-bold" title="Salva na nuvem">☁️ Nuvem</span>
+                                    } @else {
+                                      <span class="text-amber-500 font-bold" title="Salva localmente">💾 Local</span>
+                                    }
+                                  </div>
+                                  <div class="flex items-center gap-2">
+                                    <button type="button" 
+                                      (click)="runOcrOnPhoto(stepStore.storeId)"
+                                      [disabled]="isReadingOcr() === stepStore.storeId"
+                                      class="text-[10px] font-bold text-indigo-700 dark:text-indigo-300 hover:underline cursor-pointer flex items-center gap-1">
+                                      <span>⚡ Reler com IA</span>
+                                    </button>
+                                    <label class="text-[10px] text-slate-500 dark:text-slate-400 hover:underline cursor-pointer">
+                                      <span>Trocar</span>
+                                      <input type="file" accept="image/*" capture="environment" (change)="onPhotoCaptured($event, stepStore.storeId, stepStore.storeName, stepStore.luc, stepStore.currentReading)" class="hidden">
+                                    </label>
+                                  </div>
+                                </div>
+                              </div>
+                            } @else {
+                              <label class="cursor-pointer flex flex-col items-center justify-center p-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-bold text-xs transition-all shadow-xs">
+                                @if (isCapturingPhoto() === stepStore.storeId) {
+                                  <span class="animate-spin text-base mb-0.5">⏳</span>
+                                  <span>Compactando foto...</span>
+                                } @else {
+                                  <span class="text-lg mb-0.5">📸</span>
+                                  <span>Apontar Câmera / Ler com IA</span>
+                                }
+                                <input type="file" 
+                                       accept="image/*" 
+                                       capture="environment" 
+                                       (change)="onPhotoCaptured($event, stepStore.storeId, stepStore.storeName, stepStore.luc, stepStore.currentReading)" 
+                                       class="hidden"
+                                       [disabled]="isCapturingPhoto() === stepStore.storeId">
+                              </label>
+                            }
+                          </div>
+                        </div>
+
                       </div>
 
-                      <!-- Campo Gigante para Leitura Atual -->
+                      <!-- CAMPO GIGANTE PARA LEITURA ATUAL -->
                       <div class="space-y-1.5">
                         <div class="flex items-center justify-between">
-                          <label class="text-xs uppercase font-extrabold text-teal-700 dark:text-teal-400 tracking-wider block">
+                          <label class="text-xs uppercase font-black text-teal-800 dark:text-teal-300 tracking-wider">
                             DIGITAR LEITURA ATUAL ({{ getUnit() }}):
                           </label>
                           @if (isReadingOcr() === stepStore.storeId) {
-                            <span class="text-[10px] bg-indigo-100 dark:bg-indigo-900/60 text-indigo-800 dark:text-indigo-200 px-2 py-0.5 rounded-full font-bold flex items-center gap-1 animate-pulse">
-                              <span class="animate-spin text-xs">⚡</span>
-                              <span>{{ ocrCurrentModelLabel() }}...</span>
+                            <span class="text-[11px] bg-indigo-100 dark:bg-indigo-900 text-indigo-900 dark:text-indigo-200 px-2 py-0.5 rounded-full font-bold flex items-center gap-1 animate-pulse">
+                              <span class="animate-spin">⚡</span>
+                              <span>{{ ocrCurrentModelLabel() }} lendo visor...</span>
                             </span>
                           }
                         </div>
 
-                        <!-- Indicador de Processamento OCR com Qwen / Gemini -->
-                        @if (isReadingOcr() === stepStore.storeId) {
-                          <div class="p-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800 text-indigo-900 dark:text-indigo-200 text-xs font-bold flex items-center justify-between gap-2 animate-pulse shadow-xs">
-                            <div class="flex items-center gap-2">
-                              <span class="text-xl">⚡</span>
-                              <div>
-                                <p class="leading-tight">{{ ocrCurrentModelLabel() }} lendo visor...</p>
-                                <p class="text-[10px] font-normal opacity-85">1º Qwen 3.8 27B (Groq) com fallback automático para Gemini 3.8 Flash</p>
-                              </div>
-                            </div>
-                            <span class="text-[10px] bg-indigo-200 dark:bg-indigo-800 px-2 py-0.5 rounded font-mono font-bold">OCR DUPLO</span>
-                          </div>
-                        }
-
-                        <!-- Feedback de Leitura Automática OCR com Opção de Verificação Cruzada -->
+                        <!-- Feedback de Leitura Automática OCR -->
                         @if (ocrFeedback()[stepStore.storeId]; as fb) {
-                          <div class="p-3 rounded-xl text-xs flex flex-col gap-1.5 shadow-xs transition-all"
+                          <div class="p-2.5 rounded-xl text-xs flex items-center justify-between gap-2 shadow-xs transition-all"
                                [class]="fb.success ? 'bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 text-emerald-950 dark:text-emerald-100' : 'bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-950 dark:text-amber-100'">
-                            <div class="flex items-center justify-between gap-2">
-                              <div class="flex items-center gap-2">
-                                <span class="text-lg shrink-0">{{ fb.success ? (fb.provider === 'qwen' ? '⚡' : '🤖') : '⚠️' }}</span>
-                                <div>
-                                  <p class="font-bold leading-tight">{{ fb.message }}</p>
-                                  @if (fb.explanation) {
-                                    <p class="text-[10px] opacity-85 mt-0.5">{{ fb.explanation }}</p>
-                                  }
-                                </div>
+                            <div class="flex items-center gap-2 truncate">
+                              <span class="text-base shrink-0">{{ fb.success ? (fb.provider === 'qwen' ? '⚡' : '🤖') : '⚠️' }}</span>
+                              <div class="truncate">
+                                <p class="font-bold leading-tight truncate">{{ fb.message }}</p>
+                                @if (fb.explanation) {
+                                  <p class="text-[10px] opacity-85 mt-0.5 truncate">{{ fb.explanation }}</p>
+                                }
                               </div>
-                              <button (click)="dismissOcrFeedback(stepStore.storeId)" class="p-1 text-slate-400 hover:text-slate-800 dark:hover:text-white font-bold cursor-pointer">✕</button>
                             </div>
-                            @if (fb.success && meterPhotos()[stepStore.storeId]) {
-                              <div class="pt-1 mt-0.5 border-t border-black/10 dark:border-white/10 flex items-center justify-between text-[10px]">
-                                <span class="font-mono opacity-75">Motor: {{ fb.modelName }}</span>
-                                <div class="flex items-center gap-2">
-                                  @if (fb.provider === 'qwen') {
-                                    <button type="button" (click)="runOcrOnPhoto(stepStore.storeId, 'gemini')" [disabled]="isReadingOcr() === stepStore.storeId" class="text-indigo-700 dark:text-indigo-300 hover:underline font-bold cursor-pointer">
-                                      🤖 Conferir com Gemini
-                                    </button>
-                                  } @else {
-                                    <button type="button" (click)="runOcrOnPhoto(stepStore.storeId, 'qwen')" [disabled]="isReadingOcr() === stepStore.storeId" class="text-indigo-700 dark:text-indigo-300 hover:underline font-bold cursor-pointer">
-                                      ⚡ Conferir com Qwen 3.8 27B
-                                    </button>
-                                  }
-                                </div>
-                              </div>
-                            }
+                            <button (click)="dismissOcrFeedback(stepStore.storeId)" class="p-1 text-slate-400 hover:text-slate-800 font-bold cursor-pointer">✕</button>
                           </div>
                         }
 
@@ -1466,8 +1616,10 @@ export interface AnomalyModalData {
                           step="0.0001"
                           [ngModel]="stepStore.currentReading" 
                           (ngModelChange)="updateDetailedReading(stepStore.storeId, 'reading', $event)"
+                          (blur)="onReadingBlur(stepStore.storeId)"
+                          (keyup.enter)="saveAndNextStep(stepStore)"
                           [disabled]="!canEdit()"
-                          class="w-full text-center text-3xl font-mono font-bold p-3.5 border-2 rounded-2xl focus:ring-4 transition-all bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                          class="w-full text-center text-4xl sm:text-5xl font-mono font-black p-3.5 border-2 rounded-2xl focus:ring-4 transition-all bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                           [class.border-rose-500]="stepStore.validationAlert.severity === 'critical'"
                           [class.ring-4]="stepStore.validationAlert.hasAlert"
                           [class.ring-rose-300]="stepStore.validationAlert.severity === 'critical'"
@@ -1481,9 +1633,9 @@ export interface AnomalyModalData {
                           placeholder="0">
                       </div>
 
-                      <!-- ALERTA INSTANTÂNEO EM TEMPO REAL NO MODO ROTA -->
+                      <!-- ALERTA INSTANTÂNEO DE CONSISTÊNCIA / PASSO 1 -->
                       @if (stepStore.validationAlert.hasAlert) {
-                        <div class="p-3.5 rounded-xl border text-xs flex items-start gap-2.5 shadow-sm"
+                        <div class="p-3.5 rounded-2xl border text-xs flex items-start gap-3 shadow-xs"
                              [class.bg-rose-50]="stepStore.validationAlert.severity === 'critical'"
                              [class.border-rose-300]="stepStore.validationAlert.severity === 'critical'"
                              [class.text-rose-950]="stepStore.validationAlert.severity === 'critical'"
@@ -1513,173 +1665,107 @@ export interface AnomalyModalData {
                             <p class="text-xs text-slate-700 dark:text-slate-300 leading-snug">
                               {{ stepStore.validationAlert.message }}
                             </p>
-                            <div class="pt-1.5 mt-1 border-t border-black/10 dark:border-white/10 flex flex-wrap items-center gap-x-3 text-[11px] font-mono text-slate-600 dark:text-slate-400">
-                              <span>Anterior: <strong>{{ stepStore.prevReading | number:'1.0-0' }}</strong></span>
-                              <span>Digitada: <strong>{{ stepStore.currentReading }}</strong></span>
-                              @if (stepStore.validationAlert.avgConsumption > 0) {
-                                <span>Média: <strong>{{ stepStore.validationAlert.avgConsumption | number:'1.0-1' }} {{ getUnit() }}</strong></span>
+                            <div class="pt-1.5 flex flex-wrap items-center gap-2">
+                              <button type="button" 
+                                (click)="confirmAnomaly(stepStore.storeId)"
+                                class="px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-bold rounded-lg text-xs hover:bg-slate-50 cursor-pointer">
+                                ✓ Confirmar como Correto
+                              </button>
+                              @if (stepStore.validationAlert.type === 'negative') {
+                                <button type="button" 
+                                  (click)="markRollover(stepStore.storeId)"
+                                  class="px-2.5 py-1 bg-indigo-600 text-white font-bold rounded-lg text-xs hover:bg-indigo-700 cursor-pointer">
+                                  🔄 Virada de Relógio
+                                </button>
                               }
-                            </div>
-                            <div class="mt-1 text-[11px] font-semibold text-rose-800 dark:text-rose-300 bg-white/80 dark:bg-slate-900/90 px-2.5 py-1 rounded border border-rose-200 dark:border-rose-800">
-                              ✋ Evite retrabalho: confirme os números no relógio antes de sair para a próxima loja!
                             </div>
                           </div>
                         </div>
                       }
 
-                      <!-- Feedback de Diferença e Custo -->
+                      <!-- Consumo e Custo Estimado em Tempo Real -->
                       @if (stepStore.isRead) {
-                        <div class="bg-teal-50 dark:bg-teal-950/40 p-3 rounded-xl border border-teal-200 dark:border-teal-800 grid grid-cols-2 gap-2 text-xs">
+                        <div class="bg-teal-50 dark:bg-teal-950/40 p-3 rounded-2xl border border-teal-200 dark:border-teal-800 grid grid-cols-2 gap-3 text-xs">
                           <div>
-                            <span class="text-[10px] text-teal-600 dark:text-teal-400 block">Consumo Faturado</span>
-                            <strong class="font-mono text-base text-teal-900 dark:text-teal-100">{{ stepStore.consumption | number:'1.0-2' }} {{ getUnit() }}</strong>
+                            <span class="text-[10px] uppercase font-bold text-teal-600 dark:text-teal-400 block">Consumo Faturado</span>
+                            <strong class="font-mono text-lg text-teal-950 dark:text-teal-100">{{ stepStore.consumption | number:'1.0-2' }} {{ getUnit() }}</strong>
                             @if (stepStore.isGasDistributed) {
                               <span class="text-[9px] text-red-600 dark:text-red-400 block font-sans">campo: {{ stepStore.rawConsumption | number:'1.0-1' }}</span>
                             }
                           </div>
                           <div class="text-right">
-                            <span class="text-[10px] text-teal-600 dark:text-teal-400 block">Custo Estimado</span>
-                            <strong class="font-mono text-base text-teal-900 dark:text-teal-100">{{ stepStore.cost | currency:'BRL' }}</strong>
+                            <span class="text-[10px] uppercase font-bold text-teal-600 dark:text-teal-400 block">Custo Estimado</span>
+                            <strong class="font-mono text-lg text-teal-950 dark:text-teal-100">{{ stepStore.cost | currency:'BRL' }}</strong>
                           </div>
                         </div>
                       }
 
-                      <!-- Foto de Evidência do Medidor no Modo Rota -->
-                      <div class="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
-                        <div class="flex items-center gap-2">
-                          @if (meterPhotos()[stepStore.storeId]) {
-                            <div class="relative cursor-pointer shrink-0" (click)="openPhotoViewer(stepStore.storeId)" title="Visualizar comprovante fotográfico">
-                              <img [src]="meterPhotos()[stepStore.storeId].photoDataUrl" 
-                                   alt="Evidência Medidor" 
-                                   class="w-12 h-12 object-cover rounded-xl border-2 border-teal-500 shadow-xs">
-                              <span class="absolute -bottom-1 -right-1 bg-teal-600 text-white rounded-full w-4 h-4 flex items-center justify-center text-[9px] font-bold shadow-xs">
-                                ✓
-                              </span>
-                            </div>
-                            <div class="flex flex-col">
-                              <button type="button" 
-                                      (click)="openPhotoViewer(stepStore.storeId)"
-                                      class="text-xs font-bold text-teal-800 dark:text-teal-300 hover:text-teal-950 dark:hover:text-teal-100 flex items-center gap-1 cursor-pointer text-left">
-                                <span>📷 Ver Foto do Relógio</span>
-                              </button>
-                              <span class="text-[10px] font-mono flex items-center gap-1">
-                                <span class="text-slate-400">{{ meterPhotos()[stepStore.storeId].capturedAt | date:'dd/MM HH:mm' }}</span>
-                                @if (meterPhotos()[stepStore.storeId].synced) {
-                                  <span class="text-teal-600 dark:text-teal-400" title="Foto sincronizada na nuvem">☁️ Nuvem</span>
-                                } @else {
-                                  <span class="text-amber-500" title="Salva localmente, pendente nuvem">💾 Local</span>
-                                }
-                              </span>
-                              <button type="button" 
-                                      (click)="runOcrOnPhoto(stepStore.storeId)"
-                                      [disabled]="isReadingOcr() === stepStore.storeId"
-                                      class="mt-1 text-[11px] font-bold text-indigo-700 dark:text-indigo-300 hover:text-indigo-900 dark:hover:text-white bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800 flex items-center gap-1 cursor-pointer w-fit shadow-xs">
-                                @if (isReadingOcr() === stepStore.storeId) {
-                                  <span class="animate-spin text-xs">⏳</span>
-                                  <span>Lendo (Qwen/Gemini)...</span>
-                                } @else {
-                                  <span>⚡ Ler com IA</span>
-                                }
-                              </button>
-                            </div>
-                          } @else {
-                            <label class="cursor-pointer inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900/60 text-teal-900 dark:text-teal-200 border border-teal-300 dark:border-teal-700 text-xs font-bold transition-all shadow-xs active:scale-95">
-                              @if (isCapturingPhoto() === stepStore.storeId) {
-                                <span class="animate-spin text-sm">⏳</span>
-                                <span>Compactando...</span>
-                              } @else {
-                                <span class="text-base">📷</span>
-                                <span>Tirar Foto do Relógio</span>
-                              }
-                              <input type="file" 
-                                     accept="image/*" 
-                                     capture="environment" 
-                                     (change)="onPhotoCaptured($event, stepStore.storeId, stepStore.storeName, stepStore.luc, stepStore.currentReading)" 
-                                     class="hidden"
-                                     [disabled]="isCapturingPhoto() === stepStore.storeId">
-                            </label>
-                          }
-                        </div>
-
-                        @if (meterPhotos()[stepStore.storeId]) {
-                          <label class="cursor-pointer text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white underline shrink-0">
-                            <span>Substituir</span>
-                            <input type="file" 
-                                   accept="image/*" 
-                                   capture="environment" 
-                                   (change)="onPhotoCaptured($event, stepStore.storeId, stepStore.storeName, stepStore.luc, stepStore.currentReading)" 
-                                   class="hidden">
-                          </label>
-                        }
-                      </div>
-
-                      <!-- Botão Espelho do Lojista no Modo Rota -->
-                      <div class="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center">
-                        <span class="text-xs font-bold text-slate-500 dark:text-slate-400">Prestação de Contas:</span>
-                        <button type="button" 
-                          (click)="openStoreVoucher(stepStore)" 
-                          class="px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs">
-                          <span>📲</span>
-                          <span>Espelho / WhatsApp</span>
-                        </button>
-                      </div>
-
-                      <!-- Observação de Campo no Modo Rota -->
-                      <div class="pt-2 border-t border-slate-100 dark:border-slate-800">
+                      <!-- Observação de Campo e Ocorrências Rápidas -->
+                      <div class="pt-1.5 border-t border-slate-100 dark:border-slate-800">
                         <div class="flex items-center justify-between text-xs mb-1.5">
-                          <span class="font-bold text-slate-500 dark:text-slate-400">Observação de Campo:</span>
+                          <span class="font-bold text-slate-500 dark:text-slate-400">Ocorrência de Campo:</span>
                           <button (click)="openNoteEditor(stepStore.storeId, stepStore.note)" class="text-teal-700 dark:text-teal-400 font-bold underline cursor-pointer">
-                            {{ stepStore.note ? 'Alterar' : '+ Adicionar Nota' }}
+                            {{ stepStore.note ? 'Editar Nota' : '+ Escrever Nota' }}
                           </button>
                         </div>
                         @if (stepStore.note) {
-                          <div class="bg-amber-50 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-800 p-2 rounded-lg text-xs flex justify-between items-center">
+                          <div class="bg-amber-50 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-800 p-2 rounded-xl text-xs flex justify-between items-center">
                             <span>📝 {{ stepStore.note }}</span>
                             <button (click)="clearNote(stepStore.storeId)" class="text-red-500 hover:text-red-700 font-bold ml-2 cursor-pointer">✕</button>
                           </div>
                         } @else {
                           <div class="flex gap-1.5 flex-wrap">
-                            <button (click)="applyQuickTag(stepStore.storeId, 'Porta Fechada')" class="px-2 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-xs text-slate-600 dark:text-slate-300 transition-colors cursor-pointer">
-                              🔒 Fechada
+                            <button (click)="applyQuickTag(stepStore.storeId, 'Porta Fechada')" class="px-2 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 transition-colors cursor-pointer font-medium">
+                              🔒 Porta Fechada
                             </button>
-                            <button (click)="applyQuickTag(stepStore.storeId, 'Visor Embaçado')" class="px-2 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-xs text-slate-600 dark:text-slate-300 transition-colors cursor-pointer">
-                              👁️ Embaçado
+                            <button (click)="applyQuickTag(stepStore.storeId, 'Visor Embaçado')" class="px-2 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 transition-colors cursor-pointer font-medium">
+                              👁️ Visor Embaçado
                             </button>
-                            <button (click)="applyQuickTag(stepStore.storeId, 'Relógio Novo')" class="px-2 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-xs text-slate-600 dark:text-slate-300 transition-colors cursor-pointer">
-                              🔄 Relógio Novo
+                            <button (click)="applyQuickTag(stepStore.storeId, 'Relógio Trocado')" class="px-2 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 transition-colors cursor-pointer font-medium">
+                              🔄 Relógio Trocado
                             </button>
                           </div>
                         }
                       </div>
 
-                      <!-- Botões de Navegação com Polegar (Próxima Pendente) -->
-                      <div class="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center gap-2">
+                      <!-- BOTÃO PRINCIPAL DE AÇÃO: SALVAR E PRÓXIMA LOJA (POLEGAR ERGONÔMICO) -->
+                      <div class="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
                         <button type="button" 
-                          (click)="prevStep()" 
-                          [disabled]="stepIndex() === 0"
-                          class="flex-1 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 text-slate-700 dark:text-slate-200 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer">
-                          <span>◀ Anterior</span>
+                          (click)="saveAndNextStep(stepStore)"
+                          class="w-full py-4 px-6 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 active:scale-98 text-white font-black text-base rounded-2xl shadow-lg shadow-teal-700/25 transition-all flex items-center justify-center gap-2 cursor-pointer">
+                          <span class="text-xl">💾</span>
+                          <span>Salvar e Próxima Loja ▶</span>
                         </button>
 
-                        <button type="button" 
-                          (click)="jumpToNextPending()" 
-                          class="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl text-xs transition-colors flex items-center justify-center gap-1 shadow-sm cursor-pointer"
-                          title="Pula direto para a próxima loja que ainda não foi lida">
-                          <span>⚡ Próx. Pendente</span>
-                        </button>
+                        <div class="flex items-center gap-2">
+                          <button type="button" 
+                            (click)="prevStep()" 
+                            [disabled]="stepIndex() === 0"
+                            class="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 text-slate-700 dark:text-slate-200 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer">
+                            <span>◀ Anterior</span>
+                          </button>
 
-                        <button type="button" 
-                          (click)="nextStep()" 
-                          [disabled]="stepIndex() >= tableData().length - 1"
-                          class="flex-1 py-3 bg-teal-600 hover:bg-teal-700 disabled:opacity-30 text-white rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-1 shadow-sm cursor-pointer">
-                          <span>Próxima ▶</span>
-                        </button>
+                          <button type="button" 
+                            (click)="jumpToNextPending()" 
+                            class="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl text-xs transition-colors flex items-center justify-center gap-1 shadow-xs cursor-pointer">
+                            <span>⚡ Próx. Pendente</span>
+                          </button>
+
+                          <button type="button" 
+                            (click)="nextStep()" 
+                            [disabled]="stepIndex() >= tableData().length - 1"
+                            class="flex-1 py-2.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 disabled:opacity-30 text-slate-800 dark:text-slate-200 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer">
+                            <span>Pular ▶</span>
+                          </button>
+                        </div>
                       </div>
 
                     </div>
                   } @else {
-                    <div class="p-8 text-center bg-white dark:bg-slate-900 rounded-xl border border-transparent dark:border-slate-800">
-                      <p class="text-sm font-bold text-slate-700 dark:text-slate-300">Nenhuma loja cadastrada para este insumo.</p>
+                    <div class="max-w-md mx-auto p-8 text-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                      <div class="text-4xl mb-3">📋</div>
+                      <p class="text-base font-bold text-slate-800 dark:text-slate-200">Nenhuma loja cadastrada para este insumo.</p>
+                      <p class="text-xs text-slate-400 mt-1">Selecione outro mês ou cadastre as lojas na aba Gerenciar Lojas.</p>
                     </div>
                   }
                 </div>
@@ -2548,6 +2634,7 @@ export class BillCalculatorComponent implements OnDestroy {
 
   // --- METER PHOTO EVIDENCE (EVIDÊNCIA FOTOGRÁFICA DO MEDIDOR) ---
   meterPhotos = signal<Record<string, MeterPhotoRecord>>({});
+  prevMonthPhotos = signal<Record<string, MeterPhotoRecord>>({});
   activePhotoRecord = signal<MeterPhotoRecord | null>(null);
   showPhotoModal = signal<boolean>(false);
   isCapturingPhoto = signal<string | null>(null);
@@ -3254,6 +3341,23 @@ export class BillCalculatorComponent implements OnDestroy {
         });
     }
     this.previousReadings.set(prevMap);
+
+    // Carrega fotos do mês anterior para comparação visual na Rota Guiada
+    this.indexedDb.getMeterPhotosForMonth(type, prevMonth).then(async prevPhotos => {
+      let combinedPrev: Record<string, MeterPhotoRecord> = { ...prevPhotos };
+      if (this.indexedDb.isOnline()) {
+        try {
+          const cloudPrev = await this.supabaseService.fetchMeterPhotos(type, prevMonth);
+          if (cloudPrev) {
+            combinedPrev = { ...cloudPrev, ...combinedPrev };
+          }
+        } catch {}
+      }
+      this.prevMonthPhotos.set(combinedPrev);
+    }).catch(() => {
+      this.prevMonthPhotos.set({});
+    });
+
     this.saveStatus.set('saved');
 
     setTimeout(() => {
@@ -3635,6 +3739,7 @@ export class BillCalculatorComponent implements OnDestroy {
         contrato: store.contrato || '',
         storeName: store.name,
         routeOrder: store.routeOrder,
+        meterNumber: store.meterNumber || '',
         active: store.active !== false,
         consumption,
         rawConsumption,
@@ -3765,6 +3870,36 @@ export class BillCalculatorComponent implements OnDestroy {
     const total = this.tableData().length;
     if (this.stepIndex() < total - 1) {
       this.stepIndex.update(i => i + 1);
+    }
+  }
+
+  saveAndNextStep(stepStore: any) {
+    if (!stepStore) return;
+
+    // Se houver anomalia crítica não auditada pelo técnico na leitura digitada,
+    // aciona o modal de auditoria para confirmação antes de avançar para a próxima loja
+    if (stepStore.validationAlert.hasAlert && !stepStore.anomalyConfirmed && stepStore.isRead) {
+      this.openAnomalyModal(stepStore);
+      return;
+    }
+
+    // Salva a medição no banco/offline
+    this.internalSave();
+    this.indexedDb.showToast(`✓ Salvo: ${stepStore.luc} - ${stepStore.storeName}`);
+
+    const list = this.tableData();
+    const curr = this.stepIndex();
+    if (curr < list.length - 1) {
+      this.stepIndex.set(curr + 1);
+    } else {
+      // Chegou ao fim da rota: verifica se há alguma loja pendente para trás
+      const pendingIdx = list.findIndex(item => !item.isRead);
+      if (pendingIdx !== -1) {
+        this.stepIndex.set(pendingIdx);
+        this.indexedDb.showToast(`🏁 Fim da rota! Saltando para pendente: ${list[pendingIdx].luc}`);
+      } else {
+        this.indexedDb.showToast('🎉 Parabéns! Todas as lojas da rota foram lidas!');
+      }
     }
   }
 
@@ -4360,7 +4495,12 @@ export class BillCalculatorComponent implements OnDestroy {
     this.indexedDb.showToast(`⚡ Fila finalizada: ${success} leitura(s) extraídas com sucesso, ${fail} não detectadas.`);
   }
 
-  openPhotoViewer(storeId: string) {
+  openPhotoViewer(storeId: string, customRecord?: MeterPhotoRecord) {
+    if (customRecord) {
+      this.activePhotoRecord.set(customRecord);
+      this.showPhotoModal.set(true);
+      return;
+    }
     const photo = this.meterPhotos()[storeId];
     if (photo) {
       this.activePhotoRecord.set(photo);

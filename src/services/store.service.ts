@@ -8,6 +8,7 @@ export interface Store {
   contrato?: string; // Número do Contrato
   name: string;      // Nome da Loja
   routeOrder?: number; // Ordem física no corredor / rota do leiturista (1, 2, 3...)
+  meterNumber?: string; // Número de série / identificador do medidor físico (relógio)
   
   // Status de Atividade (Preservação de Histórico)
   active: boolean;             // true = Ativa no rateio atual, false = Inativa
@@ -39,11 +40,11 @@ export class StoreService {
   private supabase = inject(SupabaseService);
 
   private defaultStores: Store[] = [
-    { id: '1', luc: 'L-101', contrato: '10423', name: 'Zara Moda', active: true, usesLuz: true, usesAgua: true, usesGas: false },
-    { id: '2', luc: 'L-104', contrato: '10428', name: 'Burger King', active: true, usesLuz: true, usesAgua: true, usesGas: true },
-    { id: '3', luc: 'L-205', contrato: '20511', name: 'Livraria Leitura', active: true, usesLuz: true, usesAgua: false, usesGas: false },
-    { id: '4', luc: 'Q-012', contrato: '30114', name: 'Samsung Store', active: true, usesLuz: true, usesAgua: false, usesGas: false },
-    { id: '5', luc: 'Q-015', contrato: '30118', name: 'Kopenhagen', active: true, usesLuz: true, usesAgua: true, usesGas: false },
+    { id: '1', luc: 'L-101', contrato: '10423', name: 'Zara Moda', active: true, usesLuz: true, usesAgua: true, usesGas: false, routeOrder: 1, meterNumber: 'REL-101' },
+    { id: '2', luc: 'L-104', contrato: '10428', name: 'Burger King', active: true, usesLuz: true, usesAgua: true, usesGas: true, routeOrder: 2, meterNumber: 'REL-104' },
+    { id: '3', luc: 'L-205', contrato: '20511', name: 'Livraria Leitura', active: true, usesLuz: true, usesAgua: false, usesGas: false, routeOrder: 3, meterNumber: 'REL-205' },
+    { id: '4', luc: 'Q-012', contrato: '30114', name: 'Samsung Store', active: true, usesLuz: true, usesAgua: false, usesGas: false, routeOrder: 4, meterNumber: 'REL-012' },
+    { id: '5', luc: 'Q-015', contrato: '30118', name: 'Kopenhagen', active: true, usesLuz: true, usesAgua: true, usesGas: false, routeOrder: 5, meterNumber: 'REL-015' },
   ];
 
   private storesSignal = signal<Store[]>(this.loadInitialStores());
