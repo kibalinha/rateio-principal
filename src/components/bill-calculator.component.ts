@@ -486,7 +486,7 @@ export interface AnomalyModalData {
           
           <!-- Main Table/Card Container -->
           <div class="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col">
-            <div class="p-3.5 md:p-5 border-b border-slate-200 dark:border-slate-800 flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-50 dark:bg-slate-850 gap-3">
+            <div class="p-3.5 md:p-5 border-b border-slate-200 dark:border-slate-800 flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-50 dark:bg-slate-900 gap-3">
               <div>
                 <h2 class="text-base md:text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
                   <span>Leituras & Coleta — {{ utilityType() | uppercase }}</span>
@@ -2377,7 +2377,7 @@ export interface AnomalyModalData {
                         <span class="font-mono text-slate-500">Const: {{ voucher.constant }} | Ajuste: {{ voucher.adjustment }}</span>
                       </div>
                     }
-                    <div class="px-3 py-2.5 flex justify-between items-center bg-slate-50 dark:bg-slate-850 font-bold">
+                    <div class="px-3 py-2.5 flex justify-between items-center bg-slate-50 dark:bg-slate-900 font-bold">
                       <span class="text-slate-800 dark:text-slate-200">Consumo Total Faturado</span>
                       <strong class="font-mono text-sm text-slate-900 dark:text-white">{{ voucher.consumption | number:'1.2-2' }} {{ voucher.unit }}</strong>
                     </div>
@@ -2439,7 +2439,7 @@ export interface AnomalyModalData {
               </div>
 
               <!-- Modal Bottom Actions -->
-              <div class="p-3 sm:p-4 bg-slate-50 dark:bg-slate-850 border-t border-slate-200 dark:border-slate-800 flex flex-wrap gap-2 justify-between items-center shrink-0">
+              <div class="p-3 sm:p-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex flex-wrap gap-2 justify-between items-center shrink-0">
                 <button type="button" 
                   (click)="closeStoreVoucher()" 
                   class="px-3.5 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 text-slate-700 dark:text-slate-200 font-bold text-xs cursor-pointer transition-colors">
@@ -2506,7 +2506,7 @@ export interface AnomalyModalData {
 
             <!-- Modal Content & Comparison Box -->
             <div class="p-4 sm:p-6 space-y-4 text-xs sm:text-sm">
-              <div class="p-3.5 rounded-xl border bg-slate-50 dark:bg-slate-850/60 border-slate-200 dark:border-slate-750 space-y-2">
+              <div class="p-3.5 rounded-xl border bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 space-y-2">
                 <p class="text-slate-700 dark:text-slate-200 leading-relaxed font-medium">
                   {{ anomaly.message }}
                 </p>
@@ -2548,7 +2548,7 @@ export interface AnomalyModalData {
             </div>
 
             <!-- Modal Action Buttons -->
-            <div class="p-4 bg-slate-50 dark:bg-slate-850 border-t border-slate-200 dark:border-slate-800 flex flex-wrap gap-2 justify-end items-center">
+            <div class="p-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex flex-wrap gap-2 justify-end items-center">
               <button type="button" 
                       (click)="closeAnomalyModal()" 
                       class="px-3.5 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-650 text-slate-700 dark:text-slate-200 font-bold text-xs cursor-pointer transition-colors">
@@ -2635,8 +2635,8 @@ export interface AnomalyModalData {
               <!-- PILAR 1: 100% DAS LOJAS ATIVAS LIDAS -->
               <div class="p-4 rounded-2xl border transition-all"
                    [class]="closingChecklist().readings.passed 
-                     ? 'bg-white dark:bg-slate-850 border-emerald-300 dark:border-emerald-800/70' 
-                     : 'bg-white dark:bg-slate-850 border-amber-300 dark:border-amber-800/70'">
+                     ? 'bg-white dark:bg-slate-900 border-emerald-300 dark:border-emerald-800/70' 
+                     : 'bg-white dark:bg-slate-900 border-amber-300 dark:border-amber-800/70'">
                 <div class="flex items-center justify-between gap-2 mb-2">
                   <div class="flex items-center gap-2">
                     <span class="text-lg">{{ closingChecklist().readings.passed ? '✅' : '⏳' }}</span>
@@ -2675,8 +2675,8 @@ export interface AnomalyModalData {
               <!-- PILAR 2: ZERO INCONSISTÊNCIAS / AUDITORIA DE ANOMALIAS -->
               <div class="p-4 rounded-2xl border transition-all"
                    [class]="closingChecklist().anomalies.passed 
-                     ? 'bg-white dark:bg-slate-850 border-emerald-300 dark:border-emerald-800/70' 
-                     : 'bg-white dark:bg-slate-850 border-rose-300 dark:border-rose-800/70'">
+                     ? 'bg-white dark:bg-slate-900 border-emerald-300 dark:border-emerald-800/70' 
+                     : 'bg-white dark:bg-slate-900 border-rose-300 dark:border-rose-800/70'">
                 <div class="flex items-center justify-between gap-2 mb-2">
                   <div class="flex items-center gap-2">
                     <span class="text-lg">{{ closingChecklist().anomalies.passed ? '✅' : '🚨' }}</span>
@@ -2720,8 +2720,8 @@ export interface AnomalyModalData {
               <!-- PILAR 3: CONCILIAÇÃO DA CONCESSIONÁRIA & SAP -->
               <div class="p-4 rounded-2xl border transition-all"
                    [class]="closingChecklist().reconciliation.passed 
-                     ? 'bg-white dark:bg-slate-850 border-emerald-300 dark:border-emerald-800/70' 
-                     : 'bg-white dark:bg-slate-850 border-blue-300 dark:border-blue-800/70'">
+                     ? 'bg-white dark:bg-slate-900 border-emerald-300 dark:border-emerald-800/70' 
+                     : 'bg-white dark:bg-slate-900 border-blue-300 dark:border-blue-800/70'">
                 <div class="flex items-center justify-between gap-2 mb-2">
                   <div class="flex items-center gap-2">
                     <span class="text-lg">⚖️</span>
@@ -2775,7 +2775,7 @@ export interface AnomalyModalData {
               <div class="p-4 rounded-2xl border transition-all"
                    [class]="isLocked() 
                      ? 'bg-amber-50/50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800' 
-                     : 'bg-white dark:bg-slate-850 border-slate-200 dark:border-slate-800'">
+                     : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'">
                 <div class="flex items-center justify-between gap-2 mb-2">
                   <div class="flex items-center gap-2">
                     <span class="text-lg">{{ isLocked() ? '🔒' : '🔓' }}</span>

@@ -238,7 +238,7 @@ type ViewMode = 'annual' | 'monthly';
                                <th class="p-3 text-right">% Total</th>
                             </tr>
                          </thead>
-                         <tbody class="divide-y divide-slate-100 dark:divide-slate-850">
+                         <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
                             @for (store of monthlyTopStores(); track store.name; let i = $index) {
                                <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                                   <td class="p-3 font-mono text-slate-400 text-xs">#{{ i + 1 }}</td>

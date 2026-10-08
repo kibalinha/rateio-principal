@@ -432,7 +432,7 @@ interface ParsedStoreRow {
             </thead>
             <tbody class="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
               @for (store of filteredStores(); track store.id) {
-                <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group" [class.bg-slate-50/50]="store.active === false" [class.dark:bg-slate-850/30]="store.active === false">
+                <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group" [class.bg-slate-50/50]="store.active === false" [class.dark:bg-slate-800/30]="store.active === false">
                   <td class="p-3.5 pl-4 text-center">
                     @if (store.routeOrder) {
                       <span class="inline-flex items-center justify-center min-w-7 px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 shadow-2xs" title="Posição {{ store.routeOrder }} na rota de leitura">
