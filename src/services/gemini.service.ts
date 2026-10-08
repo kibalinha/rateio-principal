@@ -224,12 +224,13 @@ Analise a foto deste medidor (relógio analógico de roletes mecânicos ou visor
 OBJETIVO:
 Identificar o valor numérico acumulado atual de consumo no mostrador.
 
-REGRAS:
-1. Extraia APENAS o valor do consumo acumulado principal.
-2. IGNORE número de série, ano, modelo, tensão (ex: 220V, 380V), amperagem ou código de barras.
-3. Se houver dígitos vermelhos (decimais) no final, foque nos dígitos pretos inteiros ou inclua o valor numérico exato.
-4. Se o rolete mecânico estiver entre dois números, use o dígito mais baixo já completado.
-5. Responda ESTRITAMENTE em formato JSON com esta estrutura:
+REGRAS OBRIGATÓRIAS DE LEITURA E FORMATAÇÃO:
+1. Extraia o valor do consumo acumulado principal exibido no mostrador.
+2. NUNCA use ponto ou vírgula como separador de milhar no número. "reading" DEVE ser um número numérico puro (exemplo: 1510 e JAMAIS 1.510 para significar mil quinhentos e dez). Se o relógio marcar 1510 kWh ou m³, retorne 1510.
+3. Foque sempre nos dígitos pretos inteiros. Na grande maioria dos medidores industriais de shopping (hidrômetros e relógios de luz), os dígitos pretos são a parte inteira (ex: 1510) e os dígitos vermelhos são frações/decimais. NÃO confunda os dígitos inteiros pretos com decimais (se houver 4 dígitos pretos "1510", o valor é 1510, NÃO é 1,510 nem 1.51).
+4. IGNORE número de série, ano, modelo, tensão (ex: 220V, 380V), amperagem ou código de barras.
+5. Se o rolete mecânico estiver entre dois números, use o dígito mais baixo já completado.
+6. Responda ESTRITAMENTE em formato JSON com esta estrutura:
 {
   "reading": 12345,
   "detectedDigits": "12345",
@@ -289,13 +290,7 @@ Se o visor estiver ilegível, escuro ou sem medidor visível:
       const content = data.choices?.[0]?.message?.content || '{}';
       const parsed = JSON.parse(content);
 
-      let num: number | null = null;
-      if (typeof parsed.reading === 'number' && !isNaN(parsed.reading)) {
-        num = parsed.reading;
-      } else if (parsed.detectedDigits) {
-        const match = String(parsed.detectedDigits).match(/[\d.]+/);
-        if (match) num = parseFloat(match[0]);
-      }
+      const num = this.parseOcrNumber(parsed.reading, parsed.detectedDigits);
 
       return {
         success: num !== null,
@@ -360,12 +355,13 @@ Analise a imagem deste medidor (relógio analógico de roletes, ponteiros ou dis
 OBJETIVO PRINCIPAL:
 Identificar e extrair com máxima acurácia o número atual acumulado de consumo exibido no display/contador.
 
-REGRAS DE LEITURA:
-1. FOQUE EXCLUSIVAMENTE nos roletes/display que indicam a medição acumulada de consumo.
-2. IGNORE qualquer número de série, ano de fabricação, código de barras, modelo, tensão (ex: 220V, 380V), amperagem ou constante do disco.
-3. Se houver dígitos decimais (ex: dígitos em vermelho ou após a vírgula), extraia o número prioritariamente como inteiro dos dígitos pretos principais ou com a vírgula/ponto se necessário.
-4. Se o relógio estiver entre dois números num rolete, considere o dígito mais baixo já ultrapassado (regra padrão de leituristas de utilidades).
-5. Responda ESTRITAMENTE em formato JSON compatível com:
+REGRAS OBRIGATÓRIAS DE LEITURA E FORMATAÇÃO:
+1. Extraia o valor do consumo acumulado principal exibido no mostrador.
+2. NUNCA use ponto ou vírgula como separador de milhar no número. "reading" DEVE ser um número numérico puro (exemplo: 1510 e JAMAIS 1.510 para significar mil quinhentos e dez). Se o relógio marcar 1510 kWh ou m³, retorne 1510.
+3. Foque prioritariamente nos dígitos pretos inteiros. Na grande maioria dos medidores industriais de shopping (hidrômetros e relógios de luz), os dígitos pretos são a parte inteira (ex: 1510) e os dígitos vermelhos são frações/decimais. NÃO confunda os dígitos inteiros pretos com decimais (se houver 4 dígitos pretos "1510", o valor é 1510, NÃO é 1,510 nem 1.51).
+4. IGNORE qualquer número de série, ano de fabricação, código de barras, modelo, tensão (ex: 220V, 380V), amperagem ou constante do disco.
+5. Se o relógio estiver entre dois números num rolete, considere o dígito mais baixo já ultrapassado (regra padrão de leituristas de utilidades).
+6. Responda ESTRITAMENTE em formato JSON compatível com:
 {
   "reading": 12345,
   "detectedDigits": "12345",
@@ -408,13 +404,7 @@ Se a imagem estiver sem medidor, com desfoque total ou ilegível:
 
       try {
         const parsed = JSON.parse(cleanJson);
-        let num: number | null = null;
-        if (typeof parsed.reading === 'number' && !isNaN(parsed.reading)) {
-          num = parsed.reading;
-        } else if (parsed.detectedDigits) {
-          const match = String(parsed.detectedDigits).match(/[\d.]+/);
-          if (match) num = parseFloat(match[0]);
-        }
+        const num = this.parseOcrNumber(parsed.reading, parsed.detectedDigits);
 
         return {
           success: num !== null,
@@ -429,20 +419,22 @@ Se a imagem estiver sem medidor, com desfoque total ou ilegível:
         };
       } catch (e) {
         // Fallback: extração por regex caso o JSON esteja com formatação residual
-        const numMatch = rawText.match(/(\d{2,8}(?:\.\d{1,3})?)/);
+        const numMatch = rawText.match(/(\d{2,8}(?:[.,]\d{1,3})?)/);
         if (numMatch) {
-          const val = parseFloat(numMatch[1]);
-          return {
-            success: true,
-            reading: val,
-            detectedDigits: numMatch[1],
-            meterType: 'indeterminado',
-            confidence: 'medium',
-            explanation: `Leitura aproximada detectada pelo Gemini: ${val}`,
-            provider: 'gemini',
-            modelName: isFallback ? 'Gemini 3.8 Flash (Fallback)' : 'Gemini 3.8 Flash',
-            fallbackUsed: isFallback
-          };
+          const val = this.parseOcrNumber(numMatch[1]);
+          if (val !== null) {
+            return {
+              success: true,
+              reading: val,
+              detectedDigits: numMatch[1],
+              meterType: 'indeterminado',
+              confidence: 'medium',
+              explanation: `Leitura aproximada detectada pelo Gemini: ${val}`,
+              provider: 'gemini',
+              modelName: isFallback ? 'Gemini 3.8 Flash (Fallback)' : 'Gemini 3.8 Flash',
+              fallbackUsed: isFallback
+            };
+          }
         }
         return {
           success: false,
@@ -467,6 +459,62 @@ Se a imagem estiver sem medidor, com desfoque total ou ilegível:
         fallbackUsed: isFallback
       };
     }
+  }
+
+  /**
+   * Sanitiza e normaliza números extraídos por OCR.
+   * Evita que separadores de milhar como "1.510" ou "1,510" sejam interpretados
+   * como decimais pequenos (1.51), garantindo a grandeza real do medidor.
+   */
+  private parseOcrNumber(rawVal: any, detectedDigits?: any): number | null {
+    if (typeof rawVal === 'number' && !isNaN(rawVal)) {
+      // Se for um número decimal cuja string original tem padrão de milhar (ex: "1.510" virou 1.51 em JS)
+      if (detectedDigits) {
+        const digitsStr = String(detectedDigits).trim();
+        if (/^\d{1,3}\.\d{3}$/.test(digitsStr)) {
+          return parseInt(digitsStr.replace('.', ''), 10);
+        }
+        if (/^\d{1,3},\d{3}$/.test(digitsStr)) {
+          return parseInt(digitsStr.replace(',', ''), 10);
+        }
+      }
+      return rawVal;
+    }
+
+    const str = String(rawVal ?? detectedDigits ?? '').trim();
+    if (!str) return null;
+
+    // Caso "1.510" ou "12.345" com ponto separador de milhar brasileiro (sem decimais)
+    if (/^\d{1,3}\.\d{3}$/.test(str)) {
+      return parseInt(str.replace('.', ''), 10);
+    }
+
+    // Caso brasileiro com milhar e decimal: "1.510,5" -> 1510.5
+    if (str.includes('.') && str.includes(',')) {
+      const clean = str.replace(/\./g, '').replace(',', '.');
+      const n = parseFloat(clean);
+      return isNaN(n) ? null : n;
+    }
+
+    // Caso com vírgula de milhar: "1,510" -> 1510
+    if (/^\d{1,3},\d{3}$/.test(str)) {
+      return parseInt(str.replace(',', ''), 10);
+    }
+
+    // Se tiver apenas vírgula com 1 ou 2 casas (ex: "1510,5") -> 1510.5
+    if (str.includes(',')) {
+      const clean = str.replace(',', '.');
+      const n = parseFloat(clean);
+      return isNaN(n) ? null : n;
+    }
+
+    const match = str.match(/[\d.]+/);
+    if (match) {
+      const parsed = parseFloat(match[0]);
+      return isNaN(parsed) ? null : parsed;
+    }
+
+    return null;
   }
 
   async analyzeRateio(data: any): Promise<string> {

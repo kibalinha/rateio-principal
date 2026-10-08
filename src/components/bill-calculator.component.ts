@@ -2839,6 +2839,25 @@ export class BillCalculatorComponent implements OnDestroy {
       // Tech can edit 'reading', 'note', 'hasPhoto', 'photoTimestamp'
       if (this.authService.isTech() && field !== 'reading' && field !== 'note' && field !== 'hasPhoto' && field !== 'photoTimestamp') return;
 
+      let cleanValue = value;
+      if (field === 'reading') {
+        if (typeof value === 'string') {
+          const str = value.trim();
+          if (/^\d{1,3}\.\d{3}$/.test(str)) {
+            cleanValue = parseInt(str.replace('.', ''), 10);
+          } else if (str.includes('.') && str.includes(',')) {
+            cleanValue = parseFloat(str.replace(/\./g, '').replace(',', '.'));
+          } else if (str.includes(',')) {
+            cleanValue = parseFloat(str.replace(',', '.'));
+          } else {
+            cleanValue = parseFloat(str);
+          }
+        }
+        if (cleanValue === null || cleanValue === undefined || isNaN(cleanValue)) {
+          cleanValue = 0;
+        }
+      }
+
       const type = this.utilityType();
 
       this.readings.update(curr => {
@@ -2846,7 +2865,7 @@ export class BillCalculatorComponent implements OnDestroy {
           const currentData = map.get(storeId) || this.createDefaultReading();
           
           const safeData: StoreReading = currentData;
-          const newData: StoreReading = { ...safeData, [field]: value };
+          const newData: StoreReading = { ...safeData, [field]: cleanValue };
           
           map.set(storeId, newData);
 
@@ -3244,6 +3263,9 @@ export class BillCalculatorComponent implements OnDestroy {
                   if (cellStr.includes(',') && cellStr.includes('.')) {
                      // e.g., "1.234,56" -> "1234.56"
                      cleanVal = cellStr.replace(/\./g, '').replace(',', '.');
+                  } else if (/^\d{1,3}\.\d{3}$/.test(cellStr)) {
+                     // e.g., "1.510" (milhar brasileiro sem decimais) -> "1510"
+                     cleanVal = cellStr.replace(/\./g, '');
                   } else if (cellStr.includes(',')) {
                      // e.g., "1234,56" -> "1234.56"
                      cleanVal = cellStr.replace(',', '.');
