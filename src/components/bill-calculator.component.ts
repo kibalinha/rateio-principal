@@ -8,6 +8,7 @@ import { ReportExportService, StoreVoucherData } from '../services/report-export
 import { IndexedDbService, MeterPhotoRecord } from '../services/indexed-db.service';
 import { GeminiService, MeterOcrResult } from '../services/gemini.service';
 import { SupabaseService } from '../services/supabase.service';
+import * as XLSX from 'xlsx';
 
 interface CostItem {
   id: string;
@@ -15,13 +16,24 @@ interface CostItem {
   value: number;
 }
 
-// Definição das colunas disponíveis para importação
-type ColumnDef = {
-  key: string;
-  label: string;
-  placeholder: string;
-  width?: string;
-};
+export interface ExcelImportRowPreview {
+  rawRow: Record<string, any>;
+  matchedStore?: Store;
+  storeName: string;
+  luc: string;
+  reading: number;
+  prevReading: number;
+  consumptionPreview: number;
+  constant?: number;
+  adjustment?: number;
+  virtual?: number;
+  adjustmentAdd?: number;
+  fcm?: number;
+  fluxoCost?: number;
+  note?: string;
+  status: 'matched' | 'unmatched';
+  message: string;
+}
 
 export interface AnomalyModalData {
   storeId: string;
@@ -531,63 +543,19 @@ export interface AnomalyModalData {
 
                  <!-- Botão Importar (ADM) -->
                  @if (authService.canImport()) {
-                   <button (click)="toggleImport()" 
-                      class="text-xs px-3 py-1.5 bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-900 border border-teal-200 dark:border-teal-800 rounded font-medium transition-colors flex items-center gap-1 whitespace-nowrap">
-                      <span class="md:hidden">Importar</span>
-                      <span class="hidden md:inline">Importar por colunas (Grid)</span>
-                   </button>
-                 }
-                 <div class="text-xs md:text-sm text-slate-600 dark:text-slate-300 md:ml-2 whitespace-nowrap">
-                    Total: <strong class="text-slate-900 dark:text-white">{{ totalDistributedCost() | currency:'BRL' }}</strong>
-                 </div>
-              </div>
-            </div>
-
-            <!-- IMPORT AREA: COLUMNAR PASTE -->
-            @if (showImport()) {
-              <div class="bg-teal-50 dark:bg-teal-950/40 p-4 md:p-6 border-b border-teal-100 dark:border-teal-900 animate-fade-in">
-                 <div class="flex justify-between items-start mb-4">
-                    <div>
-                      <h4 class="text-base font-bold text-teal-800 dark:text-teal-200">Importação por Colunas</h4>
-                      <p class="text-xs text-teal-600 dark:text-teal-400 mt-1 hidden md:block">
-                         Copie as colunas do seu Excel e cole nas caixas abaixo. 
-                      </p>
-                    </div>
-                    <button (click)="toggleImport()" class="text-teal-400 hover:text-teal-600 dark:hover:text-teal-200 font-bold text-lg">✕</button>
-                 </div>
-
-                 <!-- GRID INPUTS -->
-                 <div class="flex gap-2 overflow-x-auto pb-4 snap-x">
-                    @for (col of importColumns(); track col.key; let idx = $index) {
-                      <div class="flex-shrink-0 flex flex-col gap-1 w-[120px] snap-start">
-                         <label class="text-[10px] font-bold text-teal-700 dark:text-teal-300 uppercase truncate">{{ col.label }}</label>
-                         <textarea 
-                            [placeholder]="col.placeholder"
-                            [value]="getPastedColumnValue(col.key)"
-                            (paste)="onPasteColumn($event, col.key, idx)"
-                            (input)="onInputColumn($event, col.key)"
-                            class="w-full h-32 md:h-48 p-2 text-xs font-mono border border-teal-300 dark:border-teal-800 rounded focus:ring-2 focus:ring-teal-500 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 shadow-inner resize-none whitespace-pre overflow-y-scroll"></textarea>
-                      </div>
-                    }
-                 </div>
-
-                 <div class="flex flex-col md:flex-row justify-between items-center bg-teal-100 dark:bg-teal-900/40 p-2 rounded gap-2">
-                    <div class="flex items-center gap-2 w-full md:w-auto justify-between md:justify-start">
-                      <label class="flex items-center gap-1 cursor-pointer text-xs text-teal-800 dark:text-teal-300">
-                          <input type="checkbox" [ngModel]="skipHeader()" (ngModelChange)="skipHeader.set($event)" class="rounded text-teal-600">
-                          Ignorar cabeçalho
-                      </label>
-                      <span class="text-xs font-bold text-teal-700 dark:text-teal-300">Linhas: {{ detectedRows() }}</span>
-                    </div>
-
-                    <button (click)="executeColumnImport()" 
-                      [disabled]="detectedRows() === 0"
-                      class="w-full md:w-auto px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700 transition-colors shadow-sm font-bold text-xs uppercase tracking-wide disabled:opacity-50 disabled:cursor-not-allowed">
-                       Processar
+                    <button (click)="openExcelImportModal()" 
+                       class="text-xs px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-semibold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                       title="Importar leituras diretamente de planilha Excel (.xlsx, .xls, .csv ou Ctrl+V)">
+                       <span>📥</span>
+                       <span class="hidden sm:inline">Importar Planilha</span>
+                       <span class="sm:hidden">Importar</span>
                     </button>
-                 </div>
-              </div>
-            }
+                  }
+                  <div class="text-xs md:text-sm text-slate-600 dark:text-slate-300 md:ml-2 whitespace-nowrap">
+                     Total: <strong class="text-slate-900 dark:text-white">{{ totalDistributedCost() | currency:'BRL' }}</strong>
+                  </div>
+               </div>
+            </div>
 
             <!-- GAS 100% PROPORTIONAL DISTRIBUTION BANNER -->
             @if (utilityType() === 'gas' && gasDistributionStats(); as gStats) {
@@ -2586,6 +2554,332 @@ export interface AnomalyModalData {
         </div>
       }
 
+      <!-- MODAL DE IMPORTAÇÃO INTELIGENTE DE PLANILHA EXCEL -->
+      @if (showExcelImportModal()) {
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+          <div class="absolute inset-0 bg-black/75 backdrop-blur-xs animate-fade-in" (click)="closeExcelImportModal()"></div>
+
+          <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-4xl relative z-10 border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[92vh] animate-scale-in">
+            
+            <!-- Modal Header -->
+            <div class="p-4 sm:p-5 bg-gradient-to-r from-teal-800 to-slate-900 text-white flex items-center justify-between border-b border-teal-700/50">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-2xl bg-teal-500/20 border border-teal-500/30 flex items-center justify-center text-xl shrink-0">
+                  📥
+                </div>
+                <div>
+                  <h3 class="font-extrabold text-base sm:text-lg leading-tight flex items-center gap-2">
+                    <span>Importar Planilha de Leituras</span>
+                    <span class="text-[10px] bg-teal-500/30 text-teal-200 border border-teal-400/30 px-2 py-0.5 rounded-full font-mono uppercase font-bold">
+                      {{ utilityType() }}
+                    </span>
+                  </h3>
+                  <p class="text-xs text-teal-200/80 mt-0.5 font-medium">
+                    Carregue o arquivo Excel (.xlsx, .xls, .csv) ou cole os dados para atualizar as lojas do mês.
+                  </p>
+                </div>
+              </div>
+              <button (click)="closeExcelImportModal()" class="text-slate-400 hover:text-white text-xl font-bold p-1 cursor-pointer">✕</button>
+            </div>
+
+            <!-- Modal Body (Scrollable) -->
+            <div class="p-4 sm:p-6 overflow-y-auto space-y-5 text-slate-800 dark:text-slate-200 custom-scrollbar">
+              
+              <!-- Action Bar: Method Switcher & Download Template Button -->
+              <div class="flex flex-wrap items-center justify-between gap-3 bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-700">
+                <div class="inline-flex p-1 bg-slate-200 dark:bg-slate-700 rounded-xl gap-1">
+                  <button type="button"
+                    (click)="importMethod.set('file')"
+                    [class]="importMethod() === 'file' ? 'bg-white dark:bg-slate-900 text-teal-700 dark:text-teal-300 font-extrabold shadow-xs' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'"
+                    class="px-3.5 py-1.5 rounded-lg text-xs transition-all flex items-center gap-1.5 cursor-pointer">
+                    <span>📁 Arquivo (.xlsx / .csv)</span>
+                  </button>
+                  <button type="button"
+                    (click)="importMethod.set('paste')"
+                    [class]="importMethod() === 'paste' ? 'bg-white dark:bg-slate-900 text-teal-700 dark:text-teal-300 font-extrabold shadow-xs' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'"
+                    class="px-3.5 py-1.5 rounded-lg text-xs transition-all flex items-center gap-1.5 cursor-pointer">
+                    <span>📋 Colar Tabela (Ctrl+V)</span>
+                  </button>
+                </div>
+
+                <!-- Botão Baixar Modelo Formatado -->
+                <button type="button"
+                  (click)="downloadImportTemplate()"
+                  class="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="Baixar planilha padrão pré-preenchida com todas as lojas cadastradas">
+                  <span>📥</span>
+                  <span>Baixar Planilha Modelo (.xlsx)</span>
+                </button>
+              </div>
+
+              <!-- MÉTODO 1: UPLOAD / DRAG & DROP -->
+              @if (importMethod() === 'file') {
+                <div 
+                  (dragover)="$event.preventDefault(); isDraggingFile.set(true)"
+                  (dragleave)="isDraggingFile.set(false)"
+                  (drop)="onExcelFileDrop($event)"
+                  [class]="isDraggingFile() ? 'border-teal-500 bg-teal-50/50 dark:bg-teal-950/40 ring-4 ring-teal-500/20' : 'border-slate-300 dark:border-slate-700 hover:border-teal-400 bg-slate-50/50 dark:bg-slate-800/40'"
+                  class="border-2 border-dashed rounded-3xl p-6 sm:p-8 text-center transition-all cursor-pointer relative group">
+                  <input type="file" 
+                         accept=".xlsx,.xls,.csv" 
+                         (change)="onExcelFileSelected($event)" 
+                         class="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10">
+                  <div class="flex flex-col items-center gap-2 pointer-events-none">
+                    <div class="w-14 h-14 rounded-2xl bg-teal-100 dark:bg-teal-950 text-teal-700 dark:text-teal-300 flex items-center justify-center text-3xl shadow-sm group-hover:scale-105 transition-transform">
+                      📊
+                    </div>
+                    @if (importedFileName()) {
+                      <div class="font-extrabold text-sm sm:text-base text-teal-700 dark:text-teal-300">
+                        {{ importedFileName() }}
+                      </div>
+                      <span class="text-xs text-slate-500 dark:text-slate-400">
+                        Arquivo carregado! {{ rawExcelRows().length }} linhas detectadas. Clique ou arraste outro para substituir.
+                      </span>
+                    } @else {
+                      <div class="font-bold text-sm sm:text-base text-slate-800 dark:text-slate-100">
+                        Arraste sua planilha Excel aqui ou clique para selecionar
+                      </div>
+                      <p class="text-xs text-slate-500 dark:text-slate-400 max-w-md">
+                        Formatos suportados: <strong>.xlsx, .xls, .csv</strong>. O sistema reconhece automaticamente os nomes e LUCs das lojas.
+                      </p>
+                    }
+                  </div>
+                </div>
+              }
+
+              <!-- MÉTODO 2: PASTE RAW TABLE (Ctrl+V) -->
+              @if (importMethod() === 'paste') {
+                <div class="space-y-2">
+                  <label class="text-xs font-bold text-slate-700 dark:text-slate-300 flex justify-between items-center">
+                    <span>Cole as linhas copiadas do seu Excel abaixo (com cabeçalho):</span>
+                    <span class="text-[11px] text-slate-400">Dica: Selecione as células no Excel, dê Ctrl+C e cole aqui (Ctrl+V)</span>
+                  </label>
+                  <textarea 
+                    [(ngModel)]="importPastedText"
+                    placeholder="LUC&#9;Loja&#9;Leitura Atual&#10;L-101&#9;Farmácia Central&#9;1520&#10;L-102&#9;Café do Ponto&#9;840"
+                    rows="6"
+                    class="w-full p-3 font-mono text-xs border border-slate-300 dark:border-slate-700 rounded-2xl bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-teal-500 outline-hidden custom-scrollbar resize-y whitespace-pre"></textarea>
+                  <div class="flex justify-end">
+                    <button type="button" 
+                      (click)="processPastedText()"
+                      [disabled]="!importPastedText().trim()"
+                      class="px-4 py-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer">
+                      <span>⚡ Analisar Tabela Colada</span>
+                    </button>
+                  </div>
+                </div>
+              }
+
+              <!-- SEÇÃO DE MAPEAMENTO DE COLUNAS (Quando há dados carregados) -->
+              @if (rawExcelHeaders().length > 0) {
+                <div class="p-4 bg-slate-50 dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
+                  <div class="flex items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700 pb-2">
+                    <div class="flex items-center gap-2">
+                      <span class="text-base">🗂️</span>
+                      <strong class="text-xs font-bold text-slate-800 dark:text-white">Mapeamento de Colunas Detectadas</strong>
+                    </div>
+                    <span class="text-[11px] text-teal-700 dark:text-teal-300 font-semibold">
+                      {{ rawExcelHeaders().length }} colunas encontradas no arquivo
+                    </span>
+                  </div>
+
+                  <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+                    <!-- Coluna Loja / LUC (Obrigatória) -->
+                    <div>
+                      <label class="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                        Loja / LUC <span class="text-rose-500">*</span>
+                      </label>
+                      <select [ngModel]="columnMappings().luc" 
+                              (ngModelChange)="updateColumnMapping('luc', $event)"
+                              class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg font-mono text-xs focus:ring-1 focus:ring-teal-500">
+                        <option value="">-- Selecione a coluna --</option>
+                        @for (h of rawExcelHeaders(); track h) {
+                          <option [value]="h">{{ h }}</option>
+                        }
+                      </select>
+                    </div>
+
+                    <!-- Coluna Leitura Atual (Obrigatória) -->
+                    <div>
+                      <label class="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                        Leitura Atual <span class="text-rose-500">*</span>
+                      </label>
+                      <select [ngModel]="columnMappings().reading" 
+                              (ngModelChange)="updateColumnMapping('reading', $event)"
+                              class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg font-mono text-xs focus:ring-1 focus:ring-teal-500">
+                        <option value="">-- Selecione a coluna --</option>
+                        @for (h of rawExcelHeaders(); track h) {
+                          <option [value]="h">{{ h }}</option>
+                        }
+                      </select>
+                    </div>
+
+                    @if (utilityType() === 'luz' || utilityType() === 'agua') {
+                      <!-- Constante -->
+                      <div>
+                        <label class="font-bold text-slate-700 dark:text-slate-300 block mb-1">Constante (opcional)</label>
+                        <select [ngModel]="columnMappings().constant" 
+                                (ngModelChange)="updateColumnMapping('constant', $event)"
+                                class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg font-mono text-xs focus:ring-1 focus:ring-teal-500">
+                          <option value="">-- Nenhuma (Padrão 1) --</option>
+                          @for (h of rawExcelHeaders(); track h) {
+                            <option [value]="h">{{ h }}</option>
+                          }
+                        </select>
+                      </div>
+                    }
+
+                    <!-- Ajuste -->
+                    <div>
+                      <label class="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                        {{ utilityType() === 'gas' ? 'Ajuste (x) (opcional)' : 'Ajuste (opcional)' }}
+                      </label>
+                      <select [ngModel]="columnMappings().adjustment" 
+                              (ngModelChange)="updateColumnMapping('adjustment', $event)"
+                              class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg font-mono text-xs focus:ring-1 focus:ring-teal-500">
+                        <option value="">-- Nenhuma (Padrão) --</option>
+                        @for (h of rawExcelHeaders(); track h) {
+                          <option [value]="h">{{ h }}</option>
+                        }
+                      </select>
+                    </div>
+
+                    @if (utilityType() === 'gas') {
+                      <!-- FCM -->
+                      <div>
+                        <label class="font-bold text-slate-700 dark:text-slate-300 block mb-1">FCM (opcional)</label>
+                        <select [ngModel]="columnMappings().fcm" 
+                                (ngModelChange)="updateColumnMapping('fcm', $event)"
+                                class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg font-mono text-xs focus:ring-1 focus:ring-teal-500">
+                          <option value="">-- Nenhuma (Padrão 1.0727) --</option>
+                          @for (h of rawExcelHeaders(); track h) {
+                            <option [value]="h">{{ h }}</option>
+                          }
+                        </select>
+                      </div>
+                    }
+
+                    <!-- Observação -->
+                    <div>
+                      <label class="font-bold text-slate-700 dark:text-slate-300 block mb-1">Observação (opcional)</label>
+                      <select [ngModel]="columnMappings().note" 
+                              (ngModelChange)="updateColumnMapping('note', $event)"
+                              class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg font-mono text-xs focus:ring-1 focus:ring-teal-500">
+                        <option value="">-- Nenhuma --</option>
+                        @for (h of rawExcelHeaders(); track h) {
+                          <option [value]="h">{{ h }}</option>
+                        }
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- PRÉ-VISUALIZAÇÃO DOS DADOS / STATUS DAS LOJAS -->
+                <div class="space-y-3">
+                  <div class="flex items-center justify-between flex-wrap gap-2">
+                    <div class="flex items-center gap-3">
+                      <strong class="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <span>Prévia de Importação</span>
+                        <span class="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-slate-200 dark:bg-slate-700">
+                          {{ importStats().total }} linhas
+                        </span>
+                      </strong>
+                    </div>
+
+                    <div class="flex items-center gap-2 text-xs">
+                      <span class="px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold flex items-center gap-1">
+                        <span>✓</span>
+                        <span>{{ importStats().matched }} Lojas Encontradas</span>
+                      </span>
+                      @if (importStats().unmatched > 0) {
+                        <span class="px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 font-bold flex items-center gap-1">
+                          <span>⚠️</span>
+                          <span>{{ importStats().unmatched }} Não Localizadas</span>
+                        </span>
+                      }
+                    </div>
+                  </div>
+
+                  <!-- Tabela de Preview com Scroll -->
+                  <div class="max-h-60 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-2xl bg-white dark:bg-slate-900 custom-scrollbar">
+                    <table class="w-full text-left text-xs border-collapse">
+                      <thead class="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 sticky top-0 z-10 font-bold">
+                        <tr>
+                          <th class="p-2.5">Status</th>
+                          <th class="p-2.5">LUC / Ref</th>
+                          <th class="p-2.5">Loja Correspondente</th>
+                          <th class="p-2.5 text-right">Leitura Ant.</th>
+                          <th class="p-2.5 text-right">Nova Leitura</th>
+                          <th class="p-2.5 text-right">Consumo Previsto</th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+                        @for (row of importPreviewList(); track $index) {
+                          <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                              [class.bg-rose-50/40]="row.status === 'unmatched'"
+                              [class.dark:bg-rose-950/20]="row.status === 'unmatched'">
+                            <td class="p-2.5">
+                              @if (row.status === 'matched') {
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300">
+                                  ✓ Localizada
+                                </span>
+                              } @else {
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300" title="{{ row.message }}">
+                                  ⚠️ Não Encontrada
+                                </span>
+                              }
+                            </td>
+                            <td class="p-2.5 font-mono font-bold text-slate-700 dark:text-slate-200">
+                              {{ row.luc }}
+                            </td>
+                            <td class="p-2.5 font-semibold text-slate-800 dark:text-slate-100">
+                              {{ row.storeName }}
+                            </td>
+                            <td class="p-2.5 text-right font-mono text-slate-500">
+                              {{ row.prevReading | number:'1.0-0' }}
+                            </td>
+                            <td class="p-2.5 text-right font-mono font-bold"
+                                [class.text-teal-700]="row.reading > 0"
+                                [class.dark:text-teal-300]="row.reading > 0"
+                                [class.text-slate-400]="row.reading === 0">
+                              {{ row.reading > 0 ? (row.reading | number:'1.0-2') : '—' }}
+                            </td>
+                            <td class="p-2.5 text-right font-mono font-bold text-slate-700 dark:text-slate-200">
+                              {{ row.consumptionPreview | number:'1.0-2' }} {{ getUnit() }}
+                            </td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              }
+
+            </div>
+
+            <!-- Modal Footer Actions -->
+            <div class="p-4 bg-slate-50 dark:bg-slate-800/90 border-t border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-3 shrink-0">
+              <button type="button" 
+                      (click)="closeExcelImportModal()"
+                      class="px-4 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-colors cursor-pointer">
+                Cancelar
+              </button>
+
+              <div class="flex items-center gap-2">
+                <button type="button"
+                  (click)="confirmAndApplyExcelImport()"
+                  [disabled]="importStats().matched === 0"
+                  class="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer">
+                  <span>🚀</span>
+                  <span>Confirmar e Importar {{ importStats().matched }} Lojas</span>
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      }
+
       <!-- MODAL CHECKLIST DE AUDITORIA E FECHAMENTO MENSAL (PASSO 3: GESTÃO & CONTABILIDADE) -->
       @if (showClosingChecklistModal()) {
         <div class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
@@ -3094,10 +3388,25 @@ export class BillCalculatorComponent implements OnDestroy {
   // Stores Previous Month Data for Calculations
   previousReadings = signal<Map<string, { reading: number, consumption: number }>>(new Map());
   
-  // Import State
-  showImport = signal(false);
-  pastedData = signal<Record<string, string>>({}); // Stores the raw text for each column
-  skipHeader = signal(true);
+  // Excel Import State
+  showExcelImportModal = signal<boolean>(false);
+  importMethod = signal<'file' | 'paste'>('file');
+  importPastedText = signal<string>('');
+  importedFileName = signal<string>('');
+  rawExcelHeaders = signal<string[]>([]);
+  rawExcelRows = signal<Record<string, any>[]>([]);
+  columnMappings = signal<Record<string, string>>({
+    luc: '',
+    reading: '',
+    constant: '',
+    adjustment: '',
+    virtual: '',
+    adjustmentAdd: '',
+    fcm: '',
+    fluxoCost: '',
+    note: ''
+  });
+  isDraggingFile = signal<boolean>(false);
   
   // AI State
   isAnalyzing = signal(false);
@@ -3246,8 +3555,7 @@ export class BillCalculatorComponent implements OnDestroy {
     this.isProgrammaticLoading = true;
     this.saveStatus.set('saved');
     this.utilityType.set(type);
-    this.showImport.set(false);
-    this.resetImportState();
+    this.showExcelImportModal.set(false);
   }
 
   onMonthChange(newMonth: string) {
@@ -3261,177 +3569,355 @@ export class BillCalculatorComponent implements OnDestroy {
       return { reading: 0, constant: 1, virtual: 0, adjustment: 1, calculatedConsumption: 0 };
   }
 
-  // --- NEW IMPORT LOGIC (Columnar Inputs) ---
+  // --- NOVO MOTOR DE IMPORTAÇÃO INTELIGENTE DE PLANILHA EXCEL (.xlsx, .xls, .csv ou Ctrl+V) ---
 
-  toggleImport() {
-    if (!this.authService.canImport()) return;
+  importPreviewList = computed<ExcelImportRowPreview[]>(() => {
+    const rows = this.rawExcelRows();
+    if (rows.length === 0) return [];
 
-    if (!this.showImport()) {
-        this.resetImportState();
-        this.showImport.set(true);
-    } else {
-        this.showImport.set(false);
-    }
-  }
+    const mappings = this.columnMappings();
+    const stores = this.activeStores();
+    const prevReadings = this.previousReadings();
+    const type = this.utilityType();
 
-  resetImportState() {
-     this.pastedData.set({});
-     this.skipHeader.set(true);
-  }
+    const normalizeKey = (s: any) => String(s || '').toLowerCase().trim().replace(/[^a-z0-9]/gi, '');
 
-  // Define columns dynamically based on utility
-  importColumns = computed<ColumnDef[]>(() => {
-     const type = this.utilityType();
-     const cols: ColumnDef[] = [
-        { key: 'luc', label: 'LUC', placeholder: 'L-101\nL-102...', width: '100px' },
-        { key: 'reading', label: 'Leitura', placeholder: '1500\n1620...', width: '100px' }
-     ];
+    return rows.map((rawRow, idx) => {
+      const rawLucVal = mappings.luc ? String(rawRow[mappings.luc] || '').trim() : '';
+      const rawReadingVal = mappings.reading ? rawRow[mappings.reading] : '';
+      const reading = this.parseExcelNumber(rawReadingVal);
 
-     if (type === 'luz') {
-        cols.push({ key: 'constant', label: 'Constante', placeholder: '1\n40...', width: '80px' });
-     } else if (type === 'gas') {
-        cols.push({ key: 'adjustment', label: 'Ajuste (x)', placeholder: '1.34\n...', width: '80px' });
-     } else {
-        // Agua/Default
-     }
-     
-     // Add remaining fields (optional but good for power users)
-     cols.push({ key: 'virtual', label: 'Virtual', placeholder: '0\n0...', width: '80px' });
-     
-     if (type !== 'gas') {
-        cols.push({ key: 'adjustment', label: 'Ajuste', placeholder: '1\n1...', width: '80px' });
-     }
-     
-     if (type === 'gas') {
-         cols.push({ key: 'adjustmentAdd', label: 'Aj (+)', placeholder: '0...', width: '80px' });
-         cols.push({ key: 'fcm', label: 'FCM', placeholder: '1.07...', width: '80px' });
-         cols.push({ key: 'fluxoCost', label: 'Fluxo', placeholder: '0...', width: '80px' });
-     }
+      // Busca por correspondência inteligente (LUC, Nome da Loja, Contrato ou Medidor)
+      const normVal = normalizeKey(rawLucVal);
+      const matchedStore = stores.find(s => {
+        if (!normVal) return false;
+        if (normalizeKey(s.luc) === normVal) return true;
+        if (normalizeKey(s.name) === normVal) return true;
+        if (s.contrato && normalizeKey(s.contrato) === normVal) return true;
+        if (s.meterNumber && normalizeKey(s.meterNumber) === normVal) return true;
+        if (s.name && s.name.toLowerCase().includes(rawLucVal.toLowerCase())) return true;
+        return false;
+      });
 
-     return cols;
+      const prevData = matchedStore ? prevReadings.get(matchedStore.id) : null;
+      const prevReading = prevData ? prevData.reading : 0;
+      const diff = reading > prevReading ? (reading - prevReading) : 0;
+
+      // Valores adicionais opcionais
+      const constant = mappings.constant ? this.parseExcelNumber(rawRow[mappings.constant]) : 1;
+      const adjustment = mappings.adjustment ? this.parseExcelNumber(rawRow[mappings.adjustment]) : (type === 'gas' ? 1.347 : 1);
+      const virtual = mappings.virtual ? this.parseExcelNumber(rawRow[mappings.virtual]) : 0;
+      const adjustmentAdd = mappings.adjustmentAdd ? this.parseExcelNumber(rawRow[mappings.adjustmentAdd]) : 0;
+      const fcm = mappings.fcm ? this.parseExcelNumber(rawRow[mappings.fcm]) : 1.0727;
+      const fluxoCost = mappings.fluxoCost ? this.parseExcelNumber(rawRow[mappings.fluxoCost]) : 0;
+      const note = mappings.note ? String(rawRow[mappings.note] || '').trim() : '';
+
+      let consumptionPreview = 0;
+      if (virtual > 0) {
+        consumptionPreview = virtual;
+      } else if (type === 'gas') {
+        consumptionPreview = ((diff * adjustment) + adjustmentAdd) * fcm;
+      } else {
+        consumptionPreview = diff * constant * adjustment;
+      }
+
+      if (matchedStore) {
+        return {
+          rawRow,
+          matchedStore,
+          storeName: matchedStore.name,
+          luc: matchedStore.luc,
+          reading,
+          prevReading,
+          consumptionPreview,
+          constant,
+          adjustment,
+          virtual,
+          adjustmentAdd,
+          fcm,
+          fluxoCost,
+          note,
+          status: 'matched' as const,
+          message: reading > 0 ? `Leitura: ${reading} (${consumptionPreview.toFixed(1)} ${this.getUnit()})` : 'Leitura zerada'
+        };
+      } else {
+        return {
+          rawRow,
+          storeName: rawLucVal || `Linha ${idx + 1}`,
+          luc: rawLucVal || '—',
+          reading,
+          prevReading: 0,
+          consumptionPreview: 0,
+          status: 'unmatched' as const,
+          message: rawLucVal ? 'Loja não localizada no cadastro deste insumo' : 'Coluna de identificação vazia'
+        };
+      }
+    });
   });
 
-  getPastedColumnValue(key: string) {
-     return this.pastedData()[key] || '';
+  importStats = computed(() => {
+    const list = this.importPreviewList();
+    const total = list.length;
+    const matched = list.filter(r => r.status === 'matched').length;
+    const unmatched = total - matched;
+    const withReading = list.filter(r => r.status === 'matched' && r.reading > 0).length;
+    return { total, matched, unmatched, withReading };
+  });
+
+  private parseExcelNumber(val: any): number {
+    if (val === undefined || val === null || val === '') return 0;
+    if (typeof val === 'number') return isNaN(val) ? 0 : val;
+    let str = String(val).trim();
+    if (!str) return 0;
+    if (str.includes(',') && str.includes('.')) {
+      str = str.replace(/\./g, '').replace(',', '.');
+    } else if (/^\d{1,3}\.\d{3}$/.test(str)) {
+      str = str.replace(/\./g, '');
+    } else if (str.includes(',')) {
+      str = str.replace(',', '.');
+    }
+    const parsed = parseFloat(str);
+    return isNaN(parsed) ? 0 : parsed;
   }
 
-  onInputColumn(event: any, key: string) {
-     const val = event.target.value;
-     this.pastedData.update(curr => ({ ...curr, [key]: val }));
+  openExcelImportModal() {
+    if (!this.authService.canImport()) {
+      alert('Apenas administradores podem importar dados em lote.');
+      return;
+    }
+    this.importedFileName.set('');
+    this.importPastedText.set('');
+    this.rawExcelHeaders.set([]);
+    this.rawExcelRows.set([]);
+    this.columnMappings.set({
+      luc: '',
+      reading: '',
+      constant: '',
+      adjustment: '',
+      virtual: '',
+      adjustmentAdd: '',
+      fcm: '',
+      fluxoCost: '',
+      note: ''
+    });
+    this.showExcelImportModal.set(true);
   }
 
-  onPasteColumn(event: ClipboardEvent, key: string, colIndex: number) {
-     // If user pastes into the first column (LUC) AND content has tabs, we distribute it
-     // If user pastes into other columns OR content has no tabs, we just paste normally (handled by default if we don't preventDefault, but we want control)
-     
-     const text = event.clipboardData?.getData('text') || '';
-     
-     // SMART PASTE LOGIC
-     if (key === 'luc' && text.includes('\t')) {
-        event.preventDefault(); // Stop default paste
-        
-        const rows = text.split(/\r?\n/);
-        const cols = this.importColumns();
-        const newData: Record<string, string[]> = {};
-        
-        // Initialize arrays
-        cols.forEach(c => newData[c.key] = []);
-
-        rows.forEach(row => {
-            if (!row.trim()) return;
-            const parts = row.split('\t');
-            // Distribute parts to columns based on index
-            parts.forEach((val, idx) => {
-               if (cols[idx]) {
-                   newData[cols[idx].key].push(val);
-               }
-            });
-        });
-
-        // Join back to strings
-        const updateObj: Record<string, string> = {};
-        cols.forEach(c => {
-            if (newData[c.key].length > 0) {
-                updateObj[c.key] = newData[c.key].join('\n');
-            }
-        });
-        
-        this.pastedData.set(updateObj);
-     }
-     // If user is just pasting a single column list (e.g. copied "Leitura" col from excel)
-     // The default behavior of textarea is fine, but let's sync state
+  closeExcelImportModal() {
+    this.showExcelImportModal.set(false);
   }
 
-  detectedRows() {
-      const lucText = this.pastedData()['luc'] || '';
-      return lucText.split('\n').filter(l => l.trim()).length;
+  downloadImportTemplate() {
+    const type = this.utilityType();
+    const stores = this.activeStores();
+    const prevReadings = this.previousReadings();
+    const month = this.selectedMonth();
+
+    const rows = stores.map(s => {
+      const p = prevReadings.get(s.id) || { reading: 0, consumption: 0 };
+      const item: Record<string, any> = {
+        'LUC': s.luc,
+        'Nome da Loja': s.name,
+        'Contrato': s.contrato || '',
+        'Medidor': s.meterNumber || '',
+        'Leitura Anterior': p.reading || 0,
+        'Leitura Atual': '',
+      };
+      if (type === 'luz') {
+        item['Constante'] = 1;
+        item['Ajuste'] = 1;
+      } else if (type === 'gas') {
+        item['Ajuste (x)'] = 1.347;
+        item['Ajuste Add (+)'] = 0;
+        item['FCM'] = 1.0727;
+        item['Fluxo (R$)'] = 0;
+      } else {
+        item['Constante'] = 1;
+        item['Ajuste'] = 1;
+      }
+      item['Virtual'] = 0;
+      item['Observacao'] = '';
+      return item;
+    });
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 12 },
+      { wch: 30 },
+      { wch: 14 },
+      { wch: 16 },
+      { wch: 16 },
+      { wch: 16 },
+      { wch: 12 },
+      { wch: 14 },
+      { wch: 12 },
+      { wch: 25 },
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, `Modelo_${type.toUpperCase()}`);
+    XLSX.writeFile(wb, `Planilha_Modelo_${type.toUpperCase()}_${month}.xlsx`);
   }
 
-  executeColumnImport() {
-     const data = this.pastedData();
-     const type = this.utilityType();
-     const skip = this.skipHeader();
-     const stores = this.storeService.stores();
+  onExcelFileSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (!input.files || input.files.length === 0) return;
+    const file = input.files[0];
+    this.parseExcelFile(file);
+    input.value = '';
+  }
 
-     // Parse each column string into an array
-     const parsedCols: Record<string, string[]> = {};
-     Object.keys(data).forEach(k => {
-         parsedCols[k] = data[k].split('\n').map(s => s.trim());
-     });
+  onExcelFileDrop(event: DragEvent) {
+    event.preventDefault();
+    this.isDraggingFile.set(false);
+    if (!event.dataTransfer || !event.dataTransfer.files || event.dataTransfer.files.length === 0) return;
+    const file = event.dataTransfer.files[0];
+    this.parseExcelFile(file);
+  }
 
-     const lucList = parsedCols['luc'] || [];
-     if (lucList.length === 0) return;
+  parseExcelFile(file: File) {
+    this.importedFileName.set(file.name);
+    const reader = new FileReader();
+    reader.onload = (e: any) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: '', raw: false });
+        if (jsonData.length === 0) {
+          alert('A planilha selecionada está vazia.');
+          return;
+        }
+        this.processImportedJsonData(jsonData);
+      } catch (err) {
+        console.error('Erro ao ler planilha Excel:', err);
+        alert('Não foi possível ler o arquivo. Certifique-se de que é um arquivo .xlsx, .xls ou .csv válido.');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
 
-     let count = 0;
-     const currentReadingsMap = new Map(this.readings()[type] as Map<string, StoreReading>);
+  processPastedText() {
+    const text = this.importPastedText().trim();
+    if (!text) {
+      alert('Cole os dados copiados do Excel na caixa de texto.');
+      return;
+    }
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+    if (lines.length < 2) {
+      alert('Cole pelo menos o cabeçalho e uma linha de dados.');
+      return;
+    }
+    const headers = lines[0].split('\t').map(h => h.trim());
+    const rows: Record<string, any>[] = [];
+    for (let i = 1; i < lines.length; i++) {
+      const parts = lines[i].split('\t');
+      const row: Record<string, any> = {};
+      headers.forEach((h, idx) => {
+        row[h] = parts[idx] !== undefined ? parts[idx].trim() : '';
+      });
+      rows.push(row);
+    }
+    this.importedFileName.set('Tabela Colada (Ctrl+V)');
+    this.processImportedJsonData(rows, headers);
+  }
 
-     // Iterate by row index
-     for (let i = 0; i < lucList.length; i++) {
-         if (skip && i === 0) continue; // Skip header row
+  processImportedJsonData(rows: any[], headers?: string[]) {
+    const extractedHeaders = headers || Object.keys(rows[0] || {});
+    this.rawExcelHeaders.set(extractedHeaders);
+    this.rawExcelRows.set(rows);
 
-         const luc = lucList[i];
-         if (!luc) continue;
+    // Auto-detect mappings
+    const mappings: Record<string, string> = {
+      luc: '',
+      reading: '',
+      constant: '',
+      adjustment: '',
+      virtual: '',
+      adjustmentAdd: '',
+      fcm: '',
+      fluxoCost: '',
+      note: ''
+    };
 
-         const storeMatch = stores.find(s => 
-           s.luc.toLowerCase() === luc.toLowerCase() ||
-           (s.contrato && s.contrato.toLowerCase() === luc.toLowerCase())
-         );
-         if (storeMatch) {
-             const currentData = currentReadingsMap.get(storeMatch.id) || { 
-               reading: 0, constant: 1, virtual: 0, adjustment: 1, calculatedConsumption: 0 
-             };
-             const newData = { ...currentData };
-             let updated = false;
+    const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 
-             // Map other columns at this index
-             this.importColumns().forEach(col => {
-                 if (col.key === 'luc') return;
-                 
-                 const valStr = parsedCols[col.key]?.[i];
-                 if (valStr) {
-                    const cleanVal = valStr.replace('.', '').replace(',', '.');
-                    const numVal = parseFloat(cleanVal);
-                    // Fallback
-                    const altVal = parseFloat(valStr.replace(',', '.'));
-                    const finalVal = !isNaN(numVal) ? numVal : altVal;
+    extractedHeaders.forEach(h => {
+      const nh = norm(h);
+      if (!mappings.luc && (nh === 'luc' || nh.includes('luc') || nh.includes('loja') || nh.includes('nome') || nh.includes('codigo') || nh.includes('unidade'))) {
+        mappings.luc = h;
+      }
+      if (!mappings.reading && (nh.includes('leitura atual') || nh === 'leitura' || nh.includes('medicao') || nh.includes('atual') || nh.includes('valor medido') || nh.includes('hidrometro'))) {
+        mappings.reading = h;
+      }
+      if (!mappings.constant && (nh.includes('const') || nh.includes('constante'))) {
+        mappings.constant = h;
+      }
+      if (!mappings.adjustment && (nh === 'ajuste' || nh.includes('ajuste (x)') || nh === 'aj(x)' || nh.includes('fator ajuste'))) {
+        mappings.adjustment = h;
+      }
+      if (!mappings.virtual && (nh.includes('virtual') || nh.includes('consumo virtual'))) {
+        mappings.virtual = h;
+      }
+      if (!mappings.adjustmentAdd && (nh.includes('aj(+)') || nh.includes('ajuste add') || nh.includes('adicional'))) {
+        mappings.adjustmentAdd = h;
+      }
+      if (!mappings.fcm && (nh.includes('fcm') || nh.includes('fator correcao'))) {
+        mappings.fcm = h;
+      }
+      if (!mappings.fluxoCost && (nh.includes('fluxo') || nh.includes('custo fluxo'))) {
+        mappings.fluxoCost = h;
+      }
+      if (!mappings.note && (nh.includes('obs') || nh.includes('observacao') || nh.includes('nota') || nh.includes('comentario'))) {
+        mappings.note = h;
+      }
+    });
 
-                    if (!isNaN(finalVal)) {
-                        (newData as any)[col.key] = finalVal;
-                        updated = true;
-                    }
-                 }
-             });
+    this.columnMappings.set(mappings);
+  }
 
-             if (updated) {
-                 currentReadingsMap.set(storeMatch.id, newData);
-                 count++;
-             }
-         }
-     }
+  updateColumnMapping(field: string, headerName: string) {
+    this.columnMappings.update(curr => ({ ...curr, [field]: headerName }));
+  }
 
-     this.readings.update(curr => ({ ...curr, [type]: currentReadingsMap }));
-     this.toggleImport();
-     alert(`${count} lojas atualizadas com sucesso!`);
+  confirmAndApplyExcelImport() {
+    const list = this.importPreviewList();
+    const type = this.utilityType();
+    const matchedItems = list.filter(item => item.status === 'matched' && item.matchedStore);
+
+    if (matchedItems.length === 0) {
+      alert('Nenhuma loja correspondente encontrada para importar. Verifique o mapeamento das colunas.');
+      return;
+    }
+
+    const currentReadingsMap = new Map(this.readings()[type] as Map<string, StoreReading>);
+    let updatedCount = 0;
+
+    matchedItems.forEach(item => {
+      const storeId = item.matchedStore!.id;
+      const current = currentReadingsMap.get(storeId) || this.createDefaultReading();
+      const updated: StoreReading = {
+        ...current,
+        reading: item.reading,
+        calculatedConsumption: item.consumptionPreview,
+      };
+
+      if (item.constant !== undefined) updated.constant = item.constant;
+      if (item.adjustment !== undefined) updated.adjustment = item.adjustment;
+      if (item.virtual !== undefined) updated.virtual = item.virtual;
+      if (item.adjustmentAdd !== undefined) updated.adjustmentAdd = item.adjustmentAdd;
+      if (item.fcm !== undefined) updated.fcm = item.fcm;
+      if (item.fluxoCost !== undefined) updated.fluxoCost = item.fluxoCost;
+      if (item.note) updated.note = item.note;
+
+      currentReadingsMap.set(storeId, updated);
+      updatedCount++;
+    });
+
+    this.readings.update(curr => ({ ...curr, [type]: currentReadingsMap }));
+    this.closeExcelImportModal();
+    this.internalSave();
+    this.indexedDb.showToast(`🎉 ${updatedCount} lojas importadas e atualizadas com sucesso do Excel!`);
   }
 
   // --- HISTORY & PERSISTENCE ---
