@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
+import JSZip from 'jszip';
 import { Store } from './store.service';
 import { MonthlyChartItem } from '../components/store-report.component';
 
@@ -26,6 +27,32 @@ export interface StoreVoucherData {
   photoDataUrl?: string;
   photoCapturedAt?: string;
   issueDate?: string;
+}
+
+export interface CalculatorExcelOptions {
+  utilityType: 'luz' | 'agua' | 'gas';
+  utilityLabel: string;
+  unit: string;
+  month: string;
+  unitPrice: number;
+  totalBill: number;
+  totalConsumption: number;
+  totalDistributedCost: number;
+  totalStoreConsumption: number;
+  costItems: { id: string; name: string; value: number }[];
+  consumptionInput: any;
+  tableData: any[];
+}
+
+export interface PackageZipOptions extends CalculatorExcelOptions {
+  photos?: Record<string, {
+    photoDataUrl?: string;
+    luc?: string;
+    storeName?: string;
+    capturedAt?: string;
+    readingValue?: number;
+    note?: string;
+  }>;
 }
 
 @Injectable({
@@ -110,20 +137,7 @@ export class ReportExportService {
   }
 
   // --- CALCULATOR EXCEL EXPORT (RATEIO MENSAL COMPLETO) ---
-  exportCalculatorToExcel(options: {
-    utilityType: 'luz' | 'agua' | 'gas';
-    utilityLabel: string;
-    unit: string;
-    month: string;
-    unitPrice: number;
-    totalBill: number;
-    totalConsumption: number;
-    totalDistributedCost: number;
-    totalStoreConsumption: number;
-    costItems: { id: string; name: string; value: number }[];
-    consumptionInput: any;
-    tableData: any[];
-  }) {
+  buildCalculatorWorkbook(options: CalculatorExcelOptions): XLSX.WorkBook {
     const wb = XLSX.utils.book_new();
 
     // 1. Sheet "Rateio_Lojas"
@@ -249,8 +263,138 @@ export class ReportExportService {
     XLSX.utils.book_append_sheet(wb, wsSummary, 'Resumo Concessionária');
     XLSX.utils.book_append_sheet(wb, wsCosts, 'Itens da Fatura');
 
+    return wb;
+  }
+
+  exportCalculatorToExcel(options: CalculatorExcelOptions) {
+    const wb = this.buildCalculatorWorkbook(options);
     const fileName = `Rateio_${options.utilityLabel}_${options.month}.xlsx`;
     XLSX.writeFile(wb, fileName);
+  }
+
+  // --- COMPLETE ZIP PACKAGE EXPORT (PLANILHA + FOTOS + MANIFESTO) ---
+  async exportCompletePackageZip(options: PackageZipOptions): Promise<{ totalPhotos: number; fileName: string }> {
+    const zip = new JSZip();
+
+    // 1. Gera Planilha Excel e anexa ao ZIP
+    const wb = this.buildCalculatorWorkbook(options);
+    const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const excelName = `Planilha_Rateio_${options.utilityLabel}_${options.month}.xlsx`;
+    zip.file(excelName, excelBuffer);
+
+    // 2. Pasta com Fotos dos Medidores
+    const photosFolderName = `Fotos_Medidores_${options.utilityLabel}_${options.month}`;
+    const photosFolder = zip.folder(photosFolderName);
+    let attachedPhotosCount = 0;
+
+    const photosRecord = options.photos || {};
+    const photoEntries = Object.entries(photosRecord);
+
+    for (const [_, photo] of photoEntries) {
+      if (!photo || !photo.photoDataUrl) continue;
+
+      const safeLuc = (photo.luc || 'SEM_LUC').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const safeStoreName = (photo.storeName || 'Loja').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const datePart = photo.capturedAt ? photo.capturedAt.split('T')[0] : options.month;
+      const photoFileName = `${safeLuc}_${safeStoreName}_${datePart}.jpg`;
+
+      try {
+        if (photo.photoDataUrl.startsWith('data:image/')) {
+          const commaIdx = photo.photoDataUrl.indexOf(',');
+          if (commaIdx !== -1) {
+            const base64Data = photo.photoDataUrl.substring(commaIdx + 1);
+            photosFolder?.file(photoFileName, base64Data, { base64: true });
+            attachedPhotosCount++;
+          }
+        } else if (photo.photoDataUrl.startsWith('http://') || photo.photoDataUrl.startsWith('https://')) {
+          const resp = await fetch(photo.photoDataUrl);
+          if (resp.ok) {
+            const buffer = await resp.arrayBuffer();
+            photosFolder?.file(photoFileName, buffer);
+            attachedPhotosCount++;
+          }
+        }
+      } catch (err) {
+        console.warn(`[ZIP Export] Não foi possível incluir foto da loja ${photo.storeName}:`, err);
+      }
+    }
+
+    // 3. Manifesto / Resumo de Auditoria em Texto (.txt)
+    const issueDate = new Date().toLocaleString('pt-BR');
+    const storesAuditList = options.tableData.map(s => {
+      const luc = (s.luc || '').padEnd(10);
+      const name = (s.storeName || '').substring(0, 28).padEnd(30);
+      const reading = (s.currentReading || 0).toString().padStart(10);
+      const consumption = (s.consumption || 0).toFixed(2).padStart(12);
+      const cost = `R$ ${(s.cost || 0).toFixed(2)}`.padStart(14);
+      const hasPhoto = photosRecord[s.storeId]?.photoDataUrl ? 'SIM (Foto anexa)' : 'NÃO';
+      return `${luc} | ${name} | ${reading} | ${consumption} | ${cost} | ${hasPhoto}`;
+    }).join('\n');
+
+    const costsSummary = options.costItems.map(c => {
+      return ` - ${c.name.padEnd(35)}: R$ ${c.value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }).join('\n');
+
+    const manifestText = 
+`================================================================================
+                    PACOTE DE AUDITORIA E FECHAMENTO DE RATEIO
+================================================================================
+Shopping / Empreendimento : Rateio Principal
+Insumo / Utilidade        : ${options.utilityLabel} (${options.unit})
+Mês de Competência        : ${options.month}
+Data e Hora de Geração    : ${issueDate}
+
+1. RESUMO GERAL DA FATURA DA CONCESSIONÁRIA:
+--------------------------------------------------------------------------------
+Valor Total da Fatura     : R$ ${options.totalBill.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+Consumo Faturado (Total)  : ${options.totalConsumption.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${options.unit}
+Tarifa Unitária Rateada   : R$ ${options.unitPrice.toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })} / ${options.unit}
+Consumo Total das Lojas   : ${options.totalStoreConsumption.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${options.unit}
+Valor Total Rateado Lojas : R$ ${options.totalDistributedCost.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+Diferença Residual        : R$ ${(options.totalBill - options.totalDistributedCost).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+
+2. DISCRIMINAÇÃO DOS ITENS DE CUSTO DA CONCESSIONÁRIA:
+--------------------------------------------------------------------------------
+${costsSummary}
+
+3. CONFERÊNCIA DE LOJAS & AUDITORIA FOTOGRÁFICA (${options.tableData.length} LOJAS):
+--------------------------------------------------------------------------------
+Total de Lojas Rateadas   : ${options.tableData.length}
+Total de Fotos Anexadas   : ${attachedPhotosCount}
+Pasta de Armazenamento    : ${photosFolderName}/
+
+LUC        | Nome da Loja                   | Leitura    | Consumo (${options.unit}) | Valor Total    | Foto Auditada
+--------------------------------------------------------------------------------
+${storesAuditList}
+--------------------------------------------------------------------------------
+Total Geral Distribuído: R$ ${options.totalDistributedCost.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+
+================================================================================
+Pacote gerado eletronicamente para arquivamento financeiro, contábil e auditoria.
+Todas as fotos foram conferidas pelo leiturista e processadas via OCR/inspeção visual.
+================================================================================
+`;
+
+    zip.file('Resumo_Auditoria_Rateio.txt', manifestText);
+
+    // 4. Compacta tudo e gera o Blob final
+    const zipBlob = await zip.generateAsync({
+      type: 'blob',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 6 }
+    });
+
+    const zipFileName = `Pacote_Rateio_${options.utilityLabel}_${options.month}.zip`;
+    const downloadUrl = URL.createObjectURL(zipBlob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = zipFileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(downloadUrl);
+
+    return { totalPhotos: attachedPhotosCount, fileName: zipFileName };
   }
 
   // --- PDF EXPORT (.PDF) ---

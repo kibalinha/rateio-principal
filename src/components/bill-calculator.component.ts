@@ -182,7 +182,25 @@ type ColumnDef = {
                <span>Exportando...</span>
              } @else {
                <span>📊</span>
-               <span>Exportar Excel</span>
+               <span class="hidden sm:inline">Exportar Excel</span>
+               <span class="sm:hidden">Excel</span>
+             }
+           </button>
+
+           <!-- Botão Exportar Pacote ZIP Completo -->
+           <button 
+             type="button"
+             (click)="exportPackageZip()" 
+             [disabled]="isExportingZip() || tableData().length === 0"
+             class="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed whitespace-nowrap border border-slate-700"
+             title="Exportar pacote completo de auditoria em arquivo ZIP contendo a planilha Excel (.xlsx) e as fotos dos medidores organizadas por Loja/LUC">
+             @if (isExportingZip()) {
+               <span class="animate-spin text-xs">⏳</span>
+               <span>Gerando ZIP...</span>
+             } @else {
+               <span>📦</span>
+               <span class="hidden sm:inline">Pacote ZIP (Excel + Fotos)</span>
+               <span class="sm:hidden">ZIP</span>
              }
            </button>
         </div>
@@ -400,7 +418,21 @@ type ColumnDef = {
                       <span>Exportando...</span>
                     } @else {
                       <span>📊</span>
-                      <span>Exportar Excel</span>
+                      <span>Excel</span>
+                    }
+                 </button>
+
+                 <!-- Botão Exportar Pacote ZIP -->
+                 <button (click)="exportPackageZip()" 
+                    [disabled]="isExportingZip() || tableData().length === 0"
+                    class="text-xs px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-semibold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
+                    title="Exportar pacote completo em ZIP (Planilha Excel + Fotos dos Medidores)">
+                    @if (isExportingZip()) {
+                      <span class="animate-spin text-xs">⏳</span>
+                      <span>ZIP...</span>
+                    } @else {
+                      <span>📦</span>
+                      <span>Pacote ZIP</span>
                     }
                  </button>
 
@@ -2197,6 +2229,7 @@ export class BillCalculatorComponent implements OnDestroy {
 
   // Export State
   isExportingExcel = signal(false);
+  isExportingZip = signal(false);
 
   // UI State for Mobile
   isConfigOpen = signal(false); // Default collapsed on mobile/tech, open on desktop
@@ -4063,6 +4096,57 @@ export class BillCalculatorComponent implements OnDestroy {
       console.error('Erro ao exportar rateio para Excel:', err);
     } finally {
       this.isExportingExcel.set(false);
+    }
+  }
+
+  // --- COMPLETE ZIP PACKAGE EXPORT (PLANILHA EXCEL + FOTOS + MANIFESTO) ---
+  async exportPackageZip() {
+    if (this.isExportingZip() || this.tableData().length === 0) return;
+    this.isExportingZip.set(true);
+
+    try {
+      const type = this.utilityType();
+      const label = type === 'luz' ? 'Luz' : type === 'agua' ? 'Agua' : 'Gas';
+      const month = this.selectedMonth();
+      const inputCons = type === 'luz' 
+        ? this.luzConsumption() 
+        : (type === 'agua' ? this.aguaTotalReading() : this.gasTotalReading());
+
+      // Coleta fotos do signal + mescla com fotos do IndexedDB caso alguma esteja salva localmente
+      const photosMap: Record<string, any> = { ...this.meterPhotos() };
+      try {
+        const localDbPhotos = await this.indexedDb.getMeterPhotosForMonth(type, month);
+        if (localDbPhotos) {
+          Object.entries(localDbPhotos).forEach(([storeId, p]) => {
+            if (!photosMap[storeId] && p?.photoDataUrl) {
+              photosMap[storeId] = p;
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('Erro ao consultar fotos do IndexedDB para compor pacote ZIP:', e);
+      }
+
+      await this.exportService.exportCompletePackageZip({
+        utilityType: type,
+        utilityLabel: label,
+        unit: this.getUnit(),
+        month: month,
+        unitPrice: this.calculatedUnitPrice(),
+        totalBill: this.totalBillAmount(),
+        totalConsumption: this.totalConsumption(),
+        totalDistributedCost: this.totalDistributedCost(),
+        totalStoreConsumption: this.totalDistributedConsumption(),
+        costItems: this.currentCostItems(),
+        consumptionInput: inputCons,
+        tableData: this.tableData(),
+        photos: photosMap
+      });
+    } catch (err) {
+      console.error('Erro ao gerar pacote ZIP de rateio:', err);
+      alert('Houve um erro ao gerar o pacote ZIP de auditoria. Verifique o console.');
+    } finally {
+      this.isExportingZip.set(false);
     }
   }
   // --- STORE VOUCHER / ESPELHO DO LOJISTA METHODS ---

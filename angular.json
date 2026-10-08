@@ -33,7 +33,8 @@
               "core-js",
               "raf",
               "rgbcolor",
-              "jspdf"
+              "jspdf",
+              "jszip"
             ],
             "define": {
               "process.env.API_KEY": "\"\"",
