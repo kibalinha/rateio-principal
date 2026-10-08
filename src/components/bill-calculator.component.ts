@@ -175,16 +175,24 @@ export interface AnomalyModalData {
               </button>
             }
 
-           <!-- Botão Travar / Fechar Mês (apenas Admin) -->
+           <!-- Botão Checklist de Auditoria e Fechamento (Admin) -->
            @if (authService.isAdmin()) {
              <button 
                type="button"
-               (click)="toggleLockBill()" 
-               [class]="isLocked() ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-800 hover:bg-amber-200' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-200'"
-               class="px-3 py-2 border rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-               [title]="isLocked() ? 'Mês travado. Clique para reabrir edições.' : 'Fechar e congelar rateio do mês.'">
-               <span>{{ isLocked() ? '🔒' : '🔓' }}</span>
-               <span class="hidden sm:inline">{{ isLocked() ? 'Reabrir Mês' : 'Fechar Mês' }}</span>
+               (click)="openClosingChecklist()" 
+               [class]="isLocked() ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-800 hover:bg-amber-200' : (closingChecklist().canFreeze ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-200')"
+               class="px-3.5 py-2 border rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+               title="Auditoria contábil e checklist de fechamento de mês">
+               <span>🛡️</span>
+               <span class="hidden sm:inline">Auditoria & Fechamento</span>
+               <span class="sm:hidden">Auditoria</span>
+               @if (isLocked()) {
+                 <span class="text-[10px] bg-amber-200 dark:bg-amber-900 text-amber-950 dark:text-amber-100 px-1.5 py-0.2 rounded font-mono font-bold">🔒 Fechado</span>
+               } @else if (closingChecklist().canFreeze) {
+                 <span class="text-[10px] bg-emerald-800 text-white px-1.5 py-0.2 rounded font-mono font-bold">Pronto</span>
+               } @else {
+                 <span class="text-[10px] bg-amber-400 text-slate-950 px-1.5 py-0.2 rounded font-mono font-bold">{{ closingChecklist().readings.pendingStores + closingChecklist().anomalies.uninspectedCount }} pend.</span>
+               }
              </button>
            }
 
@@ -238,9 +246,14 @@ export interface AnomalyModalData {
             </div>
           </div>
           @if (authService.isAdmin()) {
-            <button type="button" (click)="toggleLockBill()" class="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold rounded-lg text-xs cursor-pointer whitespace-nowrap transition-colors shadow-xs shrink-0">
-              🔓 Reabrir Rateio
-            </button>
+            <div class="flex items-center gap-2 shrink-0">
+              <button type="button" (click)="openClosingChecklist()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-lg text-xs cursor-pointer whitespace-nowrap transition-colors shadow-xs border border-slate-600">
+                🛡️ Ver Checklist
+              </button>
+              <button type="button" (click)="unfreezeMonth()" class="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold rounded-lg text-xs cursor-pointer whitespace-nowrap transition-colors shadow-xs">
+                🔓 Reabrir Mês
+              </button>
+            </div>
           }
         </div>
       }
@@ -2561,6 +2574,277 @@ export interface AnomalyModalData {
         </div>
       }
 
+      <!-- MODAL CHECKLIST DE AUDITORIA E FECHAMENTO MENSAL (PASSO 3: GESTÃO & CONTABILIDADE) -->
+      @if (showClosingChecklistModal()) {
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+          <div class="absolute inset-0 bg-black/75 backdrop-blur-xs animate-fade-in" (click)="closeClosingChecklist()"></div>
+
+          <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-2xl relative z-10 border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[92vh] animate-scale-in">
+            
+            <!-- Header do Modal -->
+            <div class="p-4 sm:p-5 bg-gradient-to-r from-slate-900 to-slate-800 text-white flex items-center justify-between border-b border-slate-700">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-2xl bg-teal-500/20 border border-teal-500/30 flex items-center justify-center text-xl shrink-0">
+                  🛡️
+                </div>
+                <div>
+                  <h3 class="font-extrabold text-base sm:text-lg leading-tight flex items-center gap-2">
+                    <span>Auditoria e Fechamento do Mês</span>
+                    @if (isLocked()) {
+                      <span class="text-[10px] bg-amber-500 text-slate-950 px-2 py-0.5 rounded-full font-black uppercase font-mono tracking-wider">
+                        🔒 Mês Congelado
+                      </span>
+                    }
+                  </h3>
+                  <p class="text-xs text-slate-300 mt-0.5 font-medium flex items-center gap-2">
+                    <span>Insumo: <strong class="text-teal-300 uppercase">{{ utilityType() }}</strong></span>
+                    <span>•</span>
+                    <span>Mês: <strong class="text-white font-mono">{{ selectedMonth() }}</strong></span>
+                  </p>
+                </div>
+              </div>
+              <button (click)="closeClosingChecklist()" class="text-slate-400 hover:text-white text-xl font-bold p-1 cursor-pointer">✕</button>
+            </div>
+
+            <!-- Corpo com os 4 Pilares de Segurança -->
+            <div class="p-4 sm:p-6 overflow-y-auto space-y-4 text-xs sm:text-sm">
+              
+              <!-- Resumo Executivo Superior -->
+              <div class="p-3.5 rounded-2xl border flex items-center justify-between gap-3 flex-wrap"
+                   [class]="closingChecklist().canFreeze 
+                     ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-950 dark:text-emerald-200' 
+                     : 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800 text-amber-950 dark:text-amber-200'">
+                <div class="flex items-center gap-2.5">
+                  <span class="text-2xl">{{ closingChecklist().canFreeze ? '✅' : '⚠️' }}</span>
+                  <div>
+                    <h4 class="font-bold text-sm">
+                      {{ closingChecklist().canFreeze ? 'Rateio Pronto para Fechamento!' : 'Atenção: Existem pendências de conferência' }}
+                    </h4>
+                    <p class="text-xs opacity-85">
+                      {{ closingChecklist().canFreeze 
+                        ? 'Todas as lojas foram lidas e as medições estão auditadas sem inconformidades críticas.' 
+                        : 'Resolva as pendências abaixo antes de emitir os relatórios definitivos aos lojistas.' }}
+                    </p>
+                  </div>
+                </div>
+                <div class="font-mono text-xs font-bold px-2.5 py-1 rounded-lg bg-white/70 dark:bg-slate-900/70 border border-black/10 dark:border-white/10 shrink-0">
+                  {{ closingChecklist().readings.readStores }}/{{ closingChecklist().readings.totalStores }} Lojas Lidas
+                </div>
+              </div>
+
+              <!-- PILAR 1: 100% DAS LOJAS ATIVAS LIDAS -->
+              <div class="p-4 rounded-2xl border transition-all"
+                   [class]="closingChecklist().readings.passed 
+                     ? 'bg-white dark:bg-slate-850 border-emerald-300 dark:border-emerald-800/70' 
+                     : 'bg-white dark:bg-slate-850 border-amber-300 dark:border-amber-800/70'">
+                <div class="flex items-center justify-between gap-2 mb-2">
+                  <div class="flex items-center gap-2">
+                    <span class="text-lg">{{ closingChecklist().readings.passed ? '✅' : '⏳' }}</span>
+                    <div>
+                      <strong class="text-sm font-bold text-slate-900 dark:text-white">1. Medição das Lojas (100% Lidas)</strong>
+                      <p class="text-xs text-slate-500 dark:text-slate-400">Nenhuma loja ativa pode ficar sem leitura no fechamento.</p>
+                    </div>
+                  </div>
+                  <span class="px-2.5 py-1 rounded-full text-xs font-black uppercase font-mono"
+                        [class]="closingChecklist().readings.passed 
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' 
+                          : 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300'">
+                    {{ closingChecklist().readings.passed ? '✓ 100% Concluído' : closingChecklist().readings.pendingStores + ' Pendente(s)' }}
+                  </span>
+                </div>
+
+                @if (!closingChecklist().readings.passed) {
+                  <div class="mt-3 p-3 bg-amber-50/80 dark:bg-amber-950/40 rounded-xl border border-amber-200 dark:border-amber-800/60 space-y-2">
+                    <span class="text-[11px] font-bold text-amber-900 dark:text-amber-200 block uppercase">
+                      Lojas que ainda faltam ser lidas:
+                    </span>
+                    <div class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                      @for (p of closingChecklist().readings.pendingList; track p.id) {
+                        <button type="button" 
+                          (click)="statusFilter.set('pending'); mobileViewMode.set('cards'); closeClosingChecklist()"
+                          class="px-2 py-0.5 bg-white dark:bg-slate-800 hover:bg-amber-100 text-slate-800 dark:text-slate-200 border border-amber-300 dark:border-amber-700 rounded-md text-[11px] font-medium flex items-center gap-1 cursor-pointer">
+                          <span class="font-mono font-bold">{{ p.luc }}</span>
+                          <span class="truncate max-w-[120px]">{{ p.name }}</span>
+                        </button>
+                      }
+                    </div>
+                  </div>
+                }
+              </div>
+
+              <!-- PILAR 2: ZERO INCONSISTÊNCIAS / AUDITORIA DE ANOMALIAS -->
+              <div class="p-4 rounded-2xl border transition-all"
+                   [class]="closingChecklist().anomalies.passed 
+                     ? 'bg-white dark:bg-slate-850 border-emerald-300 dark:border-emerald-800/70' 
+                     : 'bg-white dark:bg-slate-850 border-rose-300 dark:border-rose-800/70'">
+                <div class="flex items-center justify-between gap-2 mb-2">
+                  <div class="flex items-center gap-2">
+                    <span class="text-lg">{{ closingChecklist().anomalies.passed ? '✅' : '🚨' }}</span>
+                    <div>
+                      <strong class="text-sm font-bold text-slate-900 dark:text-white">2. Inconsistências & Alertas Auditados</strong>
+                      <p class="text-xs text-slate-500 dark:text-slate-400">Suspeitas de vazamento, leitura menor ou zero a mais devem ser auditadas.</p>
+                    </div>
+                  </div>
+                  <span class="px-2.5 py-1 rounded-full text-xs font-black uppercase font-mono"
+                        [class]="closingChecklist().anomalies.passed 
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' 
+                          : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'">
+                    {{ closingChecklist().anomalies.passed ? '✓ Zero Pendências' : closingChecklist().anomalies.uninspectedCount + ' Alerta(s)' }}
+                  </span>
+                </div>
+
+                @if (!closingChecklist().anomalies.passed) {
+                  <div class="mt-3 p-3 bg-rose-50/80 dark:bg-rose-950/40 rounded-xl border border-rose-200 dark:border-rose-800/60 space-y-2">
+                    <span class="text-[11px] font-bold text-rose-900 dark:text-rose-200 block uppercase">
+                      Lojas com anomalia sem confirmação em campo:
+                    </span>
+                    <div class="space-y-1.5 max-h-32 overflow-y-auto">
+                      @for (a of closingChecklist().anomalies.uninspectedList; track a.id) {
+                        <div class="p-2 bg-white dark:bg-slate-800 rounded-lg border border-rose-200 dark:border-rose-800 flex items-center justify-between gap-2 text-xs">
+                          <div>
+                            <span class="font-mono font-bold">{{ a.luc }}</span> • <strong>{{ a.name }}</strong>: 
+                            <span class="text-rose-700 dark:text-rose-300 font-semibold ml-1">{{ a.badge }}</span>
+                          </div>
+                          <button type="button" 
+                            (click)="confirmAnomaly(a.id)"
+                            class="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[11px] font-bold cursor-pointer shrink-0">
+                            ✓ Confirmar
+                          </button>
+                        </div>
+                      }
+                    </div>
+                  </div>
+                }
+              </div>
+
+              <!-- PILAR 3: CONCILIAÇÃO DA CONCESSIONÁRIA & SAP -->
+              <div class="p-4 rounded-2xl border transition-all"
+                   [class]="closingChecklist().reconciliation.passed 
+                     ? 'bg-white dark:bg-slate-850 border-emerald-300 dark:border-emerald-800/70' 
+                     : 'bg-white dark:bg-slate-850 border-blue-300 dark:border-blue-800/70'">
+                <div class="flex items-center justify-between gap-2 mb-2">
+                  <div class="flex items-center gap-2">
+                    <span class="text-lg">⚖️</span>
+                    <div>
+                      <strong class="text-sm font-bold text-slate-900 dark:text-white">3. Conciliação com Concessionária & SAP</strong>
+                      <p class="text-xs text-slate-500 dark:text-slate-400">Verifica se o rateio fecha sem furos nem sobras financeiras.</p>
+                    </div>
+                  </div>
+                  <span class="px-2.5 py-1 rounded-full text-xs font-black uppercase font-mono"
+                        [class]="closingChecklist().reconciliation.passed 
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' 
+                          : 'bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-300'">
+                    {{ closingChecklist().reconciliation.passed ? '✓ 100% Conciliado' : 'Conferir Balanço' }}
+                  </span>
+                </div>
+
+                <div class="mt-2.5 p-3 bg-slate-50 dark:bg-slate-800/70 rounded-xl border border-slate-200 dark:border-slate-700 grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+                  <div>
+                    <span class="text-[10px] uppercase font-bold text-slate-400 block">Fatura Concessionária</span>
+                    <strong class="font-mono text-sm text-slate-900 dark:text-white">
+                      {{ closingChecklist().reconciliation.billAmount | currency:'BRL' }}
+                    </strong>
+                  </div>
+                  <div>
+                    <span class="text-[10px] uppercase font-bold text-slate-400 block">Total Rateado (Lojas + AC)</span>
+                    <strong class="font-mono text-sm text-teal-700 dark:text-teal-300">
+                      {{ closingChecklist().reconciliation.totalReconciled | currency:'BRL' }}
+                    </strong>
+                  </div>
+                  <div>
+                    <span class="text-[10px] uppercase font-bold text-slate-400 block">Diferença de Balanço</span>
+                    <strong class="font-mono text-sm"
+                            [class.text-emerald-600]="closingChecklist().reconciliation.diffFinancial <= 0.50"
+                            [class.text-rose-600]="closingChecklist().reconciliation.diffFinancial > 0.50">
+                      {{ closingChecklist().reconciliation.diffFinancial | currency:'BRL' }}
+                    </strong>
+                  </div>
+                </div>
+
+                @if (utilityType() === 'gas') {
+                  <div class="mt-2 text-[11px] text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 p-2 rounded-lg">
+                    🔥 <strong>Gás 100% Rateável:</strong> 
+                    Fatura: {{ closingChecklist().reconciliation.gasConcessionaria }} m³ • 
+                    Medição Bruta Campo: {{ closingChecklist().reconciliation.totalRawGas | number:'1.0-1' }} m³ • 
+                    Distribuição automática: {{ closingChecklist().reconciliation.isGasAuto ? 'Ativa (100% rateado)' : 'Manual' }}.
+                  </div>
+                }
+              </div>
+
+              <!-- PILAR 4: CONGELAMENTO & SNAPSHOT DE AUDITORIA -->
+              <div class="p-4 rounded-2xl border transition-all"
+                   [class]="isLocked() 
+                     ? 'bg-amber-50/50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800' 
+                     : 'bg-white dark:bg-slate-850 border-slate-200 dark:border-slate-800'">
+                <div class="flex items-center justify-between gap-2 mb-2">
+                  <div class="flex items-center gap-2">
+                    <span class="text-lg">{{ isLocked() ? '🔒' : '🔓' }}</span>
+                    <div>
+                      <strong class="text-sm font-bold text-slate-900 dark:text-white">4. Congelamento Contábil (Snapshot)</strong>
+                      <p class="text-xs text-slate-500 dark:text-slate-400">Trava todas as medições e custos contra alterações posteriores.</p>
+                    </div>
+                  </div>
+                  <span class="px-2.5 py-1 rounded-full text-xs font-black uppercase font-mono"
+                        [class]="isLocked() 
+                          ? 'bg-amber-200 text-amber-950 dark:bg-amber-900 dark:text-amber-200' 
+                          : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'">
+                    {{ isLocked() ? '🔒 Travado' : 'Aberto para Edição' }}
+                  </span>
+                </div>
+
+                @if (isLocked()) {
+                  <div class="mt-2 text-xs text-amber-900 dark:text-amber-200 bg-amber-100/70 dark:bg-amber-950/50 p-3 rounded-xl border border-amber-200 dark:border-amber-800/80">
+                    <div>✓ Congelado em: <strong>{{ lockedAt() | date:'dd/MM/yyyy HH:mm' }}</strong></div>
+                    <div>✓ Responsável: <strong>{{ lockedBy() || 'Administrador' }}</strong></div>
+                    <div class="mt-1 text-[11px] opacity-80">Os relatórios e comprovantes deste mês foram carimbados e selados com garantia de integridade.</div>
+                  </div>
+                }
+              </div>
+
+            </div>
+
+            <!-- Rodapé com Botões de Ação Executiva -->
+            <div class="p-4 sm:p-5 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div class="flex items-center gap-2 w-full sm:w-auto">
+                <button type="button" 
+                  (click)="exportToExcel()" 
+                  [disabled]="isExportingExcel()"
+                  class="flex-1 sm:flex-none px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-bold rounded-xl text-xs transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer">
+                  <span>📊</span>
+                  <span>Baixar Excel</span>
+                </button>
+                <button type="button" 
+                  (click)="exportPackageZip()" 
+                  [disabled]="isExportingZip()"
+                  class="flex-1 sm:flex-none px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white font-bold rounded-xl text-xs transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer">
+                  <span>📦</span>
+                  <span>Pacote ZIP</span>
+                </button>
+              </div>
+
+              <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+                @if (!isLocked()) {
+                  <button type="button" 
+                    (click)="freezeMonthWithChecklist()"
+                    class="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 active:scale-98 text-white font-black rounded-xl text-xs shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer">
+                    <span>🔒</span>
+                    <span>Fechar e Congelar Mês (1 Clique)</span>
+                  </button>
+                } @else {
+                  <button type="button" 
+                    (click)="unfreezeMonth()"
+                    class="w-full sm:w-auto px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs">
+                    <span>🔓</span>
+                    <span>Reabrir Mês para Alterações</span>
+                  </button>
+                }
+              </div>
+            </div>
+
+          </div>
+        </div>
+      }
+
       <!-- Mobile Floating Quick Route Bar -->
       <div class="md:hidden fixed bottom-16 left-3 right-3 z-30 pointer-events-none flex justify-center">
         <div class="pointer-events-auto bg-slate-900/90 text-white backdrop-blur-md px-3.5 py-2 rounded-full shadow-xl border border-slate-700 flex items-center gap-3 text-xs">
@@ -2659,6 +2943,9 @@ export class BillCalculatorComponent implements OnDestroy {
 
   // --- ANOMALY AUDIT MODAL (ETAPA 1: ALERTA INTELIGENTE E ANTI-ERRO) ---
   activeAnomalyModal = signal<AnomalyModalData | null>(null);
+
+  // --- MONTH CLOSING & AUDIT CHECKLIST (ETAPA 3: FECHAMENTO CONTÁBIL E CONGELAMENTO) ---
+  showClosingChecklistModal = signal<boolean>(false);
 
   // --- BATCH OCR QUEUE STATE ---
   showBatchOcrModal = signal<boolean>(false);
@@ -3819,6 +4106,81 @@ export class BillCalculatorComponent implements OnDestroy {
     return { total, completed, pending, alerts, progressPct };
   });
 
+  // --- MONTH CLOSING & AUDIT CHECKLIST COMPUTED (PASSO 3) ---
+  closingChecklist = computed(() => {
+    const list = this.tableData();
+    const totalStores = list.length;
+    const readStores = list.filter(item => item.isRead).length;
+    const pendingStores = totalStores - readStores;
+    const isComplete = totalStores > 0 && pendingStores === 0;
+
+    // 2. Inconsistências / Alertas não auditados
+    const uninspectedAnomalies = list.filter(item => item.validationAlert.hasAlert && !item.anomalyConfirmed && item.isRead);
+    const hasZeroAnomalies = uninspectedAnomalies.length === 0;
+
+    // 3. Conciliação com Concessionária & Balanço Financeiro
+    const type = this.utilityType();
+    const billAmount = this.totalBillAmount() || 0;
+    const distributed = this.totalDistributedCost() || 0;
+    const commonArea = this.commonAreaCost() || 0;
+    const totalReconciled = distributed + commonArea;
+    const diffFinancial = Math.abs(totalReconciled - billAmount);
+    // Tolerância de até R$ 0.50 para centavos de arredondamento fiscal
+    const isReconciled = billAmount > 0 ? (diffFinancial <= 0.50) : true;
+
+    // Dados específicos para gás
+    const gasConcessionaria = this.gasTotalReading() || 0;
+    const isGasAuto = this.gasAutoDistribute();
+    const totalRawGas = list.reduce((acc, row) => acc + (row.rawConsumption || 0), 0);
+    const gasDiff = Math.abs(gasConcessionaria - totalRawGas);
+
+    const isLocked = this.isLocked();
+    const canFreeze = isComplete && hasZeroAnomalies;
+    const allPassed = isComplete && hasZeroAnomalies && isReconciled && isLocked;
+
+    return {
+      readings: {
+        passed: isComplete,
+        totalStores,
+        readStores,
+        pendingStores,
+        pendingList: list.filter(i => !i.isRead).map(i => ({ id: i.storeId, luc: i.luc, name: i.storeName, routeOrder: i.routeOrder }))
+      },
+      anomalies: {
+        passed: hasZeroAnomalies,
+        uninspectedCount: uninspectedAnomalies.length,
+        uninspectedList: uninspectedAnomalies.map(i => ({ 
+          id: i.storeId, 
+          luc: i.luc, 
+          name: i.storeName, 
+          type: i.validationAlert.type, 
+          badge: i.validationAlert.badgeLabel,
+          currentReading: i.currentReading,
+          prevReading: i.prevReading,
+          consumption: i.consumption,
+          avgConsumption: i.validationAlert.avgConsumption
+        }))
+      },
+      reconciliation: {
+        passed: isReconciled,
+        billAmount,
+        totalReconciled,
+        diffFinancial,
+        isGasAuto,
+        gasConcessionaria,
+        totalRawGas,
+        gasDiff
+      },
+      lock: {
+        passed: isLocked,
+        lockedAt: this.lockedAt(),
+        lockedBy: this.lockedBy()
+      },
+      canFreeze,
+      allPassed
+    };
+  });
+
   filteredTableData = computed(() => {
     let list = this.tableData();
     const filter = this.statusFilter();
@@ -4079,6 +4441,48 @@ export class BillCalculatorComponent implements OnDestroy {
 
   closeAnomalyModal() {
     this.activeAnomalyModal.set(null);
+  }
+
+  // --- MONTH CLOSING & AUDIT CHECKLIST METHODS (ETAPA 3) ---
+  openClosingChecklist() {
+    this.showClosingChecklistModal.set(true);
+  }
+
+  closeClosingChecklist() {
+    this.showClosingChecklistModal.set(false);
+  }
+
+  freezeMonthWithChecklist() {
+    if (!this.authService.isAdmin()) {
+      alert('Apenas administradores podem fechar e congelar o rateio mensal.');
+      return;
+    }
+
+    const chk = this.closingChecklist();
+    if (!chk.canFreeze) {
+      const parts: string[] = [];
+      if (!chk.readings.passed) parts.push(`${chk.readings.pendingStores} loja(s) pendente(s)`);
+      if (!chk.anomalies.passed) parts.push(`${chk.anomalies.uninspectedCount} inconsistência(s) não auditada(s)`);
+      const proceed = confirm(`Atenção: O checklist detectou pendências em aberto (${parts.join(', ')}).\n\nDeseja realmente congelar o rateio deste mês mesmo assim?`);
+      if (!proceed) return;
+    }
+
+    this.isLocked.set(true);
+    this.lockedAt.set(new Date().toISOString());
+    this.lockedBy.set(this.authService.user()?.email || 'Administrador');
+    this.internalSave();
+    this.indexedDb.showToast(`🔒 Rateio de ${this.utilityType().toUpperCase()} (${this.selectedMonth()}) congelado com sucesso!`);
+  }
+
+  unfreezeMonth() {
+    if (!this.authService.isAdmin()) return;
+    const confirmUnlock = confirm(`Deseja REABRIR o rateio de ${this.utilityType().toUpperCase()} (${this.selectedMonth()}) para novas edições?`);
+    if (!confirmUnlock) return;
+    this.isLocked.set(false);
+    this.lockedAt.set(null);
+    this.lockedBy.set(null);
+    this.internalSave();
+    this.indexedDb.showToast(`🔓 Rateio reaberto para edições.`);
   }
 
   // --- PHOTO EVIDENCE METHODS (FOTO DO MEDIDOR OFFLINE NO INDEXEDDB + NUVEM) ---
