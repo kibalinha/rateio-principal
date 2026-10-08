@@ -23,6 +23,24 @@ type ColumnDef = {
   width?: string;
 };
 
+export interface AnomalyModalData {
+  storeId: string;
+  storeName: string;
+  luc: string;
+  type: string;
+  title: string;
+  message: string;
+  severity: 'critical' | 'warning' | 'confirmed' | 'none';
+  currentReading: number;
+  prevReading: number;
+  consumption: number;
+  avgConsumption: number;
+  unit: string;
+  isConfirmed: boolean;
+  isRollover: boolean;
+  diffPct: number | null;
+}
+
 @Component({
   selector: 'app-bill-calculator',
   standalone: true,
@@ -834,25 +852,40 @@ type ColumnDef = {
                         {{ item.prevReading | number:'1.0-0' }}
                       </td>
                       <td class="p-3 border-r border-slate-100 dark:border-slate-800">
-                         <div class="flex items-center gap-1">
+                         <div class="flex flex-col gap-1">
                             <input type="number" 
                               step="0.0001" 
                               inputmode="decimal"
                               [ngModel]="item.currentReading" 
                               (ngModelChange)="updateDetailedReading(item.storeId, 'reading', $event)" 
+                              (blur)="onReadingBlur(item.storeId)"
+                              (keyup.enter)="onReadingBlur(item.storeId)"
                               (paste)="onPasteCell($event, item.storeId, 'reading')" 
                               [disabled]="!canEdit()" 
                               class="w-full text-right bg-white dark:bg-slate-950 dark:text-white border-2 rounded px-1.5 py-1 focus:ring-2 font-bold disabled:bg-transparent disabled:border-none disabled:text-slate-500 transition-colors"
                               [class.border-rose-500]="item.validationAlert.severity === 'critical'"
-                              [class.ring-2]="item.validationAlert.hasAlert"
-                              [class.ring-rose-400]="item.validationAlert.severity === 'critical'"
-                              [class.border-amber-500]="item.validationAlert.severity === 'warning'"
-                              [class.ring-amber-400]="item.validationAlert.severity === 'warning'"
-                              [class.border-emerald-400]="item.isRead && !item.validationAlert.hasAlert"
+                              [class.ring-2]="item.validationAlert.hasAlert && !item.anomalyConfirmed"
+                              [class.ring-rose-400]="item.validationAlert.severity === 'critical' && !item.anomalyConfirmed"
+                              [class.border-amber-500]="item.validationAlert.severity === 'warning' && !item.anomalyConfirmed"
+                              [class.ring-amber-400]="item.validationAlert.severity === 'warning' && !item.anomalyConfirmed"
+                              [class.border-emerald-400]="(item.isRead && !item.validationAlert.hasAlert) || item.anomalyConfirmed"
                               [class.border-slate-300]="!item.isRead"
                               [class.dark:border-slate-700]="!item.isRead"
                               [title]="item.validationAlert.hasAlert ? item.validationAlert.message : ''"
                               placeholder="0">
+
+                            @if (item.validationAlert.hasAlert) {
+                              <button type="button" 
+                                (click)="openAnomalyModal(item)"
+                                class="text-[9px] font-bold px-1.5 py-0.5 rounded cursor-pointer flex items-center gap-1 shadow-2xs transition-all w-fit self-end"
+                                [class]="item.anomalyConfirmed 
+                                  ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
+                                  : (item.validationAlert.severity === 'critical'
+                                      ? 'bg-rose-100 dark:bg-rose-950/70 text-rose-800 dark:text-rose-200 border border-rose-300 dark:border-rose-800 animate-pulse'
+                                      : 'bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-800')">
+                                <span>{{ item.validationAlert.badgeLabel }}</span>
+                              </button>
+                            }
                          </div>
                       </td>
                       
@@ -1083,6 +1116,8 @@ type ColumnDef = {
                                    step="0.0001"
                                    [ngModel]="item.currentReading" 
                                    (ngModelChange)="updateDetailedReading(item.storeId, 'reading', $event)"
+                                   (blur)="onReadingBlur(item.storeId)"
+                                   (keyup.enter)="onReadingBlur(item.storeId)"
                                    [disabled]="!canEdit()"
                                    class="w-full text-right text-xl font-mono p-2.5 border-2 rounded-xl focus:ring-2 font-bold bg-white dark:bg-slate-950 text-slate-900 dark:text-white disabled:bg-slate-100 dark:disabled:bg-slate-800 transition-colors"
                                    [class.border-rose-500]="item.validationAlert.severity === 'critical'"
@@ -1142,6 +1177,28 @@ type ColumnDef = {
                               </div>
                               <div class="text-[10px] font-semibold text-rose-800 dark:text-rose-300 bg-white/70 dark:bg-slate-900/80 px-2 py-0.5 rounded border border-rose-200 dark:border-rose-800 mt-1 inline-block">
                                 🔍 Confira no visor do relógio antes de sair da loja
+                              </div>
+
+                              <!-- Ações Imediatas de Auditoria no Card -->
+                              <div class="flex items-center gap-2 mt-2 pt-1.5 border-t border-black/10 dark:border-white/10 flex-wrap">
+                                @if (!item.anomalyConfirmed) {
+                                  <button type="button" 
+                                          (click)="confirmAnomaly(item.storeId)"
+                                          class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] flex items-center gap-1 cursor-pointer shadow-xs">
+                                    <span>✓ Confirmar como Correto</span>
+                                  </button>
+                                  @if (item.validationAlert.type === 'negative') {
+                                    <button type="button" 
+                                            (click)="markRollover(item.storeId)"
+                                            class="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] flex items-center gap-1 cursor-pointer shadow-xs">
+                                      <span>🔄 Virada de Relógio</span>
+                                    </button>
+                                  }
+                                } @else {
+                                  <span class="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
+                                    <span>✓ Auditado e confirmado pelo técnico</span>
+                                  </span>
+                                }
                               </div>
                             </div>
                           </div>
@@ -2319,6 +2376,105 @@ type ColumnDef = {
         }
       }
 
+      <!-- ANOMALY AUDIT MODAL (ETAPA 1: ALERTA INTELIGENTE E ANTI-ERRO) -->
+      @if (activeAnomalyModal(); as anomaly) {
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div class="absolute inset-0 bg-black/70 backdrop-blur-xs animate-fade-in" (click)="closeAnomalyModal()"></div>
+          
+          <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg relative z-10 border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col animate-scale-in">
+            <!-- Modal Header with Severity Theme -->
+            <div class="p-4 sm:p-5 flex items-center justify-between border-b"
+                 [class]="anomaly.severity === 'critical' 
+                   ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900 text-rose-900 dark:text-rose-100' 
+                   : 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900 text-amber-900 dark:text-amber-100'">
+              <div class="flex items-center gap-3">
+                <span class="text-2xl p-2 rounded-xl"
+                      [class]="anomaly.severity === 'critical' ? 'bg-rose-200/80 dark:bg-rose-900/60' : 'bg-amber-200/80 dark:bg-amber-900/60'">
+                  {{ anomaly.severity === 'critical' ? '🚨' : '⚠️' }}
+                </span>
+                <div>
+                  <h3 class="font-extrabold text-sm sm:text-base leading-tight">
+                    {{ anomaly.title }}
+                  </h3>
+                  <p class="text-xs opacity-80 mt-0.5 font-medium">
+                    Loja: <strong>{{ anomaly.storeName }}</strong> (LUC {{ anomaly.luc }})
+                  </p>
+                </div>
+              </div>
+              <button (click)="closeAnomalyModal()" 
+                      class="text-slate-400 hover:text-slate-600 dark:hover:text-white text-lg font-bold p-1 cursor-pointer">✕</button>
+            </div>
+
+            <!-- Modal Content & Comparison Box -->
+            <div class="p-4 sm:p-6 space-y-4 text-xs sm:text-sm">
+              <div class="p-3.5 rounded-xl border bg-slate-50 dark:bg-slate-850/60 border-slate-200 dark:border-slate-750 space-y-2">
+                <p class="text-slate-700 dark:text-slate-200 leading-relaxed font-medium">
+                  {{ anomaly.message }}
+                </p>
+              </div>
+
+              <!-- Comparison Metrics Grid -->
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 font-mono text-center">
+                <div class="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
+                  <span class="text-[10px] text-slate-500 uppercase font-bold block font-sans">Leitura Ant.</span>
+                  <strong class="text-xs sm:text-sm text-slate-800 dark:text-slate-200">{{ anomaly.prevReading | number:'1.0-0' }}</strong>
+                </div>
+                <div class="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
+                  <span class="text-[10px] text-slate-500 uppercase font-bold block font-sans">Leitura Atual</span>
+                  <strong class="text-xs sm:text-sm text-slate-900 dark:text-white"
+                          [class.text-rose-600]="anomaly.severity === 'critical'">
+                    {{ anomaly.currentReading | number:'1.0-2' }}
+                  </strong>
+                </div>
+                <div class="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
+                  <span class="text-[10px] text-slate-500 uppercase font-bold block font-sans">Consumo Atual</span>
+                  <strong class="text-xs sm:text-sm text-teal-700 dark:text-teal-300">
+                    {{ anomaly.consumption | number:'1.0-2' }} {{ anomaly.unit }}
+                  </strong>
+                </div>
+                <div class="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
+                  <span class="text-[10px] text-slate-500 uppercase font-bold block font-sans">Média Histórica</span>
+                  <strong class="text-xs sm:text-sm text-slate-700 dark:text-slate-300">
+                    {{ anomaly.avgConsumption > 0 ? (anomaly.avgConsumption | number:'1.0-1') : '-' }} {{ anomaly.unit }}
+                  </strong>
+                </div>
+              </div>
+
+              <div class="bg-amber-50/80 dark:bg-amber-950/30 p-3 rounded-xl border border-amber-200 dark:border-amber-800 text-[11px] text-amber-900 dark:text-amber-200 flex items-start gap-2">
+                <span>💡</span>
+                <p>
+                  <strong>Dica de Auditoria:</strong> Se a leitura estiver correta e você conferiu no relógio, confirme abaixo para auditar a medição. Se for virada de relógio (ex: 9999 para 0010), clique em "Virada de Medidor".
+                </p>
+              </div>
+            </div>
+
+            <!-- Modal Action Buttons -->
+            <div class="p-4 bg-slate-50 dark:bg-slate-850 border-t border-slate-200 dark:border-slate-800 flex flex-wrap gap-2 justify-end items-center">
+              <button type="button" 
+                      (click)="closeAnomalyModal()" 
+                      class="px-3.5 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-650 text-slate-700 dark:text-slate-200 font-bold text-xs cursor-pointer transition-colors">
+                🔍 Conferir Relógio
+              </button>
+
+              @if (anomaly.type === 'negative') {
+                <button type="button" 
+                        (click)="markRollover(anomaly.storeId)" 
+                        class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                        title="O medidor passou do limite máximo (ex: 9999 para 0000)">
+                  <span>🔄 Virada de Medidor</span>
+                </button>
+              }
+
+              <button type="button" 
+                      (click)="confirmAnomaly(anomaly.storeId)" 
+                      class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-sm transition-all">
+                <span>✓ Confirmar Leitura</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      }
+
       <!-- Mobile Floating Quick Route Bar -->
       <div class="md:hidden fixed bottom-16 left-3 right-3 z-30 pointer-events-none flex justify-center">
         <div class="pointer-events-auto bg-slate-900/90 text-white backdrop-blur-md px-3.5 py-2 rounded-full shadow-xl border border-slate-700 flex items-center gap-3 text-xs">
@@ -2413,6 +2569,9 @@ export class BillCalculatorComponent implements OnDestroy {
     // --- STORE VOUCHER / ESPELHO DO LOJISTA STATE ---
   showVoucherModal = signal<boolean>(false);
   selectedVoucherData = signal<StoreVoucherData | null>(null);
+
+  // --- ANOMALY AUDIT MODAL (ETAPA 1: ALERTA INTELIGENTE E ANTI-ERRO) ---
+  activeAnomalyModal = signal<AnomalyModalData | null>(null);
 
   // --- BATCH OCR QUEUE STATE ---
   showBatchOcrModal = signal<boolean>(false);
@@ -3212,11 +3371,14 @@ export class BillCalculatorComponent implements OnDestroy {
     return bill / cons;
   });
 
-  // Histórico médio de consumo de cada loja para a utilidade ativa (excluindo mês atual para baseline limpa)
-  historicalAverages = computed<Map<string, { avgConsumption: number; count: number }>>(() => {
+  // Histórico de consumo e baseline de anomalias (inclui média histórica e conferência de meses zerados)
+  historicalStats = computed<Map<string, { avgConsumption: number; count: number; prevMonthZero: boolean }>>(() => {
     const allData = this.historyService.getAllData();
     const type = this.utilityType();
     const currentMonth = this.selectedMonth();
+    const prevMonth = this.getPreviousMonth(currentMonth);
+
+    const prevBill = allData[`${type}_${prevMonth}`];
     const map = new Map<string, { total: number; count: number }>();
 
     Object.entries(allData).forEach(([key, bill]) => {
@@ -3242,15 +3404,28 @@ export class BillCalculatorComponent implements OnDestroy {
       }
     });
 
-    const result = new Map<string, { avgConsumption: number; count: number }>();
-    map.forEach((val, storeId) => {
-      result.set(storeId, {
-        avgConsumption: val.count > 0 ? val.total / val.count : 0,
-        count: val.count
+    const result = new Map<string, { avgConsumption: number; count: number; prevMonthZero: boolean }>();
+    this.activeStores().forEach(store => {
+      const hist = map.get(store.id);
+      let isPrevZero = false;
+
+      if (prevBill && prevBill.readings && prevBill.readings[store.id] !== undefined) {
+        const r = prevBill.readings[store.id];
+        const pCons = typeof r === 'object' && r !== null ? ((r as any).calculatedConsumption ?? (r as any).consumption ?? 0) : (typeof r === 'number' ? r : 0);
+        isPrevZero = pCons === 0;
+      }
+
+      result.set(store.id, {
+        avgConsumption: hist && hist.count > 0 ? hist.total / hist.count : 0,
+        count: hist ? hist.count : 0,
+        prevMonthZero: isPrevZero
       });
     });
+
     return result;
   });
+
+  historicalAverages = computed(() => this.historicalStats());
 
   // --- TABLE DATA CALCULATION ---
   tableData = computed(() => {
@@ -3261,7 +3436,7 @@ export class BillCalculatorComponent implements OnDestroy {
     
     const readingsStore = this.readings();
     const prevReadings = this.previousReadings(); 
-    const histAvgMap = this.historicalAverages();
+    const histAvgMap = this.historicalStats();
 
     // Se for Gás, pré-calculamos a soma bruta do consumo medido em campo para todas as lojas
     let totalRawGas = 0;
@@ -3274,7 +3449,12 @@ export class BillCalculatorComponent implements OnDestroy {
           totalRawGas += d.virtual;
         } else {
           let diff = (d.reading || 0) - (p.reading || 0);
-          if (diff < 0) diff = 0;
+          if (d.isRollover && (d.reading || 0) < (p.reading || 0) && (p.reading || 0) > 0) {
+            const digitsBase = (p.reading || 0) > 10000 ? 100000 : ((p.reading || 0) > 1000 ? 10000 : 1000);
+            diff = (digitsBase - (p.reading || 0)) + (d.reading || 0);
+          } else if (diff < 0) {
+            diff = 0;
+          }
           const adj = d.adjustment !== undefined ? d.adjustment : 1.347;
           const adjAdd = d.adjustmentAdd || 0;
           const mfcm = d.fcm || 1.0727;
@@ -3312,6 +3492,8 @@ export class BillCalculatorComponent implements OnDestroy {
       prevReading = prevData.reading;
       constant = data.constant || 1;
       virtual = data.virtual || 0;
+      const isConfirmed = !!data.anomalyConfirmed;
+      const isRollover = !!data.isRollover;
       
       if (type === 'gas') {
          adjustment = data.adjustment !== undefined ? data.adjustment : 1.347; 
@@ -3322,12 +3504,17 @@ export class BillCalculatorComponent implements OnDestroy {
          adjustment = data.adjustment || 1;
       }
 
-      // CALCULATION LOGIC: Medição bruta de campo
+      // CALCULATION LOGIC: Medição bruta de campo (com suporte a virada de relógio)
       if (virtual > 0) {
           rawConsumption = virtual;
       } else {
           let diff = currentReading - prevReading;
-          if (diff < 0) diff = 0;
+          if (isRollover && currentReading < prevReading && prevReading > 0) {
+            const digitsBase = prevReading > 10000 ? 100000 : (prevReading > 1000 ? 10000 : 1000);
+            diff = (digitsBase - prevReading) + currentReading;
+          } else if (diff < 0) {
+            diff = 0;
+          }
 
           if (type === 'gas') {
               const initial = (diff * adjustment) + adjustmentAdd;
@@ -3361,60 +3548,70 @@ export class BillCalculatorComponent implements OnDestroy {
       const isRead = currentReading > 0;
       const readingDiff = isRead ? (currentReading - prevReading) : 0;
 
-      // --- VALIDAÇÃO INSTANTÂNEA DE LEITURA SUSPEITA / ERRO DE DIGITAÇÃO ---
+      // --- MOTOR DE AUDITORIA INTELIGENTE & ANTI-ERRO (ETAPA 1) ---
       const histData = histAvgMap.get(store.id);
       const avgCons = histData && histData.avgConsumption > 0 ? histData.avgConsumption : (prevData.consumption > 0 ? prevData.consumption : 0);
 
-      // 1. Alerta: Leitura menor que a anterior (possível virada de relógio ou digitação invertida)
-      const isNegative = isRead && prevReading > 0 && currentReading < prevReading;
+      // 1. Alerta Crítico: Leitura menor que a anterior (sem marcação de virada de medidor)
+      const isNegative = isRead && prevReading > 0 && currentReading < prevReading && !isRollover;
 
-      // 2. Alerta: Consumo zero em loja ativa (relógio travado/avariado ou digitação repetida)
-      const isZeroActive = isRead && store.active !== false && prevReading > 0 && (currentReading === prevReading || consumption === 0);
-
-      // 3. Alerta: Suspeita de "zero a mais" ou erro de grandeza (salto extremo de digitação >= 4x padrão)
-      const isHugeTypoJump = isRead && !isNegative && (
-        (avgCons > 0 && consumption >= avgCons * 4 && consumption > 25) ||
-        (prevData.consumption > 0 && consumption >= prevData.consumption * 4 && consumption > 25)
+      // 2. Alerta de Suspeita de Vazamento / Salto Abrupto (>= 3x a média histórica da loja)
+      const is3xJump = isRead && !isNegative && (
+        (avgCons > 0 && consumption >= avgCons * 3 && consumption >= 12) ||
+        (prevData.consumption > 0 && consumption >= prevData.consumption * 3 && consumption >= 12)
       );
 
-      // 4. Alerta: Consumo anômalo (>80% acima da média histórica ou anterior)
-      const isAtypicalJump = isRead && !isNegative && !isHugeTypoJump && (
-        (avgCons > 0 && consumption > avgCons * 1.8 && consumption > 15) ||
-        (prevData.consumption > 0 && consumption > prevData.consumption * 1.8 && consumption > 15)
+      // 3. Alerta de Suspeita de Zero a Mais / Salto Extremo (>= 5x da média)
+      const isExtremeJump = isRead && !isNegative && (
+        (avgCons > 0 && consumption >= avgCons * 5 && consumption >= 25) ||
+        (prevData.consumption > 0 && consumption >= prevData.consumption * 5 && consumption >= 25)
       );
 
-      const hasSuspiciousAlert = isNegative || isZeroActive || isHugeTypoJump || isAtypicalJump;
+      // 4. Alerta de Relógio Parado por 2 meses seguidos (loja ativa com 0 no mês anterior E agora)
+      const is2MonthsZero = isRead && store.active !== false && prevReading > 0 && (currentReading === prevReading || consumption === 0) && (histData?.prevMonthZero === true);
+
+      // 5. Alerta de Consumo Zero no mês atual (loja ativa)
+      const isZeroThisMonth = isRead && store.active !== false && prevReading > 0 && (currentReading === prevReading || consumption === 0) && !is2MonthsZero;
+
+      const hasSuspiciousAlert = isNegative || is3xJump || isExtremeJump || is2MonthsZero || isZeroThisMonth;
+      
       const alertSeverity: 'none' | 'warning' | 'critical' = 
-        (isNegative || isHugeTypoJump) ? 'critical' : (isZeroActive || isAtypicalJump ? 'warning' : 'none');
+        isConfirmed ? 'none' : ((isNegative || isExtremeJump) ? 'critical' : ((is3xJump || is2MonthsZero || isZeroThisMonth) ? 'warning' : 'none'));
 
-      let alertType: 'none' | 'negative' | 'zero_active' | 'typo_jump' | 'atypical_jump' = 'none';
+      let alertType: 'none' | 'negative' | 'leak_suspect' | 'typo_extreme' | 'zero_2months' | 'zero_month' = 'none';
       let alertBadge = '';
       let alertTitle = '';
       let alertMessage = '';
 
       if (isNegative) {
         alertType = 'negative';
-        alertBadge = '🚨 Leitura Menor';
-        alertTitle = 'Leitura Menor que a Anterior';
+        alertBadge = isConfirmed ? '✓ Leitura Menor Auditada' : '🚨 Leitura Menor';
+        alertTitle = '🚨 Leitura Menor que a Anterior';
         const diffVal = Math.abs(currentReading - prevReading);
-        alertMessage = `A leitura digitada (${currentReading}) é menor que a anterior (${prevReading}). Diferença: -${diffVal.toFixed(1)} ${unit}. Verifique se houve inversão de dígitos ou virada física do medidor.`;
-      } else if (isHugeTypoJump) {
-        alertType = 'typo_jump';
-        alertBadge = '🚨 Zero a Mais?';
+        alertMessage = `A leitura digitada (${currentReading}) é menor que a anterior (${prevReading}). Diferença: -${diffVal.toFixed(1)} ${unit}. Verifique se houve virada física de medidor ou erro na digitação dos dígitos.`;
+      } else if (isExtremeJump) {
+        alertType = 'typo_extreme';
+        alertBadge = isConfirmed ? '✓ Salto Auditado' : '🚨 Zero a Mais?';
         alertTitle = '🚨 Suspeita de Zero a Mais (Salto Extremo)';
         const mult = avgCons > 0 ? (consumption / avgCons).toFixed(1) : (consumption / prevData.consumption).toFixed(1);
-        alertMessage = `Consumo calculado de ${consumption.toFixed(1)} ${unit} está ${mult}x acima do histórico da loja (Média: ${avgCons.toFixed(1)} ${unit}). Confira no visor do relógio se não digitou um zero extra no final!`;
-      } else if (isAtypicalJump) {
-        alertType = 'atypical_jump';
-        alertBadge = '⚠️ Salto >80%';
-        alertTitle = '⚠️ Variação de Consumo Anômala (>80%)';
-        const pctDiff = avgCons > 0 ? Math.round(((consumption - avgCons) / avgCons) * 100) : Math.round(variation);
-        alertMessage = `Consumo de ${consumption.toFixed(1)} ${unit} está +${pctDiff}% acima da média histórica (${avgCons.toFixed(1)} ${unit}). Confira se houve vazamento ou medição atípica.`;
-      } else if (isZeroActive) {
-        alertType = 'zero_active';
-        alertBadge = '⚠️ Consumo Zero';
+        alertMessage = `Atenção: Consumo desta loja deu ${consumption.toFixed(1)} ${unit} (a média é ${avgCons.toFixed(1)} ${unit}, salto de ${mult}x). Confira no visor do relógio se não digitou um zero extra no final!`;
+      } else if (is3xJump) {
+        alertType = 'leak_suspect';
+        alertBadge = isConfirmed ? '✓ Salto Auditado' : '⚠️ Salto >3x (Vazamento?)';
+        alertTitle = '⚠️ Suspeita de Vazamento / Salto Abrupto (>3x Média)';
+        alertMessage = `Atenção: Consumo desta loja deu ${consumption.toFixed(1)} ${unit} (a média histórica é ${avgCons.toFixed(1)} ${unit}). Deseja confirmar ou conferir o relógio no local?`;
+      } else if (is2MonthsZero) {
+        alertType = 'zero_2months';
+        alertBadge = isConfirmed ? '✓ Relógio Checado' : '⏱️ Relógio Parado (2m Zerado)';
+        alertTitle = '⏱️ Suspeita de Relógio Parado (2 Meses Seguidos Zerado)';
+        alertMessage = `Atenção: Esta loja ativa está com consumo 0 pelo segundo mês consecutivo (Leitura anterior: ${prevReading}, Leitura atual: ${currentReading}). Verifique no local se o hidrômetro/relógio está travado ou desligado.`;
+      } else if (isZeroThisMonth) {
+        alertType = 'zero_month';
+        alertBadge = isConfirmed ? '✓ Consumo 0 Auditado' : '⚠️ Consumo Zero';
         alertTitle = '⚠️ Consumo Zero em Loja Ativa';
-        alertMessage = `A loja está ativa, mas a leitura digitada (${currentReading}) é idêntica à anterior (${prevReading}), gerando consumo 0 ${unit}. Verifique se o medidor está travado ou desligado.`;
+        alertMessage = `A loja está ativa, mas a leitura digitada (${currentReading}) é idêntica à anterior (${prevReading}), gerando consumo 0 ${unit}. Verifique se o medidor operou no período.`;
+      } else if (isConfirmed) {
+        alertBadge = '✅ Auditado em Campo';
       }
 
       const validationAlert = {
@@ -3458,10 +3655,12 @@ export class BillCalculatorComponent implements OnDestroy {
         photoTimestamp,
         isRead,
         isNegative,
-        isZeroActive,
-        isHugeTypoJump,
-        isAtypicalJump,
-        hasSuspiciousAlert,
+        isZeroActive: isZeroThisMonth || is2MonthsZero,
+        isHugeTypoJump: isExtremeJump,
+        isAtypicalJump: is3xJump,
+        hasSuspiciousAlert: hasSuspiciousAlert && !isConfirmed,
+        anomalyConfirmed: isConfirmed,
+        isRollover,
         alertSeverity,
         validationAlert,
         readingDiff
@@ -3637,8 +3836,14 @@ export class BillCalculatorComponent implements OnDestroy {
 
   updateDetailedReading(storeId: string, field: keyof StoreReading, value: any) {
       if (!this.authService.canEditReadings()) return;
-      // Tech can edit 'reading', 'note', 'hasPhoto', 'photoTimestamp'
-      if (this.authService.isTech() && field !== 'reading' && field !== 'note' && field !== 'hasPhoto' && field !== 'photoTimestamp') return;
+      // Tech can edit 'reading', 'note', 'hasPhoto', 'photoTimestamp', 'anomalyConfirmed', 'isRollover'
+      if (this.authService.isTech() && 
+          field !== 'reading' && 
+          field !== 'note' && 
+          field !== 'hasPhoto' && 
+          field !== 'photoTimestamp' &&
+          field !== 'anomalyConfirmed' &&
+          field !== 'isRollover') return;
 
       this.dataLoaded.set(true);
 
@@ -3669,11 +3874,76 @@ export class BillCalculatorComponent implements OnDestroy {
           
           const safeData: StoreReading = currentData;
           const newData: StoreReading = { ...safeData, [field]: cleanValue };
+          if (field === 'reading') {
+            newData.anomalyConfirmed = false;
+            newData.isRollover = false;
+          }
           
           map.set(storeId, newData);
 
           return { ...curr, [type]: map };
       });
+  }
+
+  // --- ANOMALY AUDIT MODAL METHODS (ETAPA 1) ---
+  onReadingBlur(storeId: string) {
+    const row = this.tableData().find(r => r.storeId === storeId);
+    if (!row) return;
+
+    if (row.validationAlert.hasAlert && !row.anomalyConfirmed && row.isRead) {
+      this.activeAnomalyModal.set({
+        storeId: row.storeId,
+        storeName: row.storeName,
+        luc: row.luc,
+        type: row.validationAlert.type,
+        title: row.validationAlert.title,
+        message: row.validationAlert.message,
+        severity: row.validationAlert.severity,
+        currentReading: row.currentReading,
+        prevReading: row.prevReading,
+        consumption: row.consumption,
+        avgConsumption: row.validationAlert.avgConsumption,
+        unit: this.getUnit(),
+        isConfirmed: false,
+        isRollover: !!row.isRollover,
+        diffPct: row.validationAlert.diffPct
+      });
+    }
+  }
+
+  openAnomalyModal(item: any) {
+    this.activeAnomalyModal.set({
+      storeId: item.storeId,
+      storeName: item.storeName,
+      luc: item.luc,
+      type: item.validationAlert.type,
+      title: item.validationAlert.title,
+      message: item.validationAlert.message,
+      severity: item.validationAlert.severity,
+      currentReading: item.currentReading,
+      prevReading: item.prevReading,
+      consumption: item.consumption,
+      avgConsumption: item.validationAlert.avgConsumption,
+      unit: this.getUnit(),
+      isConfirmed: !!item.anomalyConfirmed,
+      isRollover: !!item.isRollover,
+      diffPct: item.validationAlert.diffPct
+    });
+  }
+
+  confirmAnomaly(storeId: string) {
+    this.updateDetailedReading(storeId, 'anomalyConfirmed', true);
+    this.activeAnomalyModal.set(null);
+  }
+
+  markRollover(storeId: string) {
+    this.updateDetailedReading(storeId, 'isRollover', true);
+    this.updateDetailedReading(storeId, 'anomalyConfirmed', true);
+    this.activeAnomalyModal.set(null);
+  }
+
+  closeAnomalyModal() {
+    this.activeAnomalyModal.set(null);
   }
 
   // --- PHOTO EVIDENCE METHODS (FOTO DO MEDIDOR OFFLINE NO INDEXEDDB + NUVEM) ---

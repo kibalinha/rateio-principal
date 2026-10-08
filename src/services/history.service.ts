@@ -19,6 +19,10 @@ export type StoreReading = {
   note?: string;          // Observação de campo (ex: 'Relógio embaçado', 'Loja em reforma')
   hasPhoto?: boolean;     // Comprovante / Foto de Evidência gravada no IndexedDB
   photoTimestamp?: string;// Data/hora da captura da foto
+
+  // Auditoria Inteligente e Anti-Erro em Campo
+  anomalyConfirmed?: boolean; // Confirmado intencionalmente pelo técnico
+  isRollover?: boolean;       // Marcado como virada física de medidor (9999 -> 0000)
 };
 
 export interface BillData {
