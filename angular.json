@@ -26,6 +26,15 @@
               "icon-512.png",
               "apple-touch-icon.png"
             ],
+            "allowedCommonJsDependencies": [
+              "canvg",
+              "html2canvas",
+              "p-retry",
+              "core-js",
+              "raf",
+              "rgbcolor",
+              "jspdf"
+            ],
             "define": {
               "process.env.API_KEY": "\"\"",
               "process.env.GEMINI_API_KEY": "\"\"",
