@@ -13,18 +13,31 @@ export class AuthService {
   readonly firebaseUser = computed(() => this.user());
   readonly isAuthLoading = signal<boolean>(false);
 
-  // Estado do papel atual (Padrão: TEC ou ADM para administrador do app)
-  currentUserRole = signal<UserRole>('TEC');
+  // Helper para ler papel salvo localmente ou padrão 'ADM'
+  private getInitialRole(): UserRole {
+    try {
+      const saved = localStorage.getItem('shop_rateio_user_role') as UserRole;
+      if (saved && (saved === 'ADM' || saved === 'TEC' || saved === 'VIS')) {
+        return saved;
+      }
+    } catch {}
+    return 'ADM';
+  }
+
+  // Estado do papel atual (Padrão: ADM persistido ou configurado)
+  currentUserRole = signal<UserRole>(this.getInitialRole());
 
   // Computed helpers para usar nos templates
   isAdmin = computed(() => this.currentUserRole() === 'ADM');
   isTech = computed(() => this.currentUserRole() === 'TEC');
   isViewer = computed(() => this.currentUserRole() === 'VIS');
 
-  // Regras de Negócio
+  // Regras de Negócio:
+  // Administradores e Técnicos podem editar medições e configurar custos/faturas
+  // Apenas Visualizadores (VIS) ficam em modo somente-leitura
   canEditReadings = computed(() => this.isAdmin() || this.isTech());
   canManageStores = computed(() => this.isAdmin());
-  canConfigureBill = computed(() => this.isAdmin());
+  canConfigureBill = computed(() => this.isAdmin() || this.isTech());
   canImport = computed(() => this.isAdmin());
 
   constructor() {
@@ -38,7 +51,7 @@ export class AuthService {
         if (session?.user) {
           this.user.set(session.user);
           if (session.user.email === 'herrypotterluizfelipe95@gmail.com' || session.user.email?.includes('admin')) {
-            this.currentUserRole.set('ADM');
+            this.setRole('ADM');
           }
         }
       }).catch(() => {});
@@ -47,7 +60,7 @@ export class AuthService {
         const u = session?.user || null;
         this.user.set(u);
         if (u && (u.email === 'herrypotterluizfelipe95@gmail.com' || u.email?.includes('admin'))) {
-          this.currentUserRole.set('ADM');
+          this.setRole('ADM');
         }
       });
     } catch (err) {
@@ -70,7 +83,7 @@ export class AuthService {
       const client = this.supabase.getClient();
       await client.auth.signOut();
       this.user.set(null);
-      this.currentUserRole.set('TEC');
+      this.setRole('ADM');
     } catch (error) {
       console.error('Erro ao sair:', error);
     }
@@ -78,6 +91,9 @@ export class AuthService {
 
   setRole(role: UserRole) {
     this.currentUserRole.set(role);
+    try {
+      localStorage.setItem('shop_rateio_user_role', role);
+    } catch {}
   }
 
   validateAdminPassword(password: string): boolean {

@@ -331,15 +331,15 @@ type ColumnDef = {
                     }
                   </div>
                   
-                  <div class="pt-2 mt-2 border-t border-slate-200 flex justify-end">
-                      <span class="text-xs text-slate-500 mr-2">Subtotal:</span>
-                      <span class="text-sm font-mono font-bold text-slate-700">{{ totalBillAmount() | currency:'BRL' }}</span>
+                  <div class="pt-2 mt-2 border-t border-slate-200 dark:border-slate-700 flex justify-end">
+                      <span class="text-xs text-slate-500 dark:text-slate-400 mr-2">Subtotal:</span>
+                      <span class="text-sm font-mono font-bold text-slate-700 dark:text-slate-200">{{ totalBillAmount() | currency:'BRL' }}</span>
                   </div>
                 </div>
 
                 <!-- Section 2: Consumption Inputs -->
-                <div class="space-y-3 p-4 bg-slate-50 rounded-lg border border-slate-200">
-                  <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 border-b border-slate-200 pb-1">
+                <div class="space-y-3 p-4 bg-slate-50 dark:bg-slate-800/60 rounded-lg border border-slate-200 dark:border-slate-700">
+                  <h3 class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 border-b border-slate-200 dark:border-slate-700 pb-1">
                     @if(utilityType() === 'luz') { Entrada (kWh) } @else { Consumo (m³) }
                   </h3>
                   
@@ -443,17 +443,17 @@ type ColumnDef = {
         <div class="xl:col-span-2 flex flex-col gap-6">
           
           <!-- Main Table/Card Container -->
-          <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
-            <div class="p-3.5 md:p-5 border-b border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-50 gap-3">
+          <div class="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col">
+            <div class="p-3.5 md:p-5 border-b border-slate-200 dark:border-slate-800 flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-50 dark:bg-slate-850 gap-3">
               <div>
-                <h2 class="text-base md:text-lg font-bold text-slate-800 flex items-center gap-2">
+                <h2 class="text-base md:text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
                   <span>Leituras & Coleta — {{ utilityType() | uppercase }}</span>
                   <span class="text-xs px-2 py-0.5 rounded-full font-medium"
-                        [class]="utilityType() === 'luz' ? 'bg-teal-100 text-teal-800' : (utilityType() === 'agua' ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-800')">
+                        [class]="utilityType() === 'luz' ? 'bg-teal-100 dark:bg-teal-950/70 text-teal-800 dark:text-teal-300' : (utilityType() === 'agua' ? 'bg-blue-100 dark:bg-blue-950/70 text-blue-800 dark:text-blue-300' : 'bg-red-100 dark:bg-red-950/70 text-red-800 dark:text-red-300')">
                     {{ getUnit() }}
                   </span>
                 </h2>
-                <p class="text-[11px] text-slate-500 font-medium mt-0.5">
+                <p class="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
                   Preencha as leituras em campo ou confira o rateio mensal.
                 </p>
               </div>
@@ -476,7 +476,7 @@ type ColumnDef = {
                  <!-- Botão Exportar Pacote ZIP -->
                  <button (click)="exportPackageZip()" 
                     [disabled]="isExportingZip() || tableData().length === 0"
-                    class="text-xs px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-semibold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
+                    class="text-xs px-3 py-1.5 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white rounded-lg font-semibold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-40 border border-slate-700"
                     title="Exportar pacote completo em ZIP (Planilha Excel + Fotos dos Medidores)">
                     @if (isExportingZip()) {
                       <span class="animate-spin text-xs">⏳</span>
@@ -490,52 +490,52 @@ type ColumnDef = {
                  <!-- Botão Importar (ADM) -->
                  @if (authService.canImport()) {
                    <button (click)="toggleImport()" 
-                      class="text-xs px-3 py-1.5 bg-teal-50 text-teal-700 hover:bg-teal-100 border border-teal-200 rounded font-medium transition-colors flex items-center gap-1 whitespace-nowrap">
+                      class="text-xs px-3 py-1.5 bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-900 border border-teal-200 dark:border-teal-800 rounded font-medium transition-colors flex items-center gap-1 whitespace-nowrap">
                       <span class="md:hidden">Importar</span>
                       <span class="hidden md:inline">Importar por colunas (Grid)</span>
                    </button>
                  }
-                 <div class="text-xs md:text-sm text-slate-600 md:ml-2 whitespace-nowrap">
-                    Total: <strong class="text-slate-900">{{ totalDistributedCost() | currency:'BRL' }}</strong>
+                 <div class="text-xs md:text-sm text-slate-600 dark:text-slate-300 md:ml-2 whitespace-nowrap">
+                    Total: <strong class="text-slate-900 dark:text-white">{{ totalDistributedCost() | currency:'BRL' }}</strong>
                  </div>
               </div>
             </div>
 
             <!-- IMPORT AREA: COLUMNAR PASTE -->
             @if (showImport()) {
-              <div class="bg-teal-50 p-4 md:p-6 border-b border-teal-100 animate-fade-in">
+              <div class="bg-teal-50 dark:bg-teal-950/40 p-4 md:p-6 border-b border-teal-100 dark:border-teal-900 animate-fade-in">
                  <div class="flex justify-between items-start mb-4">
                     <div>
-                      <h4 class="text-base font-bold text-teal-800">Importação por Colunas</h4>
-                      <p class="text-xs text-teal-600 mt-1 hidden md:block">
+                      <h4 class="text-base font-bold text-teal-800 dark:text-teal-200">Importação por Colunas</h4>
+                      <p class="text-xs text-teal-600 dark:text-teal-400 mt-1 hidden md:block">
                          Copie as colunas do seu Excel e cole nas caixas abaixo. 
                       </p>
                     </div>
-                    <button (click)="toggleImport()" class="text-teal-400 hover:text-teal-600 font-bold text-lg">✕</button>
+                    <button (click)="toggleImport()" class="text-teal-400 hover:text-teal-600 dark:hover:text-teal-200 font-bold text-lg">✕</button>
                  </div>
 
                  <!-- GRID INPUTS -->
                  <div class="flex gap-2 overflow-x-auto pb-4 snap-x">
                     @for (col of importColumns(); track col.key; let idx = $index) {
                       <div class="flex-shrink-0 flex flex-col gap-1 w-[120px] snap-start">
-                         <label class="text-[10px] font-bold text-teal-700 uppercase truncate">{{ col.label }}</label>
+                         <label class="text-[10px] font-bold text-teal-700 dark:text-teal-300 uppercase truncate">{{ col.label }}</label>
                          <textarea 
                             [placeholder]="col.placeholder"
                             [value]="getPastedColumnValue(col.key)"
                             (paste)="onPasteColumn($event, col.key, idx)"
                             (input)="onInputColumn($event, col.key)"
-                            class="w-full h-32 md:h-48 p-2 text-xs font-mono border border-teal-300 rounded focus:ring-2 focus:ring-teal-500 bg-white shadow-inner resize-none whitespace-pre overflow-y-scroll"></textarea>
+                            class="w-full h-32 md:h-48 p-2 text-xs font-mono border border-teal-300 dark:border-teal-800 rounded focus:ring-2 focus:ring-teal-500 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 shadow-inner resize-none whitespace-pre overflow-y-scroll"></textarea>
                       </div>
                     }
                  </div>
 
-                 <div class="flex flex-col md:flex-row justify-between items-center bg-teal-100 p-2 rounded gap-2">
+                 <div class="flex flex-col md:flex-row justify-between items-center bg-teal-100 dark:bg-teal-900/40 p-2 rounded gap-2">
                     <div class="flex items-center gap-2 w-full md:w-auto justify-between md:justify-start">
-                      <label class="flex items-center gap-1 cursor-pointer text-xs text-teal-800">
+                      <label class="flex items-center gap-1 cursor-pointer text-xs text-teal-800 dark:text-teal-300">
                           <input type="checkbox" [ngModel]="skipHeader()" (ngModelChange)="skipHeader.set($event)" class="rounded text-teal-600">
                           Ignorar cabeçalho
                       </label>
-                      <span class="text-xs font-bold text-teal-700">Linhas: {{ detectedRows() }}</span>
+                      <span class="text-xs font-bold text-teal-700 dark:text-teal-300">Linhas: {{ detectedRows() }}</span>
                     </div>
 
                     <button (click)="executeColumnImport()" 
@@ -1621,16 +1621,16 @@ type ColumnDef = {
           </div>
 
           <!-- Footer Summary (ALL TYPES) -->
-          <div class="rounded-xl overflow-hidden border border-orange-200 shadow-sm font-sans animate-fade-in">
+          <div class="rounded-xl overflow-hidden border border-orange-200 dark:border-orange-900/60 shadow-sm font-sans animate-fade-in">
              <!-- Compact Mobile Summary -->
-             <div class="md:hidden p-4 bg-orange-50 space-y-2">
+             <div class="md:hidden p-4 bg-orange-50 dark:bg-orange-950/60 space-y-2">
                 <div class="flex justify-between items-center text-sm">
-                   <span class="font-bold text-orange-900">Áreas Comuns</span>
-                   <span class="font-mono text-orange-800">{{ commonAreaCost() | currency:'BRL' }}</span>
+                   <span class="font-bold text-orange-900 dark:text-orange-200">Áreas Comuns</span>
+                   <span class="font-mono text-orange-800 dark:text-orange-300">{{ commonAreaCost() | currency:'BRL' }}</span>
                 </div>
                 <div class="flex justify-between items-center text-sm">
-                   <span class="font-bold text-orange-900">Valor SAP</span>
-                   <span class="font-mono text-orange-800">{{ totalDistributedCost() | currency:'BRL' }}</span>
+                   <span class="font-bold text-orange-900 dark:text-orange-200">Valor SAP</span>
+                   <span class="font-mono text-orange-800 dark:text-orange-300">{{ totalDistributedCost() | currency:'BRL' }}</span>
                 </div>
              </div>
 
@@ -1652,7 +1652,7 @@ type ColumnDef = {
 
                 <!-- 2. Ar Condicionado Row -->
                 @if(utilityType() !== 'gas') {
-                  <div class="bg-orange-200 text-orange-900 grid grid-cols-1 md:grid-cols-12 items-center p-3 border-b border-orange-300">
+                  <div class="bg-orange-200 dark:bg-orange-950/70 text-orange-900 dark:text-orange-100 grid grid-cols-1 md:grid-cols-12 items-center p-3 border-b border-orange-300 dark:border-orange-900">
                       <div class="md:col-span-6 font-bold text-right pr-4 text-sm uppercase tracking-wide">
                         Ar Condicionado
                       </div>
@@ -1660,7 +1660,7 @@ type ColumnDef = {
                         <div class="font-mono font-bold text-lg leading-tight">{{ airConditioningCost() | currency:'BRL' }}</div>
                         <div class="text-xs opacity-70">{{ getPercentage(airConditioningCost()) }}%</div>
                       </div>
-                      <div class="md:col-span-3 text-right pl-4 border-l border-orange-300">
+                      <div class="md:col-span-3 text-right pl-4 border-l border-orange-300 dark:border-orange-900">
                         <div class="flex items-center justify-end gap-2">
                           <label class="text-[10px] uppercase font-bold opacity-60">Consumo:</label>
                           <input type="number" 
@@ -1668,7 +1668,7 @@ type ColumnDef = {
                               [ngModel]="currentACConsumption()" 
                               (ngModelChange)="setAirConditioning($event)"
                               [disabled]="!canConfigure()"
-                              class="w-24 px-2 py-1 text-sm bg-white border border-orange-300 rounded text-right font-mono focus:ring-1 focus:ring-orange-500 disabled:bg-transparent disabled:border-transparent"
+                              class="w-24 px-2 py-1 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-white border border-orange-300 dark:border-orange-800 rounded text-right font-mono focus:ring-1 focus:ring-orange-500 disabled:bg-transparent disabled:border-transparent"
                               placeholder="0">
                             <span class="text-xs font-mono">{{ getUnit() }}</span>
                         </div>
