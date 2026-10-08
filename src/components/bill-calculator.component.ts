@@ -1981,7 +1981,6 @@ export class BillCalculatorComponent implements OnDestroy {
        untracked(() => {
            // NUNCA salvar durante o carregamento de outra aba ou mês
            if (this.isProgrammaticLoading) return;
-           if (!this.dataLoaded()) return;
            if (!this.authService.canEditReadings()) return;
 
            this.saveStatus.set('saving');
@@ -2255,6 +2254,7 @@ export class BillCalculatorComponent implements OnDestroy {
     if (!this.authService.canEditReadings()) return;
     if (this.isProgrammaticLoading) return;
     this.isSaving = true;
+    this.dataLoaded.set(true);
     
     const type = this.utilityType();
     const month = this.selectedMonth();
@@ -2368,6 +2368,33 @@ export class BillCalculatorComponent implements OnDestroy {
         }
       }
       this.meterPhotos.set(combined);
+
+      // Reconciliação inteligente: se há fotos salvas com leitura capturada por OCR ou leiturista,
+      // garante que a leitura preencha a tabela caso ainda esteja 0 ou vazia
+      const currentReadings = this.readings()[type] as Map<string, StoreReading>;
+      let hasPhotoReadingUpdates = false;
+      const updatedMap = new Map(currentReadings);
+
+      for (const [sId, p] of Object.entries(combined)) {
+        const curReading = updatedMap.get(sId);
+        const curVal = curReading?.reading ?? 0;
+        if (p.readingValue && p.readingValue > 0 && curVal === 0) {
+          const baseData = curReading || this.createDefaultReading();
+          updatedMap.set(sId, {
+            ...baseData,
+            reading: p.readingValue,
+            hasPhoto: true,
+            photoTimestamp: p.capturedAt
+          });
+          hasPhotoReadingUpdates = true;
+        }
+      }
+
+      if (hasPhotoReadingUpdates) {
+        this.readings.update(curr => ({ ...curr, [type]: updatedMap }));
+        this.dataLoaded.set(true);
+        this.internalSave();
+      }
     }).catch(() => {
       this.meterPhotos.set({});
     });
@@ -2839,6 +2866,8 @@ export class BillCalculatorComponent implements OnDestroy {
       // Tech can edit 'reading', 'note', 'hasPhoto', 'photoTimestamp'
       if (this.authService.isTech() && field !== 'reading' && field !== 'note' && field !== 'hasPhoto' && field !== 'photoTimestamp') return;
 
+      this.dataLoaded.set(true);
+
       let cleanValue = value;
       if (field === 'reading') {
         if (typeof value === 'string') {
@@ -2956,6 +2985,10 @@ export class BillCalculatorComponent implements OnDestroy {
             if (this.activePhotoRecord()?.storeId === storeId) {
               this.activePhotoRecord.set({ ...record });
             }
+            this.meterPhotos.update(prev => ({ ...prev, [storeId]: { ...record } }));
+
+            // Salva a fatura imediatamente no banco e no navegador
+            this.internalSave();
 
             const modelDesc = ocrResult.fallbackUsed 
               ? '🤖 Gemini 3.8 Flash (Fallback)' 
@@ -3073,6 +3106,10 @@ export class BillCalculatorComponent implements OnDestroy {
         if (this.activePhotoRecord()?.storeId === storeId) {
           this.activePhotoRecord.set({ ...photo });
         }
+        this.meterPhotos.update(prev => ({ ...prev, [storeId]: { ...photo } }));
+
+        // Salva a fatura imediatamente no banco e no navegador
+        this.internalSave();
 
         const modelLabel = ocrResult.fallbackUsed 
           ? '🤖 Gemini 3.8 Flash (Fallback)' 
