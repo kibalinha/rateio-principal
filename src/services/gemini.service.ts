@@ -1,18 +1,9 @@
 import { Injectable } from '@angular/core';
 import { GoogleGenAI } from '@google/genai';
 
-export interface MeterOcrResult {
-  success: boolean;
-  reading: number | null;
-  detectedDigits?: string | null;
-  meterType?: 'digital' | 'analogico_rolete' | 'analogico_ponteiro' | 'indeterminado';
-  confidence: 'high' | 'medium' | 'low';
-  explanation?: string;
-  error?: string;
-  provider: 'qwen' | 'gemini' | 'none';
-  modelName: string;
-  fallbackUsed?: boolean;
-}
+import { MeterOcrResult } from '../models';
+
+export type { MeterOcrResult };
 
 @Injectable({
   providedIn: 'root'

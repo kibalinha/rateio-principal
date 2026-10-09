@@ -5,7 +5,8 @@ import * as d3 from 'd3';
 import { StoreService } from '../services/store.service';
 import { HistoryService, BillData } from '../services/history.service';
 
-type UtilityType = 'luz' | 'agua' | 'gas';
+import { UtilityType } from '../models';
+
 type ViewMode = 'annual' | 'monthly';
 
 @Component({

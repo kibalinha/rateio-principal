@@ -1,7 +1,9 @@
 import { Injectable, signal, computed, inject } from '@angular/core';
 import { SupabaseService } from './supabase.service';
 
-export type UserRole = 'ADM' | 'TEC' | 'VIS';
+import { UserRole } from '../models';
+
+export type { UserRole };
 
 @Injectable({
   providedIn: 'root'

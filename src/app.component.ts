@@ -4,16 +4,15 @@ import { DashboardComponent } from './components/dashboard.component';
 import { StoreManagerComponent } from './components/store-manager.component';
 import { BillCalculatorComponent } from './components/bill-calculator.component';
 import { StoreReportComponent } from './components/store-report.component';
-import { AuthService, UserRole } from './services/auth.service';
+import { AuthService } from './services/auth.service';
 import { IndexedDbService } from './services/indexed-db.service';
 import { ThemeService } from './services/theme.service';
-import { NavigationService, AppView } from './services/navigation.service';
+import { NavigationService } from './services/navigation.service';
 import { StoreService } from './services/store.service';
 import { HistoryService } from './services/history.service';
 import { PwaService } from './services/pwa.service';
 import { FormsModule } from '@angular/forms';
-
-type View = AppView;
+import { UserRole, AppView, AppView as View } from './models';
 
 @Component({
   selector: 'app-root',

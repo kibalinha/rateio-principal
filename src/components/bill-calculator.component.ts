@@ -1,57 +1,28 @@
 import { Component, inject, signal, computed, effect, untracked, OnDestroy } from '@angular/core';
 import { CommonModule, DecimalPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { StoreService, Store } from '../services/store.service';
-import { HistoryService, BillData, StoreReading } from '../services/history.service';
+import { StoreService } from '../services/store.service';
+import { HistoryService } from '../services/history.service';
 import { AuthService } from '../services/auth.service';
-import { ReportExportService, StoreVoucherData } from '../services/report-export.service';
-import { IndexedDbService, MeterPhotoRecord } from '../services/indexed-db.service';
-import { GeminiService, MeterOcrResult } from '../services/gemini.service';
+import { ReportExportService } from '../services/report-export.service';
+import { IndexedDbService } from '../services/indexed-db.service';
+import { GeminiService } from '../services/gemini.service';
 import { SupabaseService } from '../services/supabase.service';
 import * as XLSX from 'xlsx';
 
-interface CostItem {
-  id: string;
-  name: string;
-  value: number;
-}
+import { 
+  Store,
+  BillData,
+  StoreReading,
+  StoreVoucherData,
+  MeterPhotoRecord,
+  MeterOcrResult,
+  CostItem, 
+  ExcelImportRowPreview, 
+  AnomalyModalData 
+} from '../models';
 
-export interface ExcelImportRowPreview {
-  rawRow: Record<string, any>;
-  matchedStore?: Store;
-  storeName: string;
-  luc: string;
-  reading: number;
-  prevReading: number;
-  consumptionPreview: number;
-  constant?: number;
-  adjustment?: number;
-  virtual?: number;
-  adjustmentAdd?: number;
-  fcm?: number;
-  fluxoCost?: number;
-  note?: string;
-  status: 'matched' | 'unmatched';
-  message: string;
-}
-
-export interface AnomalyModalData {
-  storeId: string;
-  storeName: string;
-  luc: string;
-  type: string;
-  title: string;
-  message: string;
-  severity: 'critical' | 'warning' | 'confirmed' | 'none';
-  currentReading: number;
-  prevReading: number;
-  consumption: number;
-  avgConsumption: number;
-  unit: string;
-  isConfirmed: boolean;
-  isRollover: boolean;
-  diffPct: number | null;
-}
+export type { ExcelImportRowPreview, AnomalyModalData };
 
 @Component({
   selector: 'app-bill-calculator',

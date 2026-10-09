@@ -1,39 +1,22 @@
 import { Component, ElementRef, ViewChild, afterNextRender, inject, signal, effect, computed, untracked } from '@angular/core';
 import { CommonModule, CurrencyPipe, DecimalPipe } from '@angular/common';
 import * as d3 from 'd3';
-import { StoreService, Store } from '../services/store.service';
+import { StoreService } from '../services/store.service';
 import { HistoryService } from '../services/history.service';
 import { ReportExportService } from '../services/report-export.service';
-import { IndexedDbService, MeterPhotoRecord } from '../services/indexed-db.service';
+import { IndexedDbService } from '../services/indexed-db.service';
 import { ThemeService } from '../services/theme.service';
 
-type UtilityType = 'luz' | 'agua' | 'gas';
-type StatusFilter = 'active' | 'inactive' | 'alert' | 'all';
+import { 
+  Store, 
+  MeterPhotoRecord, 
+  MonthlyChartItem, 
+  StoreAlertInfo, 
+  UtilityType, 
+  StoreStatusFilter as StatusFilter 
+} from '../models';
 
-export interface MonthlyChartItem {
-  key: string;
-  monthLabel: string;
-  consumption: number;
-  cost: number;
-  unitPrice: number;
-  totalBill: number;
-  pctBill: number;
-  hasData: boolean;
-  diffFromAvgPct: number;
-  momDiffPct: number | null;
-  alertLevel: 'critical' | 'warning' | 'normal';
-  photo?: MeterPhotoRecord | null;
-}
-
-export interface StoreAlertInfo {
-  hasAlert: boolean;
-  severity: 'critical' | 'warning' | 'normal';
-  badgeText: string;
-  diffAvgPct: number;
-  momPct: number | null;
-  latestConsumption: number;
-  avgConsumption: number;
-}
+export type { MonthlyChartItem, StoreAlertInfo };
 
 @Component({
   selector: 'app-store-report',

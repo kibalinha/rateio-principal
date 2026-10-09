@@ -2,28 +2,9 @@ import { Injectable, signal, computed, inject } from '@angular/core';
 import { BillData } from './history.service';
 import { SupabaseService } from './supabase.service';
 
-export interface SyncQueueItem {
-  id?: number;
-  type: string;
-  month: string;
-  data: BillData;
-  timestamp: string;
-  synced: boolean;
-}
+import { SyncQueueItem, MeterPhotoRecord } from '../models';
 
-export interface MeterPhotoRecord {
-  id: string;               // `${type}_${month}_${storeId}`
-  type: 'luz' | 'agua' | 'gas';
-  month: string;            // 'YYYY-MM'
-  storeId: string;
-  storeName: string;
-  luc: string;
-  readingValue: number;     // Leitura capturada no momento
-  photoDataUrl: string;     // Base64 comprimida (JPEG ~80-150KB) ou URL pública Supabase
-  capturedAt: string;       // ISO Timestamp
-  note?: string;            // Observação vinculada
-  synced?: boolean;         // true se já sincronizado com Supabase (Storage + PostgreSQL)
-}
+export type { SyncQueueItem, MeterPhotoRecord };
 
 @Injectable({
   providedIn: 'root'

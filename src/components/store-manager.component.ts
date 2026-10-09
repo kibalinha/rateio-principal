@@ -1,18 +1,17 @@
 import { Component, inject, signal, computed, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { StoreService, Store, MonthlyImportResult } from '../services/store.service';
+import { StoreService } from '../services/store.service';
 import { AuthService } from '../services/auth.service';
 import { IndexedDbService } from '../services/indexed-db.service';
 
-type TabType = 'luz' | 'agua' | 'gas';
-type StatusFilter = 'all' | 'active' | 'inactive';
-
-interface ParsedStoreRow {
-  luc: string;
-  contrato: string;
-  name: string;
-}
+import { 
+  Store,
+  MonthlyImportResult,
+  UtilityType as TabType, 
+  StoreStatusFilter as StatusFilter, 
+  ParsedStoreRow 
+} from '../models';
 
 @Component({
   selector: 'app-store-manager',

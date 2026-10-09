@@ -2,64 +2,9 @@ import { Injectable } from '@angular/core';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import JSZip from 'jszip';
-import { Store } from './store.service';
-import { MonthlyChartItem } from '../components/store-report.component';
+import { Store, MonthlyChartItem, StoreVoucherData, CalculatorExcelOptions, PackageZipOptions } from '../models';
 
-export interface StoreVoucherData {
-  storeName: string;
-  luc: string;
-  contrato?: string;
-  utilityType: 'luz' | 'agua' | 'gas';
-  utilityLabel: string;
-  unit: string;
-  month: string;
-  monthLabel: string;
-  prevReading: number;
-  currentReading: number;
-  readingDiff: number;
-  constant: number;
-  adjustment: number;
-  consumption: number;
-  rawConsumption?: number;
-  gasFactor?: number;
-  unitPrice: number;
-  totalCost: number;
-  variationPct?: number;
-  note?: string;
-  photoDataUrl?: string;
-  photoCapturedAt?: string;
-  issueDate?: string;
-}
-
-export interface CalculatorExcelOptions {
-  utilityType: 'luz' | 'agua' | 'gas';
-  utilityLabel: string;
-  unit: string;
-  month: string;
-  unitPrice: number;
-  totalBill: number;
-  totalConsumption: number;
-  totalDistributedCost: number;
-  totalStoreConsumption: number;
-  costItems: { id: string; name: string; value: number }[];
-  consumptionInput: any;
-  tableData: any[];
-  airConditioningConsumption?: number;
-  airConditioningCost?: number;
-  commonAreaConsumption?: number;
-  commonAreaCost?: number;
-}
-
-export interface PackageZipOptions extends CalculatorExcelOptions {
-  photos?: Record<string, {
-    photoDataUrl?: string;
-    luc?: string;
-    storeName?: string;
-    capturedAt?: string;
-    readingValue?: number;
-    note?: string;
-  }>;
-}
+export type { StoreVoucherData, CalculatorExcelOptions, PackageZipOptions };
 
 @Injectable({
   providedIn: 'root'
