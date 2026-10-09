@@ -332,10 +332,46 @@ import { UserRole, AppView, AppView as View } from './models';
     </header>
 
     @switch (currentView()) {
-      @case ('dashboard') { <app-dashboard /> }
-      @case ('report') { <app-store-report /> }
-      @case ('calculator') { <app-bill-calculator /> }
-      @case ('stores') { <app-store-manager /> }
+      @case ('dashboard') {
+        @defer {
+          <app-dashboard />
+        } @loading (minimum 150ms) {
+          <div class="flex items-center justify-center p-12 text-slate-400 gap-2">
+            <span class="animate-spin text-teal-500">⏳</span>
+            <span class="text-xs font-bold">Carregando Painel Geral...</span>
+          </div>
+        }
+      }
+      @case ('report') {
+        @defer {
+          <app-store-report />
+        } @loading (minimum 150ms) {
+          <div class="flex items-center justify-center p-12 text-slate-400 gap-2">
+            <span class="animate-spin text-teal-500">⏳</span>
+            <span class="text-xs font-bold">Carregando Relatórios por Loja...</span>
+          </div>
+        }
+      }
+      @case ('calculator') {
+        @defer {
+          <app-bill-calculator />
+        } @loading (minimum 150ms) {
+          <div class="flex items-center justify-center p-12 text-slate-400 gap-2">
+            <span class="animate-spin text-teal-500">⏳</span>
+            <span class="text-xs font-bold">Carregando Calculadora de Rateio...</span>
+          </div>
+        }
+      }
+      @case ('stores') {
+        @defer {
+          <app-store-manager />
+        } @loading (minimum 150ms) {
+          <div class="flex items-center justify-center p-12 text-slate-400 gap-2">
+            <span class="animate-spin text-teal-500">⏳</span>
+            <span class="text-xs font-bold">Carregando Gestão de Lojas...</span>
+          </div>
+        }
+      }
     }
   </main>
 

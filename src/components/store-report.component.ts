@@ -6,6 +6,7 @@ import { HistoryService } from '../services/history.service';
 import { ReportExportService } from '../services/report-export.service';
 import { IndexedDbService } from '../services/indexed-db.service';
 import { ThemeService } from '../services/theme.service';
+import { NavigationService } from '../services/navigation.service';
 
 import { 
   Store, 
@@ -872,6 +873,7 @@ export class StoreReportComponent {
   exportService = inject(ReportExportService);
   indexedDb = inject(IndexedDbService);
   themeService = inject(ThemeService);
+  navService = inject(NavigationService);
 
   // Meter Evidence Photos (IndexedDB)
   reportPhotos = signal<Record<string, MeterPhotoRecord>>({});
@@ -1362,6 +1364,27 @@ export class StoreReportComponent {
   });
 
   constructor() {
+    // Deep Linking: Auto-seleção de loja/utilidade informadas na URL (ex: #report?store=L-101&utility=agua)
+    effect(() => {
+      const params = this.navService.queryParams();
+      const list = this.storeService.stores();
+      if (params['store'] && list.length > 0) {
+        const found = list.find(s => s.id === params['store'] || s.luc.toLowerCase() === params['store'].toLowerCase());
+        if (found) {
+          untracked(() => this.selectedStoreId.set(found.id));
+        }
+      }
+      if (params['utility'] && ['luz', 'agua', 'gas'].includes(params['utility'])) {
+        untracked(() => this.selectedUtility.set(params['utility'] as UtilityType));
+      }
+      if (params['start']) {
+        untracked(() => this.startPeriod.set(params['start']));
+      }
+      if (params['end']) {
+        untracked(() => this.endPeriod.set(params['end']));
+      }
+    });
+
     // Select first store when listed
     effect(() => {
       const list = this.storeService.stores();

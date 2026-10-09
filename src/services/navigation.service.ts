@@ -9,6 +9,7 @@ export type { AppView };
 })
 export class NavigationService {
   currentView = signal<AppView>(this.getInitialView());
+  queryParams = signal<Record<string, string>>(this.getInitialParams());
   isLocked = signal<boolean>(false);
   
   private lockTimer: any = null;
@@ -18,12 +19,34 @@ export class NavigationService {
     this.setupWindowListeners();
   }
 
+  private parseHash(rawHash: string): { view: AppView | null; params: Record<string, string> } {
+    const clean = (rawHash || '').replace(/^#\/?/, '');
+    const [viewPart, queryPart] = clean.split('?');
+    const params: Record<string, string> = {};
+    if (queryPart) {
+      try {
+        const usp = new URLSearchParams(queryPart);
+        usp.forEach((val, key) => { params[key] = val; });
+      } catch (e) {}
+    }
+    const validViews: AppView[] = ['dashboard', 'calculator', 'stores', 'report'];
+    const view = validViews.includes(viewPart as AppView) ? (viewPart as AppView) : null;
+    return { view, params };
+  }
+
+  private getInitialParams(): Record<string, string> {
+    if (typeof window !== 'undefined') {
+      return this.parseHash(window.location.hash).params;
+    }
+    return {};
+  }
+
   private getInitialView(): AppView {
     if (typeof window !== 'undefined') {
       try {
-        const hash = window.location.hash.replace('#', '') as AppView;
-        if (['dashboard', 'calculator', 'stores', 'report'].includes(hash)) {
-          return hash;
+        const parsed = this.parseHash(window.location.hash);
+        if (parsed.view) {
+          return parsed.view;
         }
         const saved = localStorage.getItem('shop_rateio_current_view') as AppView;
         if (saved && ['dashboard', 'calculator', 'stores', 'report'].includes(saved)) {
@@ -31,7 +54,7 @@ export class NavigationService {
         }
       } catch (e) {}
     }
-    // Default: 'calculator' for field technicians, or 'calculator' if field session is active
+    // Default: 'calculator' for field technicians
     return 'calculator';
   }
 
@@ -64,7 +87,7 @@ export class NavigationService {
     return this.isLocked() || (Date.now() - this.lastLockTimestamp < 1800);
   }
 
-  setView(view: AppView, force = false): boolean {
+  setView(view: AppView, params?: Record<string, string>, force = false): boolean {
     // Se a navegação estiver temporariamente bloqueada (ex: retorno da câmera do celular),
     // ignora qualquer clique fantasma que atinja a barra inferior
     if (!force && this.isRecentlyLocked()) {
@@ -73,11 +96,21 @@ export class NavigationService {
     }
 
     this.currentView.set(view);
+    if (params) {
+      this.queryParams.set(params);
+    } else {
+      this.queryParams.set({});
+    }
+
     if (typeof window !== 'undefined') {
       try {
         localStorage.setItem('shop_rateio_current_view', view);
-        // Usa replaceState para não empilhar entradas no histórico do Android que causem pop de volta ao dashboard
-        window.history.replaceState(null, '', `#${view}`);
+        let hashUrl = `#${view}`;
+        if (params && Object.keys(params).length > 0) {
+          const usp = new URLSearchParams(params);
+          hashUrl += `?${usp.toString()}`;
+        }
+        window.history.replaceState(null, '', hashUrl);
       } catch (e) {}
     }
     return true;
@@ -88,20 +121,21 @@ export class NavigationService {
 
     // Escuta mudanças de hash na URL, mas protege contra popstate/back involuntário do Android ao fechar a câmera
     window.addEventListener('hashchange', () => {
-      const hash = window.location.hash.replace('#', '') as AppView;
-      if (['dashboard', 'calculator', 'stores', 'report'].includes(hash)) {
-        if (this.isRecentlyLocked() && this.currentView() === 'calculator' && hash !== 'calculator') {
-          console.warn('[NavigationService] Hashchange para', hash, 'bloqueado devido à atividade recente de câmera. Mantendo calculadora.');
+      const parsed = this.parseHash(window.location.hash);
+      if (parsed.view) {
+        if (this.isRecentlyLocked() && this.currentView() === 'calculator' && parsed.view !== 'calculator') {
+          console.warn('[NavigationService] Hashchange para', parsed.view, 'bloqueado devido à atividade recente de câmera. Mantendo calculadora.');
           try {
             window.history.replaceState(null, '', '#calculator');
           } catch (e) {}
           return;
         }
 
-        if (this.currentView() !== hash) {
-          this.currentView.set(hash);
+        this.queryParams.set(parsed.params);
+        if (this.currentView() !== parsed.view) {
+          this.currentView.set(parsed.view);
           try {
-            localStorage.setItem('shop_rateio_current_view', hash);
+            localStorage.setItem('shop_rateio_current_view', parsed.view);
           } catch (e) {}
         }
       }
