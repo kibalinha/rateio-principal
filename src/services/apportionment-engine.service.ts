@@ -47,7 +47,7 @@ export interface RateioSummaryResult {
  */
 
 export function calculateUnitPrice(totalBillAmount: number, totalConsumption: number): number {
-  if (!totalBillAmount || !totalConsumption || totalConsumption <= 0) return 0;
+  if (!totalBillAmount || !totalConsumption || totalConsumption <= 0 || totalBillAmount <= 0) return 0;
   return totalBillAmount / totalConsumption;
 }
 
