@@ -2,9 +2,9 @@ import { Injectable, signal, computed, inject } from '@angular/core';
 import { BillData } from './history.service';
 import { SupabaseService } from './supabase.service';
 
-import { SyncQueueItem, MeterPhotoRecord } from '../models';
+import { SyncQueueItem, MeterPhotoRecord, StorageQuotaInfo } from '../models';
 
-export type { SyncQueueItem, MeterPhotoRecord };
+export type { SyncQueueItem, MeterPhotoRecord, StorageQuotaInfo };
 
 @Injectable({
   providedIn: 'root'
@@ -16,6 +16,14 @@ export class IndexedDbService {
 
   private db: IDBDatabase | null = null;
   private dbReadyPromise: Promise<IDBDatabase>;
+
+  // Session Client ID for Optimistic Concurrency Control (Passo D)
+  readonly clientSessionId: string = typeof crypto !== 'undefined' && 'randomUUID' in crypto 
+    ? crypto.randomUUID() 
+    : ('sess_' + Math.random().toString(36).substring(2) + Date.now().toString(36));
+
+  // Storage Quota Reactive Signal (Passo D)
+  readonly storageQuota = signal<StorageQuotaInfo | null>(null);
 
   // Network & Sync Reactive State Signals
   readonly isOnline = signal<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
@@ -31,6 +39,7 @@ export class IndexedDbService {
   constructor() {
     this.dbReadyPromise = this.initIndexedDB();
     this.setupNetworkListeners();
+    this.checkStorageQuota().catch(() => {});
   }
 
   // --- 1. INITIALIZE INDEXEDDB ---
@@ -202,16 +211,43 @@ export class IndexedDbService {
     }
   }
 
-  // --- 4. BILL OPERATIONS (READINGS PERSISTENCE) ---
+  // --- 4. BILL OPERATIONS (READINGS PERSISTENCE WITH OPTIMISTIC CONCURRENCY) ---
   async saveBill(type: string, month: string, billData: BillData): Promise<void> {
     const key = `${type}_${month}`;
     const online = this.isOnline();
+
+    // Optimistic Concurrency Control (Passo D)
+    const existing = await this.getBillById(key);
+    let nextVersion = 1;
+    const finalBillData: BillData = { ...billData };
+
+    if (existing) {
+      const existingVersion = typeof existing.version === 'number' ? existing.version : 1;
+      
+      // Detecção de concorrência: versão desatualizada modificada por outra sessão
+      if (
+        billData.version !== undefined && 
+        billData.version < existingVersion && 
+        existing.clientSessionId && 
+        existing.clientSessionId !== this.clientSessionId
+      ) {
+        console.warn(`[OCC] Conflito de concorrência detectado para ${key}. Versão local: ${billData.version}, Banco: ${existingVersion}`);
+        this.showToast(`⚠️ Concorrência: dados mesclados com a versão mais recente (${existingVersion + 1}).`);
+        nextVersion = existingVersion + 1;
+      } else {
+        nextVersion = Math.max(existingVersion, billData.version || 0) + 1;
+      }
+    }
+
+    finalBillData.version = nextVersion;
+    finalBillData.clientSessionId = this.clientSessionId;
+    finalBillData.lastModifiedMs = Date.now();
 
     const record = {
       id: key,
       type,
       month,
-      ...billData,
+      ...finalBillData,
       lastUpdated: new Date().toISOString(),
       synced: online
     };
@@ -224,7 +260,7 @@ export class IndexedDbService {
       try {
         const storageStr = localStorage.getItem('shop_rateio_history');
         const storage = storageStr ? JSON.parse(storageStr) : {};
-        storage[key] = { ...billData, lastUpdated: record.lastUpdated };
+        storage[key] = { ...finalBillData, lastUpdated: record.lastUpdated };
         localStorage.setItem('shop_rateio_history', JSON.stringify(storage));
       } catch (e) {
         console.warn('LocalStorage mirror warning:', e);
@@ -236,7 +272,7 @@ export class IndexedDbService {
       await this.addToSyncQueue({
         type,
         month,
-        data: billData,
+        data: finalBillData,
         timestamp: record.lastUpdated,
         synced: false
       });
@@ -890,6 +926,73 @@ export class IndexedDbService {
         reject(err);
       }
     });
+  }
+
+  // --- STORAGE QUOTA MONITORING & PERSISTENCE (PASSO D) ---
+  async checkStorageQuota(): Promise<StorageQuotaInfo | null> {
+    if (typeof navigator === 'undefined' || !navigator.storage || !navigator.storage.estimate) {
+      return null;
+    }
+
+    try {
+      const estimate = await navigator.storage.estimate();
+      const usage = estimate.usage || 0;
+      const quota = estimate.quota || 0;
+      const percentUsed = quota > 0 ? Math.round((usage / quota) * 1000) / 10 : 0;
+
+      let persisted = false;
+      if (navigator.storage.persisted) {
+        persisted = await navigator.storage.persisted();
+      }
+
+      const formatBytes = (bytes: number): string => {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+      };
+
+      const info: StorageQuotaInfo = {
+        usageBytes: usage,
+        quotaBytes: quota,
+        usageFormatted: formatBytes(usage),
+        quotaFormatted: formatBytes(quota),
+        percentUsed,
+        isWarning: percentUsed >= 80,
+        isCritical: percentUsed >= 95,
+        persisted
+      };
+
+      this.storageQuota.set(info);
+
+      if (info.isCritical) {
+        this.showToast(`🚨 Armazenamento Crítico (${percentUsed}% usado)! Libere espaço para evitar falha ao salvar.`);
+      } else if (info.isWarning) {
+        this.showToast(`⚠️ Atenção: Armazenamento local atingiu ${percentUsed}% (${info.usageFormatted} de ${info.quotaFormatted}).`);
+      }
+
+      return info;
+    } catch (err) {
+      console.warn('Erro ao estimar cota de armazenamento:', err);
+      return null;
+    }
+  }
+
+  async requestPersistentStorage(): Promise<boolean> {
+    if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.persist) {
+      try {
+        const isPersisted = await navigator.storage.persist();
+        if (isPersisted) {
+          this.showToast('🛡️ Armazenamento persistente garantido pelo navegador.');
+        }
+        await this.checkStorageQuota();
+        return isPersisted;
+      } catch (err) {
+        console.warn('Erro ao solicitar persistência de armazenamento:', err);
+      }
+    }
+    return false;
   }
 
   // --- 7. TOAST NOTIFICATION HELPER ---

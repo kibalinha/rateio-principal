@@ -42,8 +42,18 @@ export class HistoryService {
         const local = this.billsSignal();
         const merged: Record<string, BillData> = { ...remoteBills };
         for (const [k, v] of Object.entries(local)) {
-          // Apenas preserva faturas locais se criadas offline e pendentes
-          if ((v as any)._offlineCreated && !merged[k]) {
+          const remoteItem = merged[k];
+          if (remoteItem) {
+            const localVersion = v.version || 0;
+            const remoteVersion = remoteItem.version || 0;
+            const localTime = v.lastModifiedMs || (v.lastUpdated ? new Date(v.lastUpdated).getTime() : 0);
+            const remoteTime = remoteItem.lastModifiedMs || (remoteItem.lastUpdated ? new Date(remoteItem.lastUpdated).getTime() : 0);
+
+            // Preserva alterações locais mais recentes da sessão atual (Passo D: OCC)
+            if (localVersion > remoteVersion || (localTime > remoteTime && v.clientSessionId === this.indexedDb.clientSessionId)) {
+              merged[k] = v;
+            }
+          } else if ((v as any)._offlineCreated) {
             merged[k] = v;
           }
         }
@@ -82,8 +92,14 @@ export class HistoryService {
 
   saveBill(type: string, month: string, data: BillData) {
     const key = this.generateKey(type, month);
-    const updated = {
+    const existing = this.billsSignal()[key];
+    const nextVersion = Math.max(existing?.version || 0, data.version || 0) + 1;
+
+    const updated: BillData = {
       ...data,
+      version: nextVersion,
+      clientSessionId: this.indexedDb.clientSessionId,
+      lastModifiedMs: Date.now(),
       lastUpdated: new Date().toISOString()
     };
     

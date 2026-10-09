@@ -226,10 +226,27 @@ import { UserRole, AppView, AppView as View } from './models';
             </div>
         </div>
 
-        <!-- Connection indicator -->
-        <div class="flex items-center gap-1.5 shrink-0" [title]="indexedDb.isOnline() ? 'IndexedDB Online e Sincronizado' : 'IndexedDB Offline: dados seguros'">
-          <span class="w-2 h-2 rounded-full" [class.bg-green-400]="indexedDb.isOnline()" [class.bg-amber-400]="!indexedDb.isOnline()"></span>
-          <span class="text-[10px] text-slate-400 font-mono">{{ indexedDb.isOnline() ? 'Online' : 'Offline' }}</span>
+        <div class="flex items-center gap-2 shrink-0">
+          <!-- Connection indicator -->
+          <div class="flex items-center gap-1" [title]="indexedDb.isOnline() ? 'IndexedDB Online e Sincronizado' : 'IndexedDB Offline: dados seguros'">
+            <span class="w-2 h-2 rounded-full" [class.bg-green-400]="indexedDb.isOnline()" [class.bg-amber-400]="!indexedDb.isOnline()"></span>
+            <span class="text-[10px] text-slate-400 font-mono">{{ indexedDb.isOnline() ? 'Online' : 'Offline' }}</span>
+          </div>
+
+          <!-- Storage Quota Indicator (Passo D) -->
+          @if (indexedDb.storageQuota(); as q) {
+            <div class="flex items-center gap-1 border-l border-slate-700 pl-2 cursor-pointer" 
+                 (click)="indexedDb.requestPersistentStorage()"
+                 [title]="'Armazenamento Local: ' + q.usageFormatted + ' de ' + q.quotaFormatted + ' (' + q.percentUsed + '% usado)' + (q.persisted ? ' • Persistente' : ' • Clique para fixar persistência')">
+              <span class="w-2 h-2 rounded-full" 
+                    [class.bg-teal-400]="!q.isWarning" 
+                    [class.bg-amber-400]="q.isWarning && !q.isCritical"
+                    [class.bg-rose-500]="q.isCritical"></span>
+              <span class="text-[10px] font-mono text-slate-400 hover:text-slate-200">
+                {{ q.usageFormatted }}
+              </span>
+            </div>
+          }
         </div>
     </div>
   </aside>

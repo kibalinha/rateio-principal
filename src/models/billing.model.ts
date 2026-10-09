@@ -37,6 +37,22 @@ export interface BillData {
   lockedAt?: string;
   lockedBy?: string;
   gasAutoDistribute?: boolean; // Rateio 100% proporcional automático no Gás
+
+  // Concurrency & Versioning (Passo D: Optimistic Locking)
+  version?: number;
+  clientSessionId?: string;
+  lastModifiedMs?: number;
+}
+
+export interface StorageQuotaInfo {
+  usageBytes: number;
+  quotaBytes: number;
+  usageFormatted: string;
+  quotaFormatted: string;
+  percentUsed: number;
+  isWarning: boolean;      // >= 80%
+  isCritical: boolean;     // >= 95%
+  persisted: boolean;
 }
 
 export interface ExcelImportRowPreview {
