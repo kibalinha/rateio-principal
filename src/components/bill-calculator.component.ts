@@ -25,13 +25,24 @@ import {
 
 import { AnomalyModalComponent } from './anomaly-modal.component';
 import { MeterPhotoModalComponent } from './meter-photo-modal.component';
+import { ExcelImportModalComponent, ExcelImportSuccessEvent } from './excel-import-modal.component';
+import { StoreVoucherModalComponent } from './store-voucher-modal.component';
 
-export type { ExcelImportRowPreview, AnomalyModalData };
+export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent };
 
 @Component({
   selector: 'app-bill-calculator',
   standalone: true,
-  imports: [CommonModule, FormsModule, DecimalPipe, DatePipe, AnomalyModalComponent, MeterPhotoModalComponent],
+  imports: [
+    CommonModule, 
+    FormsModule, 
+    DecimalPipe, 
+    DatePipe, 
+    AnomalyModalComponent, 
+    MeterPhotoModalComponent,
+    ExcelImportModalComponent,
+    StoreVoucherModalComponent
+  ],
   template: `
     <div class="space-y-6 pb-20 md:pb-0">
       
@@ -2088,186 +2099,11 @@ export type { ExcelImportRowPreview, AnomalyModalData };
 
       
       <!-- Modal: Espelho Individual do Lojista (Comprovante com Foto / WhatsApp / PDF) -->
-      @if (showVoucherModal()) {
-        @let voucher = selectedVoucherData();
-        @if (voucher) {
-          <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
-            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-xl w-full my-auto shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
-              
-              <!-- Modal Top Actions Bar -->
-              <div class="p-3.5 sm:p-4 bg-slate-900 text-white flex justify-between items-center shrink-0 border-b border-slate-800">
-                <div class="flex items-center gap-2">
-                  <span class="text-xl">📲</span>
-                  <div>
-                    <h3 class="text-sm font-bold leading-tight">Espelho Individual do Lojista</h3>
-                    <p class="text-[11px] text-slate-400">Comprovante de medição & memória de cálculo</p>
-                  </div>
-                </div>
-                <div class="flex items-center gap-2">
-                  <button type="button" (click)="closeStoreVoucher()" class="text-slate-400 hover:text-white text-lg p-1 cursor-pointer">✕</button>
-                </div>
-              </div>
-
-              <!-- Printable / Previewable Voucher Body -->
-              <div id="printable-store-voucher" class="p-5 overflow-y-auto space-y-4 text-xs bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100">
-                
-                <!-- Voucher Header Paper Style -->
-                <div class="border-b-2 border-slate-900 dark:border-slate-700 pb-3 flex justify-between items-start">
-                  <div>
-                    <div class="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-extrabold">ADMINISTRAÇÃO DO SHOPPING</div>
-                    <div class="text-base font-black text-slate-900 dark:text-white uppercase">Comprovante de Rateio</div>
-                    <div class="text-[11px] font-semibold text-teal-700 dark:text-teal-400">
-                      {{ voucher.utilityLabel }} • Mês de Referência: {{ voucher.monthLabel || voucher.month }}
-                    </div>
-                  </div>
-                  <div class="text-right">
-                    <span class="inline-block px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                      Via do Lojista
-                    </span>
-                    <div class="text-[9px] text-slate-400 mt-1">Emissão: {{ voucher.issueDate }}</div>
-                  </div>
-                </div>
-
-                <!-- Card Loja -->
-                <div class="p-3 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  <div class="col-span-2 sm:col-span-1">
-                    <span class="text-[10px] uppercase font-bold text-slate-400 block">Loja / Lojista</span>
-                    <strong class="text-sm font-bold text-slate-900 dark:text-white">{{ voucher.storeName }}</strong>
-                  </div>
-                  <div>
-                    <span class="text-[10px] uppercase font-bold text-slate-400 block">Espaço (LUC)</span>
-                    <span class="font-mono font-bold text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 text-xs">
-                      {{ voucher.luc }}
-                    </span>
-                  </div>
-                  <div>
-                    <span class="text-[10px] uppercase font-bold text-slate-400 block">Contrato</span>
-                    <span class="font-mono text-slate-700 dark:text-slate-300 text-xs">
-                      {{ voucher.contrato || 'Não inf.' }}
-                    </span>
-                  </div>
-                </div>
-
-                <!-- Tabela de Leituras & Consumo -->
-                <div class="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
-                  <div class="bg-slate-100 dark:bg-slate-800 px-3 py-1.5 font-bold text-[11px] text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                    Apuração de Consumo
-                  </div>
-                  <div class="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
-                    <div class="px-3 py-2 flex justify-between items-center">
-                      <span class="text-slate-600 dark:text-slate-400">Leitura Anterior (Relógio)</span>
-                      <strong class="font-mono">{{ voucher.prevReading | number:'1.0-4' }} {{ voucher.unit }}</strong>
-                    </div>
-                    <div class="px-3 py-2 flex justify-between items-center bg-teal-50/30 dark:bg-teal-950/20">
-                      <span class="text-slate-600 dark:text-slate-400">Leitura Atual (Coletada)</span>
-                      <strong class="font-mono text-teal-800 dark:text-teal-300 font-bold">{{ voucher.currentReading | number:'1.0-4' }} {{ voucher.unit }}</strong>
-                    </div>
-                    <div class="px-3 py-2 flex justify-between items-center">
-                      <span class="text-slate-600 dark:text-slate-400">Diferença de Mostrador</span>
-                      <span class="font-mono">+{{ voucher.readingDiff | number:'1.0-4' }} {{ voucher.unit }}</span>
-                    </div>
-                    @if (voucher.constant !== 1 || voucher.adjustment !== 1) {
-                      <div class="px-3 py-2 flex justify-between items-center">
-                        <span class="text-slate-600 dark:text-slate-400">Constante / Fatores</span>
-                        <span class="font-mono text-slate-500">Const: {{ voucher.constant }} | Ajuste: {{ voucher.adjustment }}</span>
-                      </div>
-                    }
-                    <div class="px-3 py-2.5 flex justify-between items-center bg-slate-50 dark:bg-slate-900 font-bold">
-                      <span class="text-slate-800 dark:text-slate-200">Consumo Total Faturado</span>
-                      <strong class="font-mono text-sm text-slate-900 dark:text-white">{{ voucher.consumption | number:'1.2-2' }} {{ voucher.unit }}</strong>
-                    </div>
-                    <div class="px-3 py-2 flex justify-between items-center">
-                      <span class="text-slate-600 dark:text-slate-400">Tarifa Unitária de Rateio</span>
-                      <span class="font-mono text-slate-600 dark:text-slate-400">R$ {{ voucher.unitPrice | number:'1.4-4' }} / {{ voucher.unit }}</span>
-                    </div>
-                    @if (voucher.variationPct !== undefined && !isNaN(voucher.variationPct)) {
-                      <div class="px-3 py-2 flex justify-between items-center">
-                        <span class="text-slate-600 dark:text-slate-400">Variação vs Mês Anterior</span>
-                        <span class="font-mono font-bold" [class.text-rose-600]="voucher.variationPct > 20" [class.text-emerald-600]="voucher.variationPct <= 0">
-                          {{ voucher.variationPct >= 0 ? '+' : '' }}{{ voucher.variationPct | number:'1.1-1' }}%
-                        </span>
-                      </div>
-                    }
-                  </div>
-                </div>
-
-                <!-- Caixa Destaque de Valor Total -->
-                <div class="p-3.5 bg-emerald-50 dark:bg-emerald-950/60 rounded-xl border-2 border-emerald-300 dark:border-emerald-800 flex justify-between items-center">
-                  <div>
-                    <span class="text-[10px] uppercase font-bold text-emerald-800 dark:text-emerald-300 block">Valor a Pagar no Rateio</span>
-                    <span class="text-[11px] text-emerald-700 dark:text-emerald-400">Cobrança inclusa no boleto condominial</span>
-                  </div>
-                  <div class="text-right">
-                    <strong class="text-xl font-mono font-black text-emerald-700 dark:text-emerald-300">{{ voucher.totalCost | currency:'BRL' }}</strong>
-                  </div>
-                </div>
-
-                <!-- Foto do Medidor Incorporada -->
-                @if (voucher.photoDataUrl) {
-                  <div class="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
-                    <div class="flex justify-between items-center">
-                      <span class="font-bold text-[11px] text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                        <span>📷 Evidência Fotográfica do Relógio</span>
-                        <span class="bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-300 text-[10px] px-1.5 py-0.2 rounded font-bold">Auditado</span>
-                      </span>
-                      @if (voucher.photoCapturedAt) {
-                        <span class="text-[10px] font-mono text-slate-400">{{ voucher.photoCapturedAt | date:'dd/MM/yyyy HH:mm' }}</span>
-                      }
-                    </div>
-                    <div class="flex justify-center bg-black/5 dark:bg-black/30 p-2 rounded-lg">
-                      <img [src]="voucher.photoDataUrl" 
-                           alt="Foto do Medidor" 
-                           class="max-h-48 rounded-lg object-contain border border-slate-300 dark:border-slate-700 shadow-xs">
-                    </div>
-                  </div>
-                }
-
-                @if (voucher.note) {
-                  <div class="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs">
-                    <strong>Observação de Campo:</strong> {{ voucher.note }}
-                  </div>
-                }
-
-                <div class="text-[10px] text-slate-400 italic text-center pt-1 border-t border-slate-100 dark:border-slate-800">
-                  Comprovante gerado automaticamente pelo Sistema de Gestão & Rateio de Utilidades.
-                </div>
-              </div>
-
-              <!-- Modal Bottom Actions -->
-              <div class="p-3 sm:p-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex flex-wrap gap-2 justify-between items-center shrink-0">
-                <button type="button" 
-                  (click)="closeStoreVoucher()" 
-                  class="px-3.5 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 text-slate-700 dark:text-slate-200 font-bold text-xs cursor-pointer transition-colors">
-                  Fechar
-                </button>
-
-                <div class="flex flex-wrap gap-2 ml-auto">
-                  <button type="button" 
-                    (click)="copyVoucherText()" 
-                    class="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-colors">
-                    <span>📋</span>
-                    <span>Copiar Texto</span>
-                  </button>
-
-                  <button type="button" 
-                    (click)="downloadVoucherPdf()" 
-                    class="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors">
-                    <span>📄</span>
-                    <span>Baixar PDF</span>
-                  </button>
-
-                  <button type="button" 
-                    (click)="shareVoucherWhatsApp()" 
-                    class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-sm transition-all">
-                    <span>💬</span>
-                    <span>WhatsApp</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        }
-      }
+      <app-store-voucher-modal
+        [isOpen]="showVoucherModal()"
+        [voucher]="selectedVoucherData()"
+        (close)="closeStoreVoucher()"
+      />
 
       <!-- ANOMALY AUDIT MODAL (ETAPA 1: ALERTA INTELIGENTE E ANTI-ERRO) -->
       <app-anomaly-modal
@@ -2279,356 +2115,16 @@ export type { ExcelImportRowPreview, AnomalyModalData };
       />
 
       <!-- MODAL DE IMPORTAÇÃO INTELIGENTE DE PLANILHA EXCEL -->
-      @if (showExcelImportModal()) {
-        <div class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
-          <div class="absolute inset-0 bg-black/75 backdrop-blur-xs animate-fade-in" (click)="closeExcelImportModal()"></div>
-
-          <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-4xl relative z-10 border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[92vh] animate-scale-in">
-            
-            <!-- Modal Header -->
-            <div class="p-4 sm:p-5 bg-gradient-to-r from-teal-800 to-slate-900 text-white flex items-center justify-between border-b border-teal-700/50">
-              <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-2xl bg-teal-500/20 border border-teal-500/30 flex items-center justify-center text-xl shrink-0">
-                  📥
-                </div>
-                <div>
-                  <h3 class="font-extrabold text-base sm:text-lg leading-tight flex items-center gap-2">
-                    <span>Importar Planilha de Leituras</span>
-                    <span class="text-[10px] bg-teal-500/30 text-teal-200 border border-teal-400/30 px-2 py-0.5 rounded-full font-mono uppercase font-bold">
-                      {{ utilityType() }}
-                    </span>
-                  </h3>
-                  <p class="text-xs text-teal-200/80 mt-0.5 font-medium">
-                    Carregue o arquivo Excel (.xlsx, .xls, .csv) ou cole os dados para atualizar as lojas do mês.
-                  </p>
-                </div>
-              </div>
-              <button (click)="closeExcelImportModal()" class="text-slate-400 hover:text-white text-xl font-bold p-1 cursor-pointer">✕</button>
-            </div>
-
-            <!-- Modal Body (Scrollable) -->
-            <div class="p-4 sm:p-6 overflow-y-auto space-y-5 text-slate-800 dark:text-slate-200 custom-scrollbar">
-              
-              <!-- Action Bar: Method Switcher & Download Template Button -->
-              <div class="flex flex-wrap items-center justify-between gap-3 bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-700">
-                <div class="inline-flex p-1 bg-slate-200 dark:bg-slate-700 rounded-xl gap-1">
-                  <button type="button"
-                    (click)="importMethod.set('file')"
-                    [class]="importMethod() === 'file' ? 'bg-white dark:bg-slate-900 text-teal-700 dark:text-teal-300 font-extrabold shadow-xs' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'"
-                    class="px-3.5 py-1.5 rounded-lg text-xs transition-all flex items-center gap-1.5 cursor-pointer">
-                    <span>📁 Arquivo (.xlsx / .csv)</span>
-                  </button>
-                  <button type="button"
-                    (click)="importMethod.set('paste')"
-                    [class]="importMethod() === 'paste' ? 'bg-white dark:bg-slate-900 text-teal-700 dark:text-teal-300 font-extrabold shadow-xs' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'"
-                    class="px-3.5 py-1.5 rounded-lg text-xs transition-all flex items-center gap-1.5 cursor-pointer">
-                    <span>📋 Colar Tabela (Ctrl+V)</span>
-                  </button>
-                </div>
-
-                <!-- Botão Baixar Modelo Formatado -->
-                <button type="button"
-                  (click)="downloadImportTemplate()"
-                  class="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                  title="Baixar planilha padrão pré-preenchida com todas as lojas cadastradas">
-                  <span>📥</span>
-                  <span>Baixar Planilha Modelo (.xlsx)</span>
-                </button>
-              </div>
-
-              <!-- MÉTODO 1: UPLOAD / DRAG & DROP -->
-              @if (importMethod() === 'file') {
-                <div 
-                  (dragover)="$event.preventDefault(); isDraggingFile.set(true)"
-                  (dragleave)="isDraggingFile.set(false)"
-                  (drop)="onExcelFileDrop($event)"
-                  [class]="isDraggingFile() ? 'border-teal-500 bg-teal-50/50 dark:bg-teal-950/40 ring-4 ring-teal-500/20' : 'border-slate-300 dark:border-slate-700 hover:border-teal-400 bg-slate-50/50 dark:bg-slate-800/40'"
-                  class="border-2 border-dashed rounded-3xl p-6 sm:p-8 text-center transition-all cursor-pointer relative group">
-                  <input type="file" 
-                         accept=".xlsx,.xls,.csv" 
-                         (change)="onExcelFileSelected($event)" 
-                         class="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10">
-                  <div class="flex flex-col items-center gap-2 pointer-events-none">
-                    <div class="w-14 h-14 rounded-2xl bg-teal-100 dark:bg-teal-950 text-teal-700 dark:text-teal-300 flex items-center justify-center text-3xl shadow-sm group-hover:scale-105 transition-transform">
-                      📊
-                    </div>
-                    @if (importedFileName()) {
-                      <div class="font-extrabold text-sm sm:text-base text-teal-700 dark:text-teal-300">
-                        {{ importedFileName() }}
-                      </div>
-                      <span class="text-xs text-slate-500 dark:text-slate-400">
-                        Arquivo carregado! {{ rawExcelRows().length }} linhas detectadas. Clique ou arraste outro para substituir.
-                      </span>
-                    } @else {
-                      <div class="font-bold text-sm sm:text-base text-slate-800 dark:text-slate-100">
-                        Arraste sua planilha Excel aqui ou clique para selecionar
-                      </div>
-                      <p class="text-xs text-slate-500 dark:text-slate-400 max-w-md">
-                        Formatos suportados: <strong>.xlsx, .xls, .csv</strong>. O sistema reconhece automaticamente os nomes e LUCs das lojas.
-                      </p>
-                    }
-                  </div>
-                </div>
-              }
-
-              <!-- MÉTODO 2: PASTE RAW TABLE (Ctrl+V) -->
-              @if (importMethod() === 'paste') {
-                <div class="space-y-2">
-                  <label class="text-xs font-bold text-slate-700 dark:text-slate-300 flex justify-between items-center">
-                    <span>Cole as linhas copiadas do seu Excel abaixo (com cabeçalho):</span>
-                    <span class="text-[11px] text-slate-400">Dica: Selecione as células no Excel, dê Ctrl+C e cole aqui (Ctrl+V)</span>
-                  </label>
-                  <textarea 
-                    [(ngModel)]="importPastedText"
-                    placeholder="LUC&#9;Loja&#9;Leitura Atual&#10;L-101&#9;Farmácia Central&#9;1520&#10;L-102&#9;Café do Ponto&#9;840"
-                    rows="6"
-                    class="w-full p-3 font-mono text-xs border border-slate-300 dark:border-slate-700 rounded-2xl bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-teal-500 outline-hidden custom-scrollbar resize-y whitespace-pre"></textarea>
-                  <div class="flex justify-end">
-                    <button type="button" 
-                      (click)="processPastedText()"
-                      [disabled]="!importPastedText().trim()"
-                      class="px-4 py-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer">
-                      <span>⚡ Analisar Tabela Colada</span>
-                    </button>
-                  </div>
-                </div>
-              }
-
-              <!-- SEÇÃO DE MAPEAMENTO DE COLUNAS (Quando há dados carregados) -->
-              @if (rawExcelHeaders().length > 0) {
-                <div class="p-4 bg-slate-50 dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
-                  <div class="flex items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700 pb-2">
-                    <div class="flex items-center gap-2">
-                      <span class="text-base">🗂️</span>
-                      <strong class="text-xs font-bold text-slate-800 dark:text-white">Mapeamento de Colunas Detectadas</strong>
-                    </div>
-                    <span class="text-[11px] text-teal-700 dark:text-teal-300 font-semibold">
-                      {{ rawExcelHeaders().length }} colunas encontradas no arquivo
-                    </span>
-                  </div>
-
-                  <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
-                    <!-- Coluna Loja / LUC (Obrigatória) -->
-                    <div>
-                      <label class="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                        Loja / LUC <span class="text-rose-500">*</span>
-                      </label>
-                      <select [ngModel]="columnMappings().luc" 
-                              (ngModelChange)="updateColumnMapping('luc', $event)"
-                              class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg font-mono text-xs focus:ring-1 focus:ring-teal-500">
-                        <option value="">-- Selecione a coluna --</option>
-                        @for (h of rawExcelHeaders(); track h) {
-                          <option [value]="h">{{ h }}</option>
-                        }
-                      </select>
-                    </div>
-
-                    <!-- Coluna Leitura Atual (Obrigatória) -->
-                    <div>
-                      <label class="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                        Leitura Atual <span class="text-rose-500">*</span>
-                      </label>
-                      <select [ngModel]="columnMappings().reading" 
-                              (ngModelChange)="updateColumnMapping('reading', $event)"
-                              class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg font-mono text-xs focus:ring-1 focus:ring-teal-500">
-                        <option value="">-- Selecione a coluna --</option>
-                        @for (h of rawExcelHeaders(); track h) {
-                          <option [value]="h">{{ h }}</option>
-                        }
-                      </select>
-                    </div>
-
-                    @if (utilityType() === 'luz' || utilityType() === 'agua') {
-                      <!-- Constante -->
-                      <div>
-                        <label class="font-bold text-slate-700 dark:text-slate-300 block mb-1">Constante (opcional)</label>
-                        <select [ngModel]="columnMappings().constant" 
-                                (ngModelChange)="updateColumnMapping('constant', $event)"
-                                class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg font-mono text-xs focus:ring-1 focus:ring-teal-500">
-                          <option value="">-- Nenhuma (Padrão 1) --</option>
-                          @for (h of rawExcelHeaders(); track h) {
-                            <option [value]="h">{{ h }}</option>
-                          }
-                        </select>
-                      </div>
-                    }
-
-                    <!-- Ajuste -->
-                    <div>
-                      <label class="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                        {{ utilityType() === 'gas' ? 'Ajuste (x) (opcional)' : 'Ajuste (opcional)' }}
-                      </label>
-                      <select [ngModel]="columnMappings().adjustment" 
-                              (ngModelChange)="updateColumnMapping('adjustment', $event)"
-                              class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg font-mono text-xs focus:ring-1 focus:ring-teal-500">
-                        <option value="">-- Nenhuma (Padrão) --</option>
-                        @for (h of rawExcelHeaders(); track h) {
-                          <option [value]="h">{{ h }}</option>
-                        }
-                      </select>
-                    </div>
-
-                    @if (utilityType() === 'gas') {
-                      <!-- FCM -->
-                      <div>
-                        <label class="font-bold text-slate-700 dark:text-slate-300 block mb-1">FCM (opcional)</label>
-                        <select [ngModel]="columnMappings().fcm" 
-                                (ngModelChange)="updateColumnMapping('fcm', $event)"
-                                class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg font-mono text-xs focus:ring-1 focus:ring-teal-500">
-                          <option value="">-- Nenhuma (Padrão 1.0727) --</option>
-                          @for (h of rawExcelHeaders(); track h) {
-                            <option [value]="h">{{ h }}</option>
-                          }
-                        </select>
-                      </div>
-                    }
-
-                    <!-- Consumo Virtual (Opcional - Aceita 0) -->
-                    <div class="p-2.5 rounded-xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/40 dark:bg-blue-950/20">
-                      <label class="font-bold text-blue-900 dark:text-blue-300 block mb-1 flex items-center justify-between">
-                        <span>Consumo Virtual (opcional)</span>
-                        <span class="text-[10px] text-blue-600 dark:text-blue-400 font-semibold">Aceita 0</span>
-                      </label>
-                      <select [ngModel]="columnMappings().virtual" 
-                              (ngModelChange)="updateColumnMapping('virtual', $event)"
-                              class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-blue-300 dark:border-blue-700 rounded-lg font-mono text-xs focus:ring-1 focus:ring-blue-500">
-                        <option value="">-- Nenhuma (Usar Leitura Normal) --</option>
-                        @for (h of rawExcelHeaders(); track h) {
-                          <option [value]="h">{{ h }}</option>
-                        }
-                      </select>
-                    </div>
-
-                    <!-- Observação -->
-                    <div>
-                      <label class="font-bold text-slate-700 dark:text-slate-300 block mb-1">Observação (opcional)</label>
-                      <select [ngModel]="columnMappings().note" 
-                              (ngModelChange)="updateColumnMapping('note', $event)"
-                              class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg font-mono text-xs focus:ring-1 focus:ring-teal-500">
-                        <option value="">-- Nenhuma --</option>
-                        @for (h of rawExcelHeaders(); track h) {
-                          <option [value]="h">{{ h }}</option>
-                        }
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- PRÉ-VISUALIZAÇÃO DOS DADOS / STATUS DAS LOJAS -->
-                <div class="space-y-3">
-                  <div class="flex items-center justify-between flex-wrap gap-2">
-                    <div class="flex items-center gap-3">
-                      <strong class="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                        <span>Prévia de Importação</span>
-                        <span class="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-slate-200 dark:bg-slate-700">
-                          {{ importStats().total }} linhas
-                        </span>
-                      </strong>
-                    </div>
-
-                    <div class="flex items-center gap-2 text-xs">
-                      <span class="px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold flex items-center gap-1">
-                        <span>✓</span>
-                        <span>{{ importStats().matched }} Lojas Encontradas</span>
-                      </span>
-                      @if (importStats().unmatched > 0) {
-                        <span class="px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 font-bold flex items-center gap-1">
-                          <span>⚠️</span>
-                          <span>{{ importStats().unmatched }} Não Localizadas</span>
-                        </span>
-                      }
-                    </div>
-                  </div>
-
-                  <!-- Tabela de Preview com Scroll -->
-                  <div class="max-h-60 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-2xl bg-white dark:bg-slate-900 custom-scrollbar">
-                    <table class="w-full text-left text-xs border-collapse">
-                      <thead class="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 sticky top-0 z-10 font-bold">
-                        <tr>
-                          <th class="p-2.5">Status</th>
-                          <th class="p-2.5">LUC / Ref</th>
-                          <th class="p-2.5">Loja Correspondente</th>
-                          <th class="p-2.5 text-right">Leitura Ant.</th>
-                          <th class="p-2.5 text-right">Nova Leitura</th>
-                          <th class="p-2.5 text-right">Virtual</th>
-                          <th class="p-2.5 text-right">Consumo Previsto</th>
-                        </tr>
-                      </thead>
-                      <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-                        @for (row of importPreviewList(); track $index) {
-                          <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-                              [class.bg-rose-50/40]="row.status === 'unmatched'"
-                              [class.dark:bg-rose-950/20]="row.status === 'unmatched'">
-                            <td class="p-2.5">
-                              @if (row.status === 'matched') {
-                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300">
-                              ✓ Localizada
-                                </span>
-                              } @else {
-                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300" title="{{ row.message }}">
-                              ⚠️ Não Encontrada
-                                </span>
-                              }
-                            </td>
-                            <td class="p-2.5 font-mono font-bold text-slate-700 dark:text-slate-200">
-                              {{ row.luc }}
-                            </td>
-                            <td class="p-2.5 font-semibold text-slate-800 dark:text-slate-100">
-                              {{ row.storeName }}
-                            </td>
-                            <td class="p-2.5 text-right font-mono text-slate-500">
-                              {{ row.prevReading | number:'1.0-0' }}
-                            </td>
-                            <td class="p-2.5 text-right font-mono font-bold"
-                                [class.text-teal-700]="row.reading > 0"
-                                [class.dark:text-teal-300]="row.reading > 0"
-                                [class.text-slate-400]="row.reading === 0">
-                              {{ row.reading > 0 ? (row.reading | number:'1.0-2') : '—' }}
-                            </td>
-                            <td class="p-2.5 text-right font-mono">
-                              @if (row.virtual !== undefined) {
-                                <span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800" title="Consumo Virtual definido manualmente">
-                                  {{ row.virtual | number:'1.0-4' }}
-                                </span>
-                              } @else {
-                                <span class="text-slate-400 dark:text-slate-600">—</span>
-                              }
-                            </td>
-                            <td class="p-2.5 text-right font-mono font-bold text-slate-700 dark:text-slate-200">
-                              {{ row.consumptionPreview | number:'1.0-2' }} {{ getUnit() }}
-                            </td>
-                          </tr>
-                        }
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              }
-
-            </div>
-
-            <!-- Modal Footer Actions -->
-            <div class="p-4 bg-slate-50 dark:bg-slate-800/90 border-t border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-3 shrink-0">
-              <button type="button" 
-                      (click)="closeExcelImportModal()"
-                      class="px-4 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-colors cursor-pointer">
-                Cancelar
-              </button>
-
-              <div class="flex items-center gap-2">
-                <button type="button"
-                  (click)="confirmAndApplyExcelImport()"
-                  [disabled]="importStats().matched === 0"
-                  class="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer">
-                  <span>🚀</span>
-                  <span>Confirmar e Importar {{ importStats().matched }} Lojas</span>
-                </button>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      }
+      <app-excel-import-modal
+        [isOpen]="showExcelImportModal()"
+        [utilityType]="utilityType()"
+        [selectedMonth]="selectedMonth()"
+        [activeStores]="activeStores()"
+        [previousReadings]="previousReadings()"
+        [unit]="getUnit()"
+        (close)="closeExcelImportModal()"
+        (importSuccess)="onExcelImportApplied($event)"
+      />
 
       <!-- MODAL CHECKLIST DE AUDITORIA E FECHAMENTO MENSAL (PASSO 3: GESTÃO & CONTABILIDADE) -->
       @if (showClosingChecklistModal()) {
@@ -3141,23 +2637,6 @@ export class BillCalculatorComponent implements OnDestroy {
   
   // Excel Import State
   showExcelImportModal = signal<boolean>(false);
-  importMethod = signal<'file' | 'paste'>('file');
-  importPastedText = signal<string>('');
-  importedFileName = signal<string>('');
-  rawExcelHeaders = signal<string[]>([]);
-  rawExcelRows = signal<Record<string, any>[]>([]);
-  columnMappings = signal<Record<string, string>>({
-    luc: '',
-    reading: '',
-    constant: '',
-    adjustment: '',
-    virtual: '',
-    adjustmentAdd: '',
-    fcm: '',
-    fluxoCost: '',
-    note: ''
-  });
-  isDraggingFile = signal<boolean>(false);
   
   // AI State
   isAnalyzing = signal(false);
@@ -3320,155 +2799,13 @@ export class BillCalculatorComponent implements OnDestroy {
       return { reading: 0, constant: 1, virtual: undefined, adjustment: 1, calculatedConsumption: 0 };
   }
 
-  // --- NOVO MOTOR DE IMPORTAÇÃO INTELIGENTE DE PLANILHA EXCEL (.xlsx, .xls, .csv ou Ctrl+V) ---
-
-  importPreviewList = computed<ExcelImportRowPreview[]>(() => {
-    const rows = this.rawExcelRows();
-    if (rows.length === 0) return [];
-
-    const mappings = this.columnMappings();
-    const stores = this.activeStores();
-    const prevReadings = this.previousReadings();
-    const type = this.utilityType();
-
-    const normalizeKey = (s: any) => String(s || '').toLowerCase().trim().replace(/[^a-z0-9]/gi, '');
-
-    return rows.map((rawRow, idx) => {
-      const rawLucVal = mappings.luc ? String(rawRow[mappings.luc] || '').trim() : '';
-      const rawReadingVal = mappings.reading ? rawRow[mappings.reading] : '';
-      const reading = this.parseExcelNumber(rawReadingVal);
-
-      // Busca por correspondência inteligente (LUC, Nome da Loja, Contrato ou Medidor)
-      const normVal = normalizeKey(rawLucVal);
-      const matchedStore = stores.find(s => {
-        if (!normVal) return false;
-        if (normalizeKey(s.luc) === normVal) return true;
-        if (normalizeKey(s.name) === normVal) return true;
-        if (s.contrato && normalizeKey(s.contrato) === normVal) return true;
-        if (s.meterNumber && normalizeKey(s.meterNumber) === normVal) return true;
-        if (s.name && s.name.toLowerCase().includes(rawLucVal.toLowerCase())) return true;
-        return false;
-      });
-
-      const prevData = matchedStore ? prevReadings.get(matchedStore.id) : null;
-      const prevReading = prevData ? prevData.reading : 0;
-      const diff = reading > prevReading ? (reading - prevReading) : 0;
-
-      // Valores adicionais opcionais
-      const constant = mappings.constant ? this.parseExcelNumber(rawRow[mappings.constant]) : 1;
-      const adjustment = mappings.adjustment ? this.parseExcelNumber(rawRow[mappings.adjustment]) : (type === 'gas' ? 1.347 : 1);
-      const virtual = mappings.virtual ? this.parseExcelOptionalNumber(rawRow[mappings.virtual]) : undefined;
-      const adjustmentAdd = mappings.adjustmentAdd ? this.parseExcelNumber(rawRow[mappings.adjustmentAdd]) : 0;
-      const fcm = mappings.fcm ? this.parseExcelNumber(rawRow[mappings.fcm]) : 1.0727;
-      const fluxoCost = mappings.fluxoCost ? this.parseExcelNumber(rawRow[mappings.fluxoCost]) : 0;
-      const note = mappings.note ? String(rawRow[mappings.note] || '').trim() : '';
-
-      let consumptionPreview = 0;
-      if (virtual !== undefined) {
-        consumptionPreview = virtual;
-      } else if (type === 'gas') {
-        consumptionPreview = ((diff * adjustment) + adjustmentAdd) * fcm;
-      } else {
-        consumptionPreview = diff * constant * adjustment;
-      }
-
-      if (matchedStore) {
-        return {
-          rawRow,
-          matchedStore,
-          storeName: matchedStore.name,
-          luc: matchedStore.luc,
-          reading,
-          prevReading,
-          consumptionPreview,
-          constant,
-          adjustment,
-          virtual,
-          adjustmentAdd,
-          fcm,
-          fluxoCost,
-          note,
-          status: 'matched' as const,
-          message: virtual !== undefined 
-            ? `Consumo Virtual: ${virtual} ${this.getUnit()}` 
-            : (reading > 0 ? `Leitura: ${reading} (${consumptionPreview.toFixed(1)} ${this.getUnit()})` : 'Leitura zerada')
-        };
-      } else {
-        return {
-          rawRow,
-          storeName: rawLucVal || `Linha ${idx + 1}`,
-          luc: rawLucVal || '—',
-          reading,
-          prevReading: 0,
-          consumptionPreview: 0,
-          status: 'unmatched' as const,
-          message: rawLucVal ? 'Loja não localizada no cadastro deste insumo' : 'Coluna de identificação vazia'
-        };
-      }
-    });
-  });
-
-  importStats = computed(() => {
-    const list = this.importPreviewList();
-    const total = list.length;
-    const matched = list.filter(r => r.status === 'matched').length;
-    const unmatched = total - matched;
-    const withReading = list.filter(r => r.status === 'matched' && r.reading > 0).length;
-    return { total, matched, unmatched, withReading };
-  });
-
-  private parseExcelNumber(val: any): number {
-    if (val === undefined || val === null || val === '') return 0;
-    if (typeof val === 'number') return isNaN(val) ? 0 : val;
-    let str = String(val).trim();
-    if (!str) return 0;
-    if (str.includes(',') && str.includes('.')) {
-      str = str.replace(/\./g, '').replace(',', '.');
-    } else if (/^\d{1,3}\.\d{3}$/.test(str)) {
-      str = str.replace(/\./g, '');
-    } else if (str.includes(',')) {
-      str = str.replace(',', '.');
-    }
-    const parsed = parseFloat(str);
-    return isNaN(parsed) ? 0 : parsed;
-  }
-
-  private parseExcelOptionalNumber(val: any): number | undefined {
-    if (val === undefined || val === null) return undefined;
-    const str = String(val).trim();
-    if (str === '' || str === '-' || str === '—') return undefined;
-    let clean = str;
-    if (clean.includes(',') && clean.includes('.')) {
-      clean = clean.replace(/\./g, '').replace(',', '.');
-    } else if (/^\d{1,3}\.\d{3}$/.test(clean)) {
-      clean = clean.replace(/\./g, '');
-    } else if (clean.includes(',')) {
-      clean = clean.replace(',', '.');
-    }
-    const parsed = parseFloat(clean);
-    return isNaN(parsed) ? undefined : parsed;
-  }
+  // --- IMPORTAÇÃO INTELIGENTE DE PLANILHA EXCEL ---
 
   openExcelImportModal() {
     if (!this.authService.canImport()) {
       alert('Apenas administradores podem importar dados em lote.');
       return;
     }
-    this.importedFileName.set('');
-    this.importPastedText.set('');
-    this.rawExcelHeaders.set([]);
-    this.rawExcelRows.set([]);
-    this.columnMappings.set({
-      luc: '',
-      reading: '',
-      constant: '',
-      adjustment: '',
-      virtual: '',
-      adjustmentAdd: '',
-      fcm: '',
-      fluxoCost: '',
-      note: ''
-    });
     this.showExcelImportModal.set(true);
   }
 
@@ -3476,210 +2813,28 @@ export class BillCalculatorComponent implements OnDestroy {
     this.showExcelImportModal.set(false);
   }
 
-  downloadImportTemplate() {
+  onExcelImportApplied(event: ExcelImportSuccessEvent) {
     const type = this.utilityType();
-    const stores = this.activeStores();
-    const prevReadings = this.previousReadings();
-    const month = this.selectedMonth();
-
-    const rows = stores.map(s => {
-      const p = prevReadings.get(s.id) || { reading: 0, consumption: 0 };
-      const item: Record<string, any> = {
-        'LUC': s.luc,
-        'Nome da Loja': s.name,
-        'Contrato': s.contrato || '',
-        'Medidor': s.meterNumber || '',
-        'Leitura Anterior': p.reading || 0,
-        'Leitura Atual': '',
-      };
-      if (type === 'luz') {
-        item['Constante'] = 1;
-        item['Ajuste'] = 1;
-      } else if (type === 'gas') {
-        item['Ajuste (x)'] = 1.347;
-        item['Ajuste Add (+)'] = 0;
-        item['FCM'] = 1.0727;
-        item['Fluxo (R$)'] = 0;
-      } else {
-        item['Constante'] = 1;
-        item['Ajuste'] = 1;
-      }
-      item['Consumo Virtual'] = ''; // Deixado vazio para escolha do usuário (aceita 0; vazio = consumo normal)
-      item['Observacao'] = '';
-      return item;
-    });
-
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(rows);
-    ws['!cols'] = [
-      { wch: 12 },
-      { wch: 30 },
-      { wch: 14 },
-      { wch: 16 },
-      { wch: 16 },
-      { wch: 16 },
-      { wch: 12 },
-      { wch: 14 },
-      { wch: 12 },
-      { wch: 25 },
-    ];
-    XLSX.utils.book_append_sheet(wb, ws, `Modelo_${type.toUpperCase()}`);
-    XLSX.writeFile(wb, `Planilha_Modelo_${type.toUpperCase()}_${month}.xlsx`);
-  }
-
-  onExcelFileSelected(event: Event) {
-    const input = event.target as HTMLInputElement;
-    if (!input.files || input.files.length === 0) return;
-    const file = input.files[0];
-    this.parseExcelFile(file);
-    input.value = '';
-  }
-
-  onExcelFileDrop(event: DragEvent) {
-    event.preventDefault();
-    this.isDraggingFile.set(false);
-    if (!event.dataTransfer || !event.dataTransfer.files || event.dataTransfer.files.length === 0) return;
-    const file = event.dataTransfer.files[0];
-    this.parseExcelFile(file);
-  }
-
-  parseExcelFile(file: File) {
-    this.importedFileName.set(file.name);
-    const reader = new FileReader();
-    reader.onload = (e: any) => {
-      try {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-        const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: '', raw: false });
-        if (jsonData.length === 0) {
-          alert('A planilha selecionada está vazia.');
-          return;
-        }
-        this.processImportedJsonData(jsonData);
-      } catch (err) {
-        console.error('Erro ao ler planilha Excel:', err);
-        alert('Não foi possível ler o arquivo. Certifique-se de que é um arquivo .xlsx, .xls ou .csv válido.');
-      }
-    };
-    reader.readAsArrayBuffer(file);
-  }
-
-  processPastedText() {
-    const text = this.importPastedText().trim();
-    if (!text) {
-      alert('Cole os dados copiados do Excel na caixa de texto.');
-      return;
-    }
-    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
-    if (lines.length < 2) {
-      alert('Cole pelo menos o cabeçalho e uma linha de dados.');
-      return;
-    }
-    const headers = lines[0].split('\t').map(h => h.trim());
-    const rows: Record<string, any>[] = [];
-    for (let i = 1; i < lines.length; i++) {
-      const parts = lines[i].split('\t');
-      const row: Record<string, any> = {};
-      headers.forEach((h, idx) => {
-        row[h] = parts[idx] !== undefined ? parts[idx].trim() : '';
-      });
-      rows.push(row);
-    }
-    this.importedFileName.set('Tabela Colada (Ctrl+V)');
-    this.processImportedJsonData(rows, headers);
-  }
-
-  processImportedJsonData(rows: any[], headers?: string[]) {
-    const extractedHeaders = headers || Object.keys(rows[0] || {});
-    this.rawExcelHeaders.set(extractedHeaders);
-    this.rawExcelRows.set(rows);
-
-    // Auto-detect mappings
-    const mappings: Record<string, string> = {
-      luc: '',
-      reading: '',
-      constant: '',
-      adjustment: '',
-      virtual: '',
-      adjustmentAdd: '',
-      fcm: '',
-      fluxoCost: '',
-      note: ''
-    };
-
-    const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-
-    extractedHeaders.forEach(h => {
-      const nh = norm(h);
-      if (!mappings.luc && (nh === 'luc' || nh.includes('luc') || nh.includes('loja') || nh.includes('nome') || nh.includes('codigo') || nh.includes('unidade'))) {
-        mappings.luc = h;
-      }
-      if (!mappings.reading && (nh.includes('leitura atual') || nh === 'leitura' || nh.includes('medicao') || nh.includes('atual') || nh.includes('valor medido') || nh.includes('hidrometro'))) {
-        mappings.reading = h;
-      }
-      if (!mappings.constant && (nh.includes('const') || nh.includes('constante'))) {
-        mappings.constant = h;
-      }
-      if (!mappings.adjustment && (nh === 'ajuste' || nh.includes('ajuste (x)') || nh === 'aj(x)' || nh.includes('fator ajuste'))) {
-        mappings.adjustment = h;
-      }
-      if (!mappings.virtual && (nh.includes('virtual') || nh.includes('consumo virtual'))) {
-        mappings.virtual = h;
-      }
-      if (!mappings.adjustmentAdd && (nh.includes('aj(+)') || nh.includes('ajuste add') || nh.includes('adicional'))) {
-        mappings.adjustmentAdd = h;
-      }
-      if (!mappings.fcm && (nh.includes('fcm') || nh.includes('fator correcao'))) {
-        mappings.fcm = h;
-      }
-      if (!mappings.fluxoCost && (nh.includes('fluxo') || nh.includes('custo fluxo'))) {
-        mappings.fluxoCost = h;
-      }
-      if (!mappings.note && (nh.includes('obs') || nh.includes('observacao') || nh.includes('nota') || nh.includes('comentario'))) {
-        mappings.note = h;
-      }
-    });
-
-    this.columnMappings.set(mappings);
-  }
-
-  updateColumnMapping(field: string, headerName: string) {
-    this.columnMappings.update(curr => ({ ...curr, [field]: headerName }));
-  }
-
-  confirmAndApplyExcelImport() {
-    const list = this.importPreviewList();
-    const type = this.utilityType();
-    const matchedItems = list.filter(item => item.status === 'matched' && item.matchedStore);
-
-    if (matchedItems.length === 0) {
-      alert('Nenhuma loja correspondente encontrada para importar. Verifique o mapeamento das colunas.');
-      return;
-    }
-
     const currentReadingsMap = new Map(this.readings()[type] as Map<string, StoreReading>);
     let updatedCount = 0;
 
-    matchedItems.forEach(item => {
-      const storeId = item.matchedStore!.id;
-      const current = currentReadingsMap.get(storeId) || this.createDefaultReading();
+    event.updatedReadings.forEach(item => {
+      const current = currentReadingsMap.get(item.storeId) || this.createDefaultReading();
       const updated: StoreReading = {
         ...current,
         reading: item.reading,
-        calculatedConsumption: item.consumptionPreview,
+        calculatedConsumption: item.calculatedConsumption,
       };
 
       if (item.constant !== undefined) updated.constant = item.constant;
       if (item.adjustment !== undefined) updated.adjustment = item.adjustment;
-      if (this.columnMappings().virtual) updated.virtual = item.virtual;
+      if (item.virtual !== undefined) updated.virtual = item.virtual;
       if (item.adjustmentAdd !== undefined) updated.adjustmentAdd = item.adjustmentAdd;
       if (item.fcm !== undefined) updated.fcm = item.fcm;
       if (item.fluxoCost !== undefined) updated.fluxoCost = item.fluxoCost;
       if (item.note) updated.note = item.note;
 
-      currentReadingsMap.set(storeId, updated);
+      currentReadingsMap.set(item.storeId, updated);
       updatedCount++;
     });
 
@@ -5558,52 +4713,5 @@ export class BillCalculatorComponent implements OnDestroy {
     this.showVoucherModal.set(false);
   }
 
-  downloadVoucherPdf() {
-    const v = this.selectedVoucherData();
-    if (!v) return;
-    this.exportService.exportStoreVoucherPdf(v);
-    this.indexedDb.showToast('📄 PDF de ' + v.storeName + ' (' + v.luc + ') baixado com sucesso!');
-  }
-
-  buildVoucherWhatsAppMessage(): string {
-    const v = this.selectedVoucherData();
-    if (!v) return '';
-
-    return [
-      '🏬 *COMPROVANTE DE RATEIO - SHOPPING*',
-      '📍 *Loja:* ' + v.storeName + ' (LUC: ' + v.luc + (v.contrato ? ' • Ctr: ' + v.contrato : '') + ')',
-      '📅 *Mês de Referência:* ' + (v.monthLabel || v.month),
-      '⚡ *Insumo:* ' + v.utilityLabel,
-      '',
-      '🔢 *Leitura Anterior:* ' + v.prevReading.toLocaleString('pt-BR') + ' ' + v.unit,
-      '🔢 *Leitura Atual:* ' + v.currentReading.toLocaleString('pt-BR') + ' ' + v.unit,
-      '📊 *Consumo Faturado:* ' + v.consumption.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + v.unit,
-      (v.utilityType === 'gas' && v.gasFactor && Math.abs(v.gasFactor - 1) > 0.0001) ? ('⚖️ _Consumo rateado conforme fatura da concessionária (Fator: ' + v.gasFactor.toFixed(4) + 'x)_') : '',
-      '💵 *Tarifa de Rateio:* R$ ' + v.unitPrice.toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) + ' / ' + v.unit,
-      '💰 *VALOR A PAGAR:* R$ ' + v.totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-      v.note ? '📝 *Observação de Campo:* ' + v.note : '',
-      '',
-      v.photoDataUrl ? '📸 _Foto do relógio auditada e arquivada pela administração._' : '',
-      '_Emitido em: ' + (v.issueDate || new Date().toLocaleString('pt-BR')) + '_'
-    ].filter(Boolean).join('\n');
-  }
-
-  shareVoucherWhatsApp() {
-    const msg = this.buildVoucherWhatsAppMessage();
-    if (!msg) return;
-    const url = 'https://api.whatsapp.com/send?text=' + encodeURIComponent(msg);
-    window.open(url, '_blank');
-  }
-
-  async copyVoucherText() {
-    const msg = this.buildVoucherWhatsAppMessage();
-    if (!msg) return;
-    try {
-      await navigator.clipboard.writeText(msg);
-      this.indexedDb.showToast('📋 Comprovante copiado! Pronto para colar no WhatsApp.');
-    } catch {
-      this.indexedDb.showToast('Erro ao copiar texto.');
-    }
-  }
 
 }
