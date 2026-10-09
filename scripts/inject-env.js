@@ -1,13 +1,5 @@
 import fs from 'fs';
 
-// Silencia aviso de console do Tailwind
-const tailwindPath = 'public/tailwind.min.js';
-if (fs.existsSync(tailwindPath)) {
-  let tw = fs.readFileSync(tailwindPath, 'utf8');
-  tw = tw.replace(/console\.warn\([^)]*should not be used in production[^)]*\)/g, 'void 0');
-  fs.writeFileSync(tailwindPath, tw, 'utf8');
-}
-
 // Injeta variáveis de ambiente da Vercel no index.html antes do build
 const indexPath = 'index.html';
 if (fs.existsSync(indexPath)) {

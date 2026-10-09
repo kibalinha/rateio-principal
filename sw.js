@@ -1,9 +1,8 @@
-const CACHE_NAME = 'shoprateio-v3-live';
+const CACHE_NAME = 'shoprateio-v4-live';
 const ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/tailwind.min.js',
   '/icon-192.png',
   '/icon-512.png',
   '/apple-touch-icon.png'
