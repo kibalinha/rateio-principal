@@ -18,6 +18,11 @@ if (fs.existsSync(indexPath)) {
   const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const supabaseKey = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '';
 
+  if (supabaseKey && supabaseKey.toLowerCase().includes('service_role')) {
+    console.error('ERRO FATAL DE SEGURANÇA: Tentativa de injetar chave "service_role" no frontend! Abortando build.');
+    process.exit(1);
+  }
+
   if (groqKey) {
     html = html.replace(
       /window\.process\.env\.GROQ_API_KEY\s*=\s*window\.process\.env\.GROQ_API_KEY\s*\|\|\s*'[^']*';/,

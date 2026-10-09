@@ -1,5 +1,6 @@
 import { Injectable, signal, computed } from '@angular/core';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { assertSafeSupabaseKey } from './security-sanitizer.service';
 import { Store } from './store.service';
 import { BillData } from './history.service';
 import { MeterPhotoRecord } from './indexed-db.service';
@@ -156,6 +157,7 @@ FOR ALL USING (bucket_id = 'meter-photos') WITH CHECK (bucket_id = 'meter-photos
 
   private initClient(): SupabaseClient {
     if (!this.client) {
+      assertSafeSupabaseKey(this.supabaseKey);
       this.client = createClient(this.supabaseUrl, this.supabaseKey, {
         auth: {
           persistSession: true,

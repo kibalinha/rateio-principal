@@ -4929,13 +4929,17 @@ export class BillCalculatorComponent implements OnDestroy {
   }
 
   saveAiKeysAndProceed() {
-    this.geminiService.saveApiKeys(this.groqInputKey(), this.geminiInputKey());
-    this.showAiKeyModal.set(false);
-    this.indexedDb.showToast('✓ Chaves de IA salvas com sucesso!');
-    const pendingId = this.pendingOcrStoreId();
-    if (pendingId) {
-      this.pendingOcrStoreId.set(null);
-      this.runOcrOnPhoto(pendingId);
+    try {
+      this.geminiService.saveApiKeys(this.groqInputKey(), this.geminiInputKey());
+      this.showAiKeyModal.set(false);
+      this.indexedDb.showToast('✓ Chaves de IA salvas com segurança!');
+      const pendingId = this.pendingOcrStoreId();
+      if (pendingId) {
+        this.pendingOcrStoreId.set(null);
+        this.runOcrOnPhoto(pendingId);
+      }
+    } catch (err: any) {
+      this.indexedDb.showToast(`⚠️ ${err.message || 'Erro ao validar formato de chaves'}`);
     }
   }
 

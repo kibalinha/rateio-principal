@@ -1,5 +1,6 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { GoogleGenAI } from '@google/genai';
+import { SecuritySanitizerService } from './security-sanitizer.service';
 
 import { MeterOcrResult } from '../models';
 
@@ -10,6 +11,7 @@ export type { MeterOcrResult };
 })
 export class GeminiService {
   private ai: GoogleGenAI | null = null;
+  private sanitizer = inject(SecuritySanitizerService);
 
   constructor() {}
 
@@ -71,13 +73,39 @@ export class GeminiService {
     return this.getGeminiApiKey();
   }
 
+  getMaskedGroqKey(): string {
+    return this.sanitizer.maskKey(this.getGroqApiKey());
+  }
+
+  getMaskedGeminiKey(): string {
+    return this.sanitizer.maskKey(this.getGeminiApiKey());
+  }
+
   saveApiKeys(groqKey?: string, geminiKey?: string) {
     if (typeof localStorage !== 'undefined') {
       if (groqKey !== undefined) {
-        localStorage.setItem('groq_api_key', groqKey.trim());
+        const trimmedGroq = groqKey.trim();
+        if (trimmedGroq) {
+          const valid = this.sanitizer.validateKey('groq', trimmedGroq);
+          if (!valid.valid) {
+            throw new Error(valid.error || 'Chave Groq inválida');
+          }
+          localStorage.setItem('groq_api_key', valid.sanitizedKey);
+        } else {
+          localStorage.removeItem('groq_api_key');
+        }
       }
       if (geminiKey !== undefined) {
-        localStorage.setItem('gemini_api_key', geminiKey.trim());
+        const trimmedGemini = geminiKey.trim();
+        if (trimmedGemini) {
+          const valid = this.sanitizer.validateKey('gemini', trimmedGemini);
+          if (!valid.valid) {
+            throw new Error(valid.error || 'Chave Gemini inválida');
+          }
+          localStorage.setItem('gemini_api_key', valid.sanitizedKey);
+        } else {
+          localStorage.removeItem('gemini_api_key');
+        }
         this.ai = null; // Reseta instância anterior para aplicar a nova chave
       }
     }
@@ -297,12 +325,13 @@ Se o visor estiver ilegível, escuro ou sem medidor visível:
 
     } catch (error: any) {
       clearTimeout(timeout);
-      console.warn('Falha na chamada ao Qwen 3.8 27B (Groq):', error);
+      const sanitizedErr = this.sanitizer.sanitizeError(error);
+      this.sanitizer.safeLog('warn', 'OCR Groq', 'Falha na chamada ao Qwen 3.8 27B:', sanitizedErr);
       return {
         success: false,
         reading: null,
         confidence: 'low',
-        error: error?.message || 'Falha ao processar com Qwen 3.8 27B.',
+        error: sanitizedErr || 'Falha ao processar com Qwen 3.8 27B.',
         provider: 'qwen',
         modelName: 'Qwen 3.8 27B (Groq)',
         fallbackUsed: false
@@ -439,12 +468,13 @@ Se a imagem estiver sem medidor, com desfoque total ou ilegível:
       }
 
     } catch (error: any) {
-      console.error('Erro na extração de leitura com Gemini:', error);
+      const sanitizedErr = this.sanitizer.sanitizeError(error);
+      this.sanitizer.safeLog('error', 'OCR Gemini', 'Erro na extração de leitura com Gemini:', sanitizedErr);
       return {
         success: false,
         reading: null,
         confidence: 'low',
-        error: error?.message || 'Falha na comunicação com Gemini para leitura do medidor.',
+        error: sanitizedErr || 'Falha na comunicação com Gemini para leitura do medidor.',
         provider: 'gemini',
         modelName: isFallback ? 'Gemini 3.8 Flash (Fallback)' : 'Gemini 3.8 Flash',
         fallbackUsed: isFallback
