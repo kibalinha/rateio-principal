@@ -15,6 +15,7 @@ import {
   UtilityType, 
   StoreStatusFilter as StatusFilter 
 } from '../models';
+import { evaluateAlertSeverity } from '../services/apportionment-engine.service';
 
 export type { MonthlyChartItem, StoreAlertInfo };
 
@@ -1004,14 +1005,13 @@ export class StoreReportComponent {
         let monthSeverity: 'critical' | 'warning' = 'warning';
         let monthBadge = '';
 
-        if (diffAvgPct >= 40 || (momPct !== null && momPct >= 50)) {
+        const severity = evaluateAlertSeverity(diffAvgPct, momPct);
+        if (severity !== 'normal') {
           hasMonthAlert = true;
-          monthSeverity = 'critical';
-          monthBadge = diffAvgPct >= 40 ? `🚨 +${Math.round(diffAvgPct)}% vs Média` : `🚨 Salto +${Math.round(momPct!)}%`;
-        } else if (diffAvgPct >= 20 || (momPct !== null && momPct >= 30)) {
-          hasMonthAlert = true;
-          monthSeverity = 'warning';
-          monthBadge = diffAvgPct >= 20 ? `⚠️ +${Math.round(diffAvgPct)}% Média` : `⚠️ Salto +${Math.round(momPct!)}%`;
+          monthSeverity = severity;
+          monthBadge = severity === 'critical'
+            ? (diffAvgPct >= 40 ? `🚨 +${Math.round(diffAvgPct)}% vs Média` : `🚨 Salto +${Math.round(momPct!)}%`)
+            : (diffAvgPct >= 20 ? `⚠️ +${Math.round(diffAvgPct)}% Média` : `⚠️ Salto +${Math.round(momPct!)}%`);
         }
 
         if (hasMonthAlert) {
@@ -1265,11 +1265,7 @@ export class StoreReportComponent {
 
       let alertLevel: 'critical' | 'warning' | 'normal' = 'normal';
       if (item.consumption > 0) {
-        if (diffFromAvgPct >= 40 || (momDiffPct !== null && momDiffPct >= 50)) {
-          alertLevel = 'critical';
-        } else if (diffFromAvgPct >= 20 || (momDiffPct !== null && momDiffPct >= 30)) {
-          alertLevel = 'warning';
-        }
+        alertLevel = evaluateAlertSeverity(diffFromAvgPct, momDiffPct);
       }
 
       return {

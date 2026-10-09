@@ -9,6 +9,7 @@ import { IndexedDbService } from '../services/indexed-db.service';
 import { GeminiService } from '../services/gemini.service';
 import { SupabaseService } from '../services/supabase.service';
 import * as XLSX from 'xlsx';
+import { ApportionmentEngineService } from '../services/apportionment-engine.service';
 
 import { 
   Store,
@@ -3190,6 +3191,7 @@ export class BillCalculatorComponent implements OnDestroy {
   indexedDb = inject(IndexedDbService);
   geminiService = inject(GeminiService);
   supabaseService = inject(SupabaseService);
+  apportionmentEngine = inject(ApportionmentEngineService);
 
   utilityType = signal<'luz' | 'agua' | 'gas'>('luz');
   
@@ -4273,10 +4275,7 @@ export class BillCalculatorComponent implements OnDestroy {
   });
 
   calculatedUnitPrice = computed(() => {
-    const bill = this.totalBillAmount();
-    const cons = this.totalConsumption();
-    if (!bill || !cons || cons === 0) return 0;
-    return bill / cons;
+    return this.apportionmentEngine.calculateUnitPrice(this.totalBillAmount(), this.totalConsumption());
   });
 
   // Histórico de consumo e baseline de anomalias (inclui média histórica e conferência de meses zerados)
@@ -5624,27 +5623,20 @@ export class BillCalculatorComponent implements OnDestroy {
      return this.airConditioningConsumption() * this.calculatedUnitPrice();
   });
 
-  commonAreaConsumption = computed(() => {
-     if (this.utilityType() === 'gas' && this.gasAutoDistribute()) {
-        return 0; // Gás com rateio proporcional é 100% distribuído entre os lojistas
-     }
-     const total = this.totalConsumption();
-     const tenants = this.totalDistributedConsumption();
-     const ac = this.airConditioningConsumption();
-     const remaining = total - tenants - ac;
-     return Math.max(0, Number(remaining.toFixed(4))); 
+  commonArea = computed(() => {
+    return this.apportionmentEngine.calculateCommonArea(
+      this.totalConsumption(),
+      this.totalBillAmount(),
+      this.totalDistributedConsumption(),
+      this.totalDistributedCost(),
+      this.airConditioningConsumption(),
+      this.airConditioningCost(),
+      this.utilityType() === 'gas' && this.gasAutoDistribute()
+    );
   });
 
-  commonAreaCost = computed(() => {
-     if (this.utilityType() === 'gas' && this.gasAutoDistribute()) {
-        return 0; // Gás com rateio proporcional é 100% distribuído entre os lojistas
-     }
-     const bill = this.totalBillAmount();
-     const storesCost = this.totalDistributedCost();
-     const acCost = this.airConditioningCost();
-     const remaining = bill - storesCost - acCost;
-     return Math.max(0, Number(remaining.toFixed(2)));
-  });
+  commonAreaConsumption = computed(() => this.commonArea().consumption);
+  commonAreaCost = computed(() => this.commonArea().cost);
 
   getPercentage(cost: number) {
     if (this.totalBillAmount() === 0) return '0.0';
