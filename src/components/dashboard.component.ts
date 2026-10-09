@@ -647,8 +647,8 @@ export class DashboardComponent {
       .attr('fill', barColor)
       .attr('rx', 4)
       .attr('opacity', 0.8)
-      .on('mouseover', function() { d3.select(this).attr('opacity', 1); })
-      .on('mouseout', function() { d3.select(this).attr('opacity', 0.8); });
+      .on('mouseover', function(this: SVGRectElement) { d3.select(this).attr('opacity', 1); })
+      .on('mouseout', function(this: SVGRectElement) { d3.select(this).attr('opacity', 0.8); });
       
     // Labels
     svg.selectAll('.text')
@@ -691,7 +691,7 @@ export class DashboardComponent {
       .append("g")
       .attr("transform", `translate(${width/2},${height/2})`);
 
-    const pie = d3.pie<any>().value(d => d.value).sort(null);
+    const pie = d3.pie<any>().value((d: any) => d.value).sort(null);
     const data_ready = pie(data);
 
     const arc = d3.arc<any>().innerRadius(radius * 0.5).outerRadius(radius * 0.8); // Donut
@@ -702,14 +702,14 @@ export class DashboardComponent {
       .enter()
       .append('path')
       .attr('d', arc)
-      .attr('fill', d => d.data.color)
+      .attr('fill', (d: any) => d.data.color)
       .attr("stroke", "white")
       .style("stroke-width", "2px")
       .style("opacity", 0.9)
-      .on('mouseover', function(e, d) {
+      .on('mouseover', function(this: SVGPathElement) {
          d3.select(this).transition().duration(200).attr('d', arcHover);
       })
-      .on('mouseout', function(e, d) {
+      .on('mouseout', function(this: SVGPathElement) {
          d3.select(this).transition().duration(200).attr('d', arc);
       });
 

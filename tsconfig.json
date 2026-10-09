@@ -18,6 +18,11 @@
     "moduleDetection": "force",
     "resolveJsonModule": true,
     "allowJs": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
     "jsx": "react-jsx",
     "paths": {
       "@/*": [

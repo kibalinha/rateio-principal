@@ -541,6 +541,9 @@ Se a imagem estiver sem medidor, com desfoque total ou ilegível:
   async analyzeRateio(data: any): Promise<string> {
     try {
       const client = this.initGeminiClient();
+      if (!client) {
+        return 'Chave de API do Gemini não configurada.';
+      }
       const prompt = `
         Você é um especialista em gestão de shopping centers e eficiência energética.
         Analise os dados de rateio abaixo (custos de Água, Luz ou Gás distribuídos entre lojas).

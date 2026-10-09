@@ -143,13 +143,17 @@ FOR ALL USING (bucket_id = 'meter-photos') WITH CHECK (bucket_id = 'meter-photos
 
   private getEnvVar(name: string, fallback: string): string {
     if (typeof process !== 'undefined' && process.env) {
-      if (process.env[name]) return process.env[name];
-      if (process.env[`NEXT_PUBLIC_${name}`]) return process.env[`NEXT_PUBLIC_${name}`];
+      const val = process.env[name];
+      if (val) return val;
+      const nextVal = process.env[`NEXT_PUBLIC_${name}`];
+      if (nextVal) return nextVal;
     }
     if (typeof window !== 'undefined') {
       const w = window as any;
-      if (w.process?.env?.[name]) return w.process.env[name];
-      if (w.process?.env?.[`NEXT_PUBLIC_${name}`]) return w.process.env[`NEXT_PUBLIC_${name}`];
+      const wVal = w.process?.env?.[name];
+      if (wVal) return wVal;
+      const wNextVal = w.process?.env?.[`NEXT_PUBLIC_${name}`];
+      if (wNextVal) return wNextVal;
       if (w[`__${name}__`]) return w[`__${name}__`];
     }
     return fallback;

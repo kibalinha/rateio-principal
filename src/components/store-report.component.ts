@@ -1685,13 +1685,13 @@ export class StoreReportComponent {
       .style('stroke', isDark ? '#334155' : '#cbd5e1');
 
     // Y Axis
-    const maxVal = d3.max(data, d => d.consumption) as number || 100;
+    const maxVal = d3.max(data, (d: MonthlyChartItem) => d.consumption) as number || 100;
     const y = d3.scaleLinear()
       .domain([0, maxVal * 1.2])
       .range([height, 0]);
 
     const yAxisG = svg.append('g')
-      .call(d3.axisLeft(y).ticks(5).tickFormat(d => `${d}`));
+      .call(d3.axisLeft(y).ticks(5).tickFormat((d: any) => `${d}`));
       
     yAxisG.selectAll('text')
       .style('opacity', isDark ? 0.9 : 0.7)
@@ -1737,9 +1737,9 @@ export class StoreReportComponent {
 
     // Curve Path (Area representing consumption)
     const area = d3.area<MonthlyChartItem>()
-      .x(d => x(d.monthLabel)!)
+      .x((d: MonthlyChartItem) => x(d.monthLabel)!)
       .y0(height)
-      .y1(d => y(d.consumption))
+      .y1((d: MonthlyChartItem) => y(d.consumption))
       .curve(d3.curveMonotoneX);
 
     // Color code based on utility selection
@@ -1779,8 +1779,8 @@ export class StoreReportComponent {
 
     // Redraw the line over the area
     const line = d3.line<MonthlyChartItem>()
-      .x(d => x(d.monthLabel)!)
-      .y(d => y(d.consumption))
+      .x((d: MonthlyChartItem) => x(d.monthLabel)!)
+      .y((d: MonthlyChartItem) => y(d.consumption))
       .curve(d3.curveMonotoneX);
 
     svg.append('path')
@@ -1795,11 +1795,11 @@ export class StoreReportComponent {
       .data(data.filter(d => d.alertLevel === 'critical' || d.alertLevel === 'warning'))
       .enter()
       .append('circle')
-      .attr('cx', d => x(d.monthLabel)!)
-      .attr('cy', d => y(d.consumption)!)
+      .attr('cx', (d: MonthlyChartItem) => x(d.monthLabel)!)
+      .attr('cy', (d: MonthlyChartItem) => y(d.consumption)!)
       .attr('r', 9)
       .attr('fill', 'none')
-      .attr('stroke', d => d.alertLevel === 'critical' ? '#e11d48' : '#f59e0b')
+      .attr('stroke', (d: MonthlyChartItem) => d.alertLevel === 'critical' ? '#e11d48' : '#f59e0b')
       .attr('stroke-width', 2)
       .attr('stroke-dasharray', '3,2')
       .attr('opacity', 0.85);
@@ -1811,14 +1811,14 @@ export class StoreReportComponent {
       .data(data)
       .enter()
       .append('circle')
-      .attr('cx', d => x(d.monthLabel)!)
-      .attr('cy', d => y(d.consumption)!)
-      .attr('r', d => d.alertLevel === 'critical' ? 6 : 4.5)
-      .attr('fill', d => d.alertLevel === 'critical' ? '#e11d48' : d.alertLevel === 'warning' ? '#f59e0b' : (isDark ? '#0f172a' : '#ffffff'))
-      .attr('stroke', d => d.alertLevel === 'critical' ? '#9f1239' : gradientStart)
+      .attr('cx', (d: MonthlyChartItem) => x(d.monthLabel)!)
+      .attr('cy', (d: MonthlyChartItem) => y(d.consumption)!)
+      .attr('r', (d: MonthlyChartItem) => d.alertLevel === 'critical' ? 6 : 4.5)
+      .attr('fill', (d: MonthlyChartItem) => d.alertLevel === 'critical' ? '#e11d48' : d.alertLevel === 'warning' ? '#f59e0b' : (isDark ? '#0f172a' : '#ffffff'))
+      .attr('stroke', (d: MonthlyChartItem) => d.alertLevel === 'critical' ? '#9f1239' : gradientStart)
       .attr('stroke-width', 2)
       .style('cursor', 'pointer')
-      .on('mouseover', function(e, d) {
+      .on('mouseover', function(this: SVGCircleElement, _e: MouseEvent, d: MonthlyChartItem) {
          d3.select(this).attr('r', 7.5);
          
          const tipText = `${d.consumption.toFixed(1)} ${self.getUnit()} (${d.diffFromAvgPct >= 0 ? '+' : ''}${d.diffFromAvgPct.toFixed(0)}% vs média)`;
@@ -1832,7 +1832,7 @@ export class StoreReportComponent {
            .style('font-weight', 'bold')
            .style('fill', d.alertLevel === 'critical' ? '#e11d48' : (isDark ? '#f1f5f9' : '#334155'));
       })
-      .on('mouseout', function(e, d) {
+      .on('mouseout', function(this: SVGCircleElement, _e: MouseEvent, d: MonthlyChartItem) {
          d3.select(this).attr('r', d.alertLevel === 'critical' ? 6 : 4.5);
          d3.select(`#ctooltip-${d.key}`).remove();
       });
@@ -1843,13 +1843,13 @@ export class StoreReportComponent {
         .data(data)
         .enter()
         .append('text')
-        .attr('x', d => x(d.monthLabel)!)
-        .attr('y', d => y(d.consumption) - 9)
+        .attr('x', (d: MonthlyChartItem) => x(d.monthLabel)!)
+        .attr('y', (d: MonthlyChartItem) => y(d.consumption) - 9)
         .attr('text-anchor', 'middle')
-        .text(d => `${Math.round(d.consumption)}`)
+        .text((d: MonthlyChartItem) => `${Math.round(d.consumption)}`)
         .style('font-size', '9px')
         .style('font-weight', 'bold')
-        .style('fill', d => d.alertLevel === 'critical' ? '#e11d48' : (isDark ? '#94a3b8' : '#64748b'));
+        .style('fill', (d: MonthlyChartItem) => d.alertLevel === 'critical' ? '#e11d48' : (isDark ? '#94a3b8' : '#64748b'));
     }
   }
 
@@ -1894,13 +1894,13 @@ export class StoreReportComponent {
       .style('stroke', isDark ? '#334155' : '#cbd5e1');
 
     // Y Axis
-    const maxVal = d3.max(data, d => d.cost) as number || 1000;
+    const maxVal = d3.max(data, (d: MonthlyChartItem) => d.cost) as number || 1000;
     const y = d3.scaleLinear()
       .domain([0, maxVal * 1.15])
       .range([height, 0]);
 
     const yAxisG = svg.append('g')
-      .call(d3.axisLeft(y).ticks(5).tickFormat(d => `R$${d}`));
+      .call(d3.axisLeft(y).ticks(5).tickFormat((d: any) => `R$${d}`));
       
     yAxisG.selectAll('text')
       .style('opacity', isDark ? 0.9 : 0.7)
@@ -1925,20 +1925,20 @@ export class StoreReportComponent {
       .data(data)
       .enter()
       .append('rect')
-      .attr('x', d => x(d.monthLabel)!)
-      .attr('y', d => y(d.cost))
+      .attr('x', (d: MonthlyChartItem) => x(d.monthLabel)!)
+      .attr('y', (d: MonthlyChartItem) => y(d.cost))
       .attr('width', x.bandwidth())
-      .attr('height', d => height - y(d.cost))
+      .attr('height', (d: MonthlyChartItem) => height - y(d.cost))
       .attr('fill', '#10b981')
       .attr('rx', 4)
       .attr('opacity', isDark ? 0.9 : 0.8)
-      .on('mouseover', function() {
+      .on('mouseover', function(this: SVGRectElement) {
          d3.select(this)
            .transition()
            .duration(150)
            .attr('opacity', 1.0);
       })
-      .on('mouseout', function() {
+      .on('mouseout', function(this: SVGRectElement) {
          d3.select(this)
            .transition()
            .duration(150)
@@ -1950,10 +1950,10 @@ export class StoreReportComponent {
       .data(data)
       .enter()
       .append('text')
-      .attr('x', d => x(d.monthLabel)! + x.bandwidth() / 2)
-      .attr('y', d => y(d.cost) - 8)
+      .attr('x', (d: MonthlyChartItem) => x(d.monthLabel)! + x.bandwidth() / 2)
+      .attr('y', (d: MonthlyChartItem) => y(d.cost) - 8)
       .attr('text-anchor', 'middle')
-      .text(d => `R$${Math.round(d.cost)}`)
+      .text((d: MonthlyChartItem) => `R$${Math.round(d.cost)}`)
       .style('font-size', '9px')
       .style('font-weight', 'bold')
       .style('fill', isDark ? '#cbd5e1' : '#475569');

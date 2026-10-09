@@ -3042,7 +3042,7 @@ export class BillCalculatorComponent implements OnDestroy {
   ocrFeedback = signal<Record<string, {
     success: boolean;
     message: string;
-    reading?: number;
+    reading?: number | null;
     confidence?: string;
     explanation?: string;
     provider?: 'qwen' | 'gemini' | 'none';
