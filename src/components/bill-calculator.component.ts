@@ -23,12 +23,15 @@ import {
   AnomalyModalData 
 } from '../models';
 
+import { AnomalyModalComponent } from './anomaly-modal.component';
+import { MeterPhotoModalComponent } from './meter-photo-modal.component';
+
 export type { ExcelImportRowPreview, AnomalyModalData };
 
 @Component({
   selector: 'app-bill-calculator',
   standalone: true,
-  imports: [CommonModule, FormsModule, DecimalPipe, DatePipe],
+  imports: [CommonModule, FormsModule, DecimalPipe, DatePipe, AnomalyModalComponent, MeterPhotoModalComponent],
   template: `
     <div class="space-y-6 pb-20 md:pb-0">
       
@@ -1867,184 +1870,24 @@ export type { ExcelImportRowPreview, AnomalyModalData };
       }
 
       <!-- PHOTO EVIDENCE VIEWER & AUDIT MODAL (Comprovante Incontestável no IndexedDB) -->
-      @if (showPhotoModal() && activePhotoRecord(); as photo) {
-        <div class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
-          <!-- Backdrop -->
-          <div class="absolute inset-0 bg-black/85 backdrop-blur-sm" (click)="closePhotoViewer()"></div>
-          
-          <!-- Modal Card -->
-          <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl overflow-hidden w-full max-w-lg relative z-10 max-h-[92vh] flex flex-col animate-fade-in border border-slate-700">
-            
-            <!-- Modal Header -->
-            <div class="bg-slate-900 text-white p-3.5 sm:p-4 flex justify-between items-center border-b border-slate-800">
-              <div class="flex items-center gap-2.5">
-                <span class="text-xs font-mono font-extrabold bg-teal-500 text-slate-950 px-2 py-0.5 rounded shadow-xs">
-                  {{ photo.luc }}
-                </span>
-                <div>
-                  <h3 class="font-bold text-sm sm:text-base leading-tight truncate max-w-[200px] sm:max-w-xs text-white">
-                    {{ photo.storeName }}
-                  </h3>
-                  <p class="text-[10px] text-slate-400 mt-0.5">
-                    Evidência Fotográfica • {{ photo.type | uppercase }} • Mês: {{ photo.month }}
-                  </p>
-                </div>
-              </div>
-              <button (click)="closePhotoViewer()" class="text-slate-400 hover:text-white text-xl font-bold p-1 cursor-pointer">✕</button>
-            </div>
-
-            <!-- Photo Canvas / Image Display -->
-            <div class="flex-1 bg-slate-950 flex items-center justify-center overflow-hidden relative min-h-[260px] max-h-[58vh]">
-              <img [src]="photo.photoDataUrl" 
-                   alt="Foto do Medidor" 
-                   class="max-w-full max-h-[58vh] object-contain select-none">
-              
-              <!-- Badge overlay with verified reading value -->
-              <div class="absolute top-3 left-3 bg-slate-900/85 backdrop-blur-md text-white px-2.5 py-1 rounded-lg text-xs font-mono border border-slate-700 flex items-center gap-1.5 shadow-md">
-                <span class="text-teal-400 font-bold">🔢 Leitura:</span>
-                <strong class="text-white">{{ photo.readingValue || 0 }}</strong>
-              </div>
-            </div>
-
-            <!-- Status de Leitura OCR com IA no Modal -->
-            @if (isReadingOcr() === photo.storeId) {
-              <div class="p-3 bg-indigo-900/90 text-indigo-100 border-b border-indigo-700 flex items-center justify-between text-xs font-bold animate-pulse">
-                <div class="flex items-center gap-2">
-                  <span class="text-lg">⚡</span>
-                  <div>
-                    <p>{{ ocrCurrentModelLabel() }} lendo mostrador...</p>
-                    <p class="text-[10px] text-indigo-300 font-normal">Processando com Groq / Gemini para alta precisão</p>
-                  </div>
-                </div>
-                <span class="text-[10px] bg-indigo-700 px-2 py-0.5 rounded font-mono">OCR ATIVO</span>
-              </div>
-            }
-
-            @if (ocrFeedback()[photo.storeId]; as fb) {
-              <div class="p-3 border-b text-xs flex flex-col gap-1.5"
-                   [class]="fb.success ? 'bg-emerald-950/90 border-emerald-800 text-emerald-100' : 'bg-amber-950/90 border-amber-800 text-amber-100'">
-                <div class="flex items-center justify-between gap-2">
-                  <div class="flex items-center gap-2">
-                    <span class="text-lg shrink-0">{{ fb.success ? (fb.provider === 'qwen' ? '⚡' : '🤖') : '⚠️' }}</span>
-                    <div>
-                      <p class="font-bold leading-tight">{{ fb.message }}</p>
-                      @if (fb.explanation) {
-                        <p class="text-[10px] opacity-85 mt-0.5">{{ fb.explanation }}</p>
-                      }
-                    </div>
-                  </div>
-                  <button (click)="dismissOcrFeedback(photo.storeId)" class="p-1 text-slate-400 hover:text-white font-bold cursor-pointer">✕</button>
-                </div>
-                @if (fb.success) {
-                  <div class="text-[10px] opacity-80 flex items-center justify-between border-t border-white/10 pt-1">
-                    <span>Motor: {{ fb.modelName }}</span>
-                    <span>Confiança: {{ fb.confidence === 'high' ? 'Alta' : 'Média' }}</span>
-                  </div>
-                }
-              </div>
-            }
-
-            <!-- Footer Details & Quick Operations -->
-            <div class="p-3.5 sm:p-4 bg-slate-50 dark:bg-slate-900/90 border-t border-slate-200 dark:border-slate-800 space-y-3">
-              <div class="flex justify-between items-center text-xs text-slate-600 dark:text-slate-300">
-                <span class="flex items-center gap-1">
-                  <span>📅 Capturada em:</span>
-                  <strong class="font-mono text-slate-800 dark:text-white">{{ photo.capturedAt | date:'dd/MM/yyyy HH:mm:ss' }}</strong>
-                </span>
-                <div class="flex items-center gap-1.5 flex-wrap">
-                  @if (photo.synced) {
-                    <span class="bg-teal-100 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-teal-300 dark:border-teal-800 flex items-center gap-1" title="Foto sincronizada na nuvem com Supabase">
-                      <span>☁️</span>
-                      <span>Supabase Nuvem</span>
-                    </span>
-                  } @else {
-                    <span class="bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-300 dark:border-amber-800 flex items-center gap-1" title="Foto salva localmente, aguardando envio para Supabase">
-                      <span>⏳</span>
-                      <span>Pendente Nuvem</span>
-                    </span>
-                    @if (indexedDb.isOnline()) {
-                      <button type="button" 
-                              (click)="syncSinglePhoto(photo)" 
-                              class="text-[10px] bg-blue-600 hover:bg-blue-700 text-white font-bold px-2 py-0.5 rounded-full shadow-xs cursor-pointer"
-                              title="Enviar esta foto agora para o Supabase">
-                        ☁️ Enviar agora
-                      </button>
-                    }
-                  }
-                  <span class="bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-800 flex items-center gap-1">
-                    <span>✓</span>
-                    <span>IndexedDB</span>
-                  </span>
-                </div>
-              </div>
-
-              <!-- Botões Principais de Leitura por Foto OCR -->
-              <div class="space-y-1.5">
-                <button type="button" 
-                  (click)="runOcrOnPhoto(photo.storeId)" 
-                  [disabled]="isReadingOcr() === photo.storeId"
-                  class="w-full py-2.5 px-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer">
-                  @if (isReadingOcr() === photo.storeId) {
-                    <span class="animate-spin text-sm">⏳</span>
-                    <span>Processando imagem...</span>
-                  } @else {
-                    <span class="text-base">⚡</span>
-                    <span>Ler com Qwen 3.8 27B (Groq) • Fallback Gemini</span>
-                  }
-                </button>
-
-                <div class="grid grid-cols-2 gap-2 text-[11px]">
-                  <button type="button"
-                    (click)="runOcrOnPhoto(photo.storeId, 'qwen')"
-                    [disabled]="isReadingOcr() === photo.storeId"
-                    class="py-1.5 px-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 rounded-lg font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors">
-                    <span>⚡ Apenas Qwen 3.8 27B</span>
-                  </button>
-                  <button type="button"
-                    (click)="runOcrOnPhoto(photo.storeId, 'gemini')"
-                    [disabled]="isReadingOcr() === photo.storeId"
-                    class="py-1.5 px-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 rounded-lg font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors">
-                    <span>🤖 Verificar com Gemini</span>
-                  </button>
-                </div>
-              </div>
-
-              <!-- Action Buttons -->
-              <div class="flex items-center gap-2 pt-1">
-                <button type="button" 
-                  (click)="downloadActivePhoto()" 
-                  class="flex-1 py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer">
-                  <span>⬇️ Baixar Foto</span>
-                </button>
-
-                <button type="button" 
-                  (click)="openStoreVoucherByStoreId(photo.storeId)" 
-                  class="flex-1 py-2.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer">
-                  <span>📲 Ver Espelho</span>
-                </button>
-
-                <label class="flex-1 py-2.5 px-3 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer text-center">
-                  <span>🔄 Substituir</span>
-                  <input type="file" 
-                         accept="image/*" 
-                         capture="environment" 
-                         (change)="onPhotoCaptured($event, photo.storeId, photo.storeName, photo.luc, photo.readingValue)" 
-                         class="hidden">
-                </label>
-
-                <button type="button" 
-                  (click)="removePhoto(photo.storeId)" 
-                  class="py-2.5 px-3 bg-rose-100 hover:bg-rose-200 text-rose-800 dark:bg-rose-950/80 dark:text-rose-200 border border-rose-300 dark:border-rose-800 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
-                  title="Excluir comprovante definitivamente">
-                  <span>🗑️</span>
-                  <span>Excluir</span>
-                </button>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      }
+      <app-meter-photo-modal
+        [isOpen]="showPhotoModal()"
+        [photo]="activePhotoRecord()"
+        [isOnline]="indexedDb.isOnline()"
+        [enableOcr]="true"
+        [enableVoucher]="true"
+        [enableReplace]="true"
+        [isReadingOcr]="isReadingOcr()"
+        [ocrModelLabel]="ocrCurrentModelLabel()"
+        [ocrFeedback]="ocrFeedback()"
+        (close)="closePhotoViewer()"
+        (download)="downloadActivePhoto()"
+        (syncPhoto)="syncSinglePhoto($event)"
+        (runOcr)="runOcrOnPhoto($event.storeId, $event.provider)"
+        (openVoucher)="openStoreVoucherByStoreId($event)"
+        (replacePhoto)="onPhotoCaptured($event.event, $event.photo.storeId, $event.photo.storeName, $event.photo.luc, $event.photo.readingValue)"
+        (dismissFeedback)="dismissOcrFeedback($event)"
+      />
 
       <!-- Modal de Configuração de Chaves de IA (Groq & Gemini) -->
       @if (showAiKeyModal()) {
@@ -2421,110 +2264,19 @@ export type { ExcelImportRowPreview, AnomalyModalData };
                   </button>
                 </div>
               </div>
-
             </div>
           </div>
         }
       }
 
       <!-- ANOMALY AUDIT MODAL (ETAPA 1: ALERTA INTELIGENTE E ANTI-ERRO) -->
-      @if (activeAnomalyModal(); as anomaly) {
-        <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div class="absolute inset-0 bg-black/70 backdrop-blur-xs animate-fade-in" (click)="closeAnomalyModal()"></div>
-          
-          <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg relative z-10 border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col animate-scale-in">
-            <!-- Modal Header with Severity Theme -->
-            <div class="p-4 sm:p-5 flex items-center justify-between border-b"
-                 [class]="anomaly.severity === 'critical' 
-                   ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900 text-rose-900 dark:text-rose-100' 
-                   : 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900 text-amber-900 dark:text-amber-100'">
-              <div class="flex items-center gap-3">
-                <span class="text-2xl p-2 rounded-xl"
-                      [class]="anomaly.severity === 'critical' ? 'bg-rose-200/80 dark:bg-rose-900/60' : 'bg-amber-200/80 dark:bg-amber-900/60'">
-                  {{ anomaly.severity === 'critical' ? '🚨' : '⚠️' }}
-                </span>
-                <div>
-                  <h3 class="font-extrabold text-sm sm:text-base leading-tight">
-                    {{ anomaly.title }}
-                  </h3>
-                  <p class="text-xs opacity-80 mt-0.5 font-medium">
-                    Loja: <strong>{{ anomaly.storeName }}</strong> (LUC {{ anomaly.luc }})
-                  </p>
-                </div>
-              </div>
-              <button (click)="closeAnomalyModal()" 
-                      class="text-slate-400 hover:text-slate-600 dark:hover:text-white text-lg font-bold p-1 cursor-pointer">✕</button>
-            </div>
-
-            <!-- Modal Content & Comparison Box -->
-            <div class="p-4 sm:p-6 space-y-4 text-xs sm:text-sm">
-              <div class="p-3.5 rounded-xl border bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 space-y-2">
-                <p class="text-slate-700 dark:text-slate-200 leading-relaxed font-medium">
-                  {{ anomaly.message }}
-                </p>
-              </div>
-
-              <!-- Comparison Metrics Grid -->
-              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 font-mono text-center">
-                <div class="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
-                  <span class="text-[10px] text-slate-500 uppercase font-bold block font-sans">Leitura Ant.</span>
-                  <strong class="text-xs sm:text-sm text-slate-800 dark:text-slate-200">{{ anomaly.prevReading | number:'1.0-0' }}</strong>
-                </div>
-                <div class="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
-                  <span class="text-[10px] text-slate-500 uppercase font-bold block font-sans">Leitura Atual</span>
-                  <strong class="text-xs sm:text-sm text-slate-900 dark:text-white"
-                          [class.text-rose-600]="anomaly.severity === 'critical'">
-                    {{ anomaly.currentReading | number:'1.0-2' }}
-                  </strong>
-                </div>
-                <div class="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
-                  <span class="text-[10px] text-slate-500 uppercase font-bold block font-sans">Consumo Atual</span>
-                  <strong class="text-xs sm:text-sm text-teal-700 dark:text-teal-300">
-                    {{ anomaly.consumption | number:'1.0-2' }} {{ anomaly.unit }}
-                  </strong>
-                </div>
-                <div class="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
-                  <span class="text-[10px] text-slate-500 uppercase font-bold block font-sans">Média Histórica</span>
-                  <strong class="text-xs sm:text-sm text-slate-700 dark:text-slate-300">
-                    {{ anomaly.avgConsumption > 0 ? (anomaly.avgConsumption | number:'1.0-1') : '-' }} {{ anomaly.unit }}
-                  </strong>
-                </div>
-              </div>
-
-              <div class="bg-amber-50/80 dark:bg-amber-950/30 p-3 rounded-xl border border-amber-200 dark:border-amber-800 text-[11px] text-amber-900 dark:text-amber-200 flex items-start gap-2">
-                <span>💡</span>
-                <p>
-                  <strong>Dica de Auditoria:</strong> Se a leitura estiver correta e você conferiu no relógio, confirme abaixo para auditar a medição. Se for virada de relógio (ex: 9999 para 0010), clique em "Virada de Medidor".
-                </p>
-              </div>
-            </div>
-
-            <!-- Modal Action Buttons -->
-            <div class="p-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex flex-wrap gap-2 justify-end items-center">
-              <button type="button" 
-                      (click)="closeAnomalyModal()" 
-                      class="px-3.5 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-650 text-slate-700 dark:text-slate-200 font-bold text-xs cursor-pointer transition-colors">
-                🔍 Conferir Relógio
-              </button>
-
-              @if (anomaly.type === 'negative') {
-                <button type="button" 
-                        (click)="markRollover(anomaly.storeId)" 
-                        class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
-                        title="O medidor passou do limite máximo (ex: 9999 para 0000)">
-                  <span>🔄 Virada de Medidor</span>
-                </button>
-              }
-
-              <button type="button" 
-                      (click)="confirmAnomaly(anomaly.storeId)" 
-                      class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-sm transition-all">
-                <span>✓ Confirmar Leitura</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      }
+      <app-anomaly-modal
+        [isOpen]="!!activeAnomalyModal()"
+        [data]="activeAnomalyModal()"
+        (close)="closeAnomalyModal()"
+        (confirm)="confirmAnomaly($event)"
+        (rollover)="markRollover($event)"
+      />
 
       <!-- MODAL DE IMPORTAÇÃO INTELIGENTE DE PLANILHA EXCEL -->
       @if (showExcelImportModal()) {

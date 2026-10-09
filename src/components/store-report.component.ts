@@ -17,13 +17,14 @@ import {
   StoreStatusFilter as StatusFilter 
 } from '../models';
 import { evaluateAlertSeverity } from '../services/apportionment-engine.service';
+import { MeterPhotoModalComponent } from './meter-photo-modal.component';
 
 export type { MonthlyChartItem, StoreAlertInfo };
 
 @Component({
   selector: 'app-store-report',
   standalone: true,
-  imports: [CommonModule, CurrencyPipe, DecimalPipe],
+  imports: [CommonModule, CurrencyPipe, DecimalPipe, MeterPhotoModalComponent],
   template: `
     <div class="space-y-6 animate-fade-in pb-12">
       
@@ -804,61 +805,12 @@ export type { MonthlyChartItem, StoreAlertInfo };
       </div>
 
       <!-- MODAL DE VISUALIZAÇÃO DE COMPROVANTE FOTOGRÁFICO DO MEDIDOR (IndexedDB) -->
-      @if (showPhotoModal() && activeReportPhoto(); as photo) {
-        <div class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
-          <div class="absolute inset-0 bg-black/85 backdrop-blur-sm" (click)="closePhotoViewer()"></div>
-          <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl overflow-hidden w-full max-w-lg relative z-10 max-h-[92vh] flex flex-col border border-slate-700 animate-fade-in">
-            <div class="bg-slate-900 text-white p-3.5 sm:p-4 flex justify-between items-center border-b border-slate-800">
-              <div class="flex items-center gap-2.5">
-                <span class="text-xs font-mono font-extrabold bg-teal-500 text-slate-950 px-2 py-0.5 rounded shadow-2xs">
-                  {{ photo.luc }}
-                </span>
-                <div>
-                  <h3 class="font-bold text-sm sm:text-base leading-tight truncate max-w-[200px] sm:max-w-xs text-white">
-                    {{ photo.storeName }}
-                  </h3>
-                  <p class="text-[10px] text-slate-400 mt-0.5">
-                    Evidência Fotográfica • {{ photo.type | uppercase }} • Mês: {{ photo.month }}
-                  </p>
-                </div>
-              </div>
-              <button (click)="closePhotoViewer()" class="text-slate-400 hover:text-white text-xl font-bold p-1 cursor-pointer">✕</button>
-            </div>
-            <div class="flex-1 bg-slate-950 flex items-center justify-center overflow-hidden relative min-h-[260px] max-h-[58vh]">
-              <img [src]="photo.photoDataUrl" 
-                   alt="Foto do Medidor" 
-                   class="max-w-full max-h-[58vh] object-contain select-none">
-              <div class="absolute top-3 left-3 bg-slate-900/85 backdrop-blur-md text-white px-2.5 py-1 rounded-lg text-xs font-mono border border-slate-700 flex items-center gap-1.5 shadow-md">
-                <span class="text-teal-400 font-bold">🔢 Leitura Registrada:</span>
-                <strong class="text-white">{{ photo.readingValue || 0 }}</strong>
-              </div>
-            </div>
-            <div class="p-3.5 sm:p-4 bg-slate-50 dark:bg-slate-800/90 border-t border-slate-200 dark:border-slate-800 flex flex-col gap-2.5">
-              <div class="flex justify-between items-center text-xs text-slate-600 dark:text-slate-300">
-                <span class="flex items-center gap-1">
-                  <span>📅 Capturada em:</span>
-                  <strong class="font-mono text-slate-800 dark:text-white">{{ photo.capturedAt | date:'dd/MM/yyyy HH:mm:ss' }}</strong>
-                </span>
-                <span class="bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-700">
-                  ✓ Comprovante IndexedDB
-                </span>
-              </div>
-              <div class="flex items-center gap-2 pt-1">
-                <button type="button" 
-                  (click)="downloadActivePhoto()" 
-                  class="flex-1 py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer border border-slate-700">
-                  <span>⬇️ Baixar Foto Comprovante</span>
-                </button>
-                <button type="button" 
-                  (click)="closePhotoViewer()" 
-                  class="py-2.5 px-4 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-xl text-xs font-bold transition-colors cursor-pointer">
-                  Fechar
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      }
+      <app-meter-photo-modal 
+        [isOpen]="showPhotoModal()"
+        [photo]="activeReportPhoto()"
+        (close)="closePhotoViewer()"
+        (download)="downloadActivePhoto()"
+      />
 
     </div>
   `,
