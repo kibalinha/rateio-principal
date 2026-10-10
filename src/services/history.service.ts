@@ -49,16 +49,28 @@ export class HistoryService {
             const localTime = v.lastModifiedMs || (v.lastUpdated ? new Date(v.lastUpdated).getTime() : 0);
             const remoteTime = remoteItem.lastModifiedMs || (remoteItem.lastUpdated ? new Date(remoteItem.lastUpdated).getTime() : 0);
 
-            // A fatura remota do Supabase prevalece sempre para manter sincronia instantânea entre múltiplos dispositivos (Web <-> Mobile).
-            // Apenas preservamos a versão local se for uma criação/modificação offline pendente que ainda não subiu para a nuvem.
-            const hasPendingOffline = (v as any)._offlineCreated || (v as any)._pendingSync;
-            if (hasPendingOffline && (localVersion > remoteVersion || localTime > remoteTime)) {
+            // Resolução de Conflitos OCC (Optimistic Concurrency Control):
+            // 1. Se a versão local é maior, a alteração foi realizada neste dispositivo e ainda não sincronizou completamente com a nuvem.
+            // 2. Se as versões empatarem, vence o timestamp mais recente.
+            const isLocalNewer = localVersion > remoteVersion || (localVersion === remoteVersion && localTime > remoteTime);
+            if (isLocalNewer) {
               merged[k] = v;
+              // Garante que o Supabase receba a versão local mais nova
+              const [uType, uMonth] = k.split('_');
+              if (uType && uMonth) {
+                this.supabase.syncBill(uType, uMonth, v).catch(() => {});
+              }
             } else {
+              // A fatura remota é mais nova ou igual (ex: alterada pelo celular)
               merged[k] = remoteItem;
             }
-          } else if ((v as any)._offlineCreated) {
+          } else {
+            // Existe apenas localmente (ex: novo mês criado offline)
             merged[k] = v;
+            const [uType, uMonth] = k.split('_');
+            if (uType && uMonth) {
+              this.supabase.syncBill(uType, uMonth, v).catch(() => {});
+            }
           }
         }
 
@@ -106,6 +118,7 @@ export class HistoryService {
       lastModifiedMs: Date.now(),
       lastUpdated: new Date().toISOString()
     };
+    (updated as any)._pendingSync = true;
     
     this.billsSignal.update(curr => ({
       ...curr,
@@ -126,7 +139,15 @@ export class HistoryService {
     });
 
     // Sincroniza em nuvem no Supabase
-    this.supabase.syncBill(type, month, updated).catch(err => {
+    this.supabase.syncBill(type, month, updated).then(success => {
+      if (success) {
+        (updated as any)._pendingSync = false;
+        const current = this.billsSignal()[key];
+        if (current && current.version === updated.version) {
+          (current as any)._pendingSync = false;
+        }
+      }
+    }).catch(err => {
       console.warn('Sincronização do rateio com Supabase falhou ou tabela pendente:', err);
     });
   }

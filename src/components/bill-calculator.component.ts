@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, effect, untracked, OnDestroy } from '@angular/core';
+import { Component, inject, signal, computed, effect, untracked, OnDestroy, HostListener } from '@angular/core';
 import { CommonModule, DecimalPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { StoreService } from '../services/store.service';
@@ -2570,8 +2570,32 @@ export class BillCalculatorComponent implements OnDestroy {
 
   // Auto-Save Status
   saveStatus = signal<'saved' | 'saving' | 'error'>('saved');
-  isProgrammaticLoading = false;
+  isProgrammaticLoading = true;
   isSaving = false;
+  autoSaveTimer: any = null;
+
+  flushAutoSave() {
+    if (this.autoSaveTimer) {
+      clearTimeout(this.autoSaveTimer);
+      this.autoSaveTimer = null;
+    }
+    if (!this.isProgrammaticLoading && this.authService.canEditReadings()) {
+      this.internalSave();
+    }
+  }
+
+  @HostListener('window:beforeunload')
+  @HostListener('window:pagehide')
+  onPageUnload() {
+    this.flushAutoSave();
+  }
+
+  @HostListener('document:visibilitychange')
+  onVisibilityChange() {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      this.flushAutoSave();
+    }
+  }
 
   // Export State
   isExportingExcel = signal(false);
@@ -2845,13 +2869,22 @@ export class BillCalculatorComponent implements OnDestroy {
         if (!this.authService.canEditReadings()) return;
 
         this.saveStatus.set('saving');
-        const timer = setTimeout(() => {
+        if (this.autoSaveTimer) {
+          clearTimeout(this.autoSaveTimer);
+        }
+        this.autoSaveTimer = setTimeout(() => {
+          this.autoSaveTimer = null;
           if (!this.isProgrammaticLoading) {
             this.internalSave();
           }
         }, 800);
 
-        onCleanup(() => clearTimeout(timer));
+        onCleanup(() => {
+          if (this.autoSaveTimer) {
+            clearTimeout(this.autoSaveTimer);
+            this.autoSaveTimer = null;
+          }
+        });
       });
     });
 
@@ -2995,6 +3028,10 @@ export class BillCalculatorComponent implements OnDestroy {
     const readingsMap = this.readings()[type] as Map<string, StoreReading>;
     const readingsToSave: Record<string, StoreReading> = {};
 
+    readingsMap.forEach((val, storeId) => {
+      readingsToSave[storeId] = { ...val };
+    });
+
     currentTableData.forEach(row => {
       const original = readingsMap.get(row.storeId) || this.createDefaultReading();
 
@@ -3059,6 +3096,10 @@ export class BillCalculatorComponent implements OnDestroy {
 
   loadDataForCurrentSelection() {
     this.isProgrammaticLoading = true;
+    if (this.autoSaveTimer) {
+      clearTimeout(this.autoSaveTimer);
+      this.autoSaveTimer = null;
+    }
     const type = this.utilityType();
     const month = this.selectedMonth();
 
@@ -3962,6 +4003,10 @@ export class BillCalculatorComponent implements OnDestroy {
         const photo = this.meterPhotos()[storeId];
         if (photo && photo.readingValue !== cleanValue) {
           photo.readingValue = cleanValue;
+          this.meterPhotos.update(prev => ({
+            ...prev,
+            [storeId]: { ...photo, readingValue: cleanValue }
+          }));
           this.indexedDb.saveMeterPhoto(photo).catch(() => {});
           if (this.indexedDb.isOnline()) {
             this.supabaseService.syncMeterPhoto(photo).catch(() => {});
@@ -3973,10 +4018,27 @@ export class BillCalculatorComponent implements OnDestroy {
 
       return { ...curr, [type]: map };
     });
+
+    if (field === 'reading' && cleanValue === 0) {
+      // Quando o usuário apaga o campo (valor 0), dispara salvamento prioritário rápido (100ms)
+      // para garantir persistência mesmo se o usuário der refresh na página logo em seguida
+      if (this.autoSaveTimer) {
+        clearTimeout(this.autoSaveTimer);
+      }
+      this.autoSaveTimer = setTimeout(() => {
+        this.autoSaveTimer = null;
+        if (!this.isProgrammaticLoading) {
+          this.internalSave();
+        }
+      }, 100);
+    }
   }
 
   // --- ANOMALY AUDIT MODAL METHODS (ETAPA 1) ---
   onReadingBlur(storeId: string) {
+    // Salva imediatamente qualquer alteração pendente ao sair do campo
+    this.flushAutoSave();
+
     const row = this.tableData().find(r => r.storeId === storeId);
     if (!row) return;
 
