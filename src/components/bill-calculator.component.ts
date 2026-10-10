@@ -3150,31 +3150,25 @@ export class BillCalculatorComponent implements OnDestroy {
       }
       this.meterPhotos.set(combined);
 
-      // Reconciliação inteligente: se há fotos salvas com leitura capturada por OCR ou leiturista,
-      // garante que a leitura preencha a tabela caso ainda esteja 0 ou vazia
+      // Reconcilia apenas metadados visuais de evidência (hasPhoto e photoTimestamp) sem sobrescrever valores numéricos de leitura
       const currentReadings = this.readings()[type] as Map<string, StoreReading>;
-      let hasPhotoReadingUpdates = false;
+      let metaUpdated = false;
       const updatedMap = new Map(currentReadings);
 
       for (const [sId, p] of Object.entries(combined)) {
         const curReading = updatedMap.get(sId);
-        const curVal = curReading?.reading ?? 0;
-        if (p.readingValue && p.readingValue > 0 && curVal === 0) {
-          const baseData = curReading || this.createDefaultReading();
+        if (curReading && (!curReading.hasPhoto || curReading.photoTimestamp !== p.capturedAt)) {
           updatedMap.set(sId, {
-            ...baseData,
-            reading: p.readingValue,
+            ...curReading,
             hasPhoto: true,
             photoTimestamp: p.capturedAt
           });
-          hasPhotoReadingUpdates = true;
+          metaUpdated = true;
         }
       }
 
-      if (hasPhotoReadingUpdates) {
+      if (metaUpdated) {
         this.readings.update(curr => ({ ...curr, [type]: updatedMap }));
-        this.dataLoaded.set(true);
-        this.internalSave();
       }
     }).catch(() => {
       this.meterPhotos.set({});
@@ -3964,6 +3958,15 @@ export class BillCalculatorComponent implements OnDestroy {
       if (field === 'reading') {
         newData.anomalyConfirmed = false;
         newData.isRollover = false;
+        // Mantém a foto associada sincronizada com o valor editado ou apagado pelo usuário
+        const photo = this.meterPhotos()[storeId];
+        if (photo && photo.readingValue !== cleanValue) {
+          photo.readingValue = cleanValue;
+          this.indexedDb.saveMeterPhoto(photo).catch(() => {});
+          if (this.indexedDb.isOnline()) {
+            this.supabaseService.syncMeterPhoto(photo).catch(() => {});
+          }
+        }
       }
 
       map.set(storeId, newData);

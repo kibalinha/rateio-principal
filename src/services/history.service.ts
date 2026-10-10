@@ -49,9 +49,13 @@ export class HistoryService {
             const localTime = v.lastModifiedMs || (v.lastUpdated ? new Date(v.lastUpdated).getTime() : 0);
             const remoteTime = remoteItem.lastModifiedMs || (remoteItem.lastUpdated ? new Date(remoteItem.lastUpdated).getTime() : 0);
 
-            // Preserva alterações locais mais recentes da sessão atual (Passo D: OCC)
-            if (localVersion > remoteVersion || (localTime > remoteTime && v.clientSessionId === this.indexedDb.clientSessionId)) {
+            // A fatura remota do Supabase prevalece sempre para manter sincronia instantânea entre múltiplos dispositivos (Web <-> Mobile).
+            // Apenas preservamos a versão local se for uma criação/modificação offline pendente que ainda não subiu para a nuvem.
+            const hasPendingOffline = (v as any)._offlineCreated || (v as any)._pendingSync;
+            if (hasPendingOffline && (localVersion > remoteVersion || localTime > remoteTime)) {
               merged[k] = v;
+            } else {
+              merged[k] = remoteItem;
             }
           } else if ((v as any)._offlineCreated) {
             merged[k] = v;
