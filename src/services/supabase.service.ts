@@ -102,11 +102,31 @@ CREATE TABLE IF NOT EXISTS public.sync_queue (
   synced BOOLEAN DEFAULT FALSE
 );
 
--- 5. Habilitar Row Level Security (RLS) com Acesso Aberto para a Chave Publicada
+-- 5. Tabela de Feedbacks do OCR (Opcional - o app também sincroniza via bills)
+CREATE TABLE IF NOT EXISTS public.ocr_feedbacks (
+  id TEXT PRIMARY KEY,
+  store_id TEXT NOT NULL,
+  store_name TEXT NOT NULL,
+  utility_type TEXT NOT NULL,
+  month TEXT NOT NULL,
+  ocr_value NUMERIC NOT NULL,
+  final_value NUMERIC NOT NULL,
+  was_corrected BOOLEAN DEFAULT FALSE,
+  detected_digits TEXT,
+  meter_type TEXT,
+  confidence TEXT,
+  provider TEXT,
+  model_name TEXT,
+  fallback_used BOOLEAN DEFAULT FALSE,
+  confirmed_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 6. Habilitar Row Level Security (RLS) com Acesso Aberto para a Chave Publicada
 ALTER TABLE public.stores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.bills ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.meter_photos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sync_queue ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ocr_feedbacks ENABLE ROW LEVEL SECURITY;
 
 -- Políticas de Leitura e Escrita Públicas (Chave Publishable / Anônima)
 DROP POLICY IF EXISTS "Public access for stores" ON public.stores;
@@ -651,70 +671,48 @@ FOR ALL USING (bucket_id = 'meter-photos') WITH CHECK (bucket_id = 'meter-photos
   async syncOcrFeedback(entry: OcrFeedbackEntry): Promise<boolean> {
     try {
       const client = this.getClient();
-      const { error } = await client.from('ocr_feedbacks').upsert({
-        id: entry.id,
-        store_id: entry.storeId,
-        store_name: entry.storeName,
-        utility_type: entry.utilityType,
-        month: entry.month,
-        ocr_value: entry.ocrValue,
-        final_value: entry.finalValue,
-        was_corrected: entry.wasCorrected,
-        detected_digits: entry.detectedDigits || null,
-        meter_type: entry.meterType || null,
-        confidence: entry.confidence,
-        provider: entry.provider,
-        model_name: entry.modelName,
-        fallback_used: !!entry.fallbackUsed,
-        confirmed_at: entry.confirmedAt
+      const existing = await this.fetchOcrFeedbacks();
+      const map = new Map(existing.map(e => [e.id, e]));
+      map.set(entry.id, entry);
+      const updatedList = Array.from(map.values())
+        .sort((a, b) => (a.confirmedAt || '').localeCompare(b.confirmedAt || ''))
+        .slice(-500);
+
+      const { error } = await client.from('bills').upsert({
+        id: '__ocr_feedbacks_v1__',
+        type: 'config',
+        month: 'global',
+        data: { entries: updatedList },
+        updated_at: new Date().toISOString()
       }, { onConflict: 'id' });
 
       if (error) {
-        // Se a tabela ainda não existir no Supabase, loga sem travar o app
-        console.warn('Aviso: Tabela ocr_feedbacks ainda não provisionada no Supabase:', error.message);
         return false;
       }
       this.addLog(`✓ Feedback OCR da loja ${entry.storeName} sincronizado com a nuvem.`);
       return true;
-    } catch (e) {
-      console.warn('Falha na sincronização de feedback OCR com Supabase:', e);
+    } catch {
       return false;
     }
   }
 
   /**
-   * Busca registros de conferência consolidados da equipe na nuvem.
+   * Busca registros de conferência consolidados da equipe na nuvem (Supabase).
    */
   async fetchOcrFeedbacks(): Promise<OcrFeedbackEntry[]> {
     try {
       const client = this.getClient();
       const { data, error } = await client
-        .from('ocr_feedbacks')
-        .select('*')
-        .order('confirmed_at', { ascending: false })
-        .limit(500);
+        .from('bills')
+        .select('data')
+        .eq('id', '__ocr_feedbacks_v1__')
+        .maybeSingle();
 
-      if (error || !data) {
-        return [];
+      if (!error && data && data.data && Array.isArray(data.data.entries)) {
+        return data.data.entries as OcrFeedbackEntry[];
       }
 
-      return data.map((row: any) => ({
-        id: row.id,
-        storeId: row.store_id,
-        storeName: row.store_name,
-        utilityType: row.utility_type,
-        month: row.month,
-        ocrValue: Number(row.ocr_value),
-        finalValue: Number(row.final_value),
-        wasCorrected: Boolean(row.was_corrected),
-        detectedDigits: row.detected_digits || null,
-        meterType: row.meter_type || undefined,
-        confidence: row.confidence || 'medium',
-        provider: row.provider || 'none',
-        modelName: row.model_name || '',
-        fallbackUsed: Boolean(row.fallback_used),
-        confirmedAt: row.confirmed_at
-      }));
+      return [];
     } catch {
       return [];
     }
