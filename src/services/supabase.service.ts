@@ -720,6 +720,43 @@ FOR ALL USING (bucket_id = 'meter-photos') WITH CHECK (bucket_id = 'meter-photos
     }
   }
 
+  /**
+   * Sincroniza as chaves de API da IA com a nuvem para que técnicos no celular não precisem configurá-las manualmente.
+   */
+  async syncSystemAiKeys(groqKey?: string, geminiKey?: string): Promise<boolean> {
+    try {
+      const client = this.getClient();
+      const { error } = await client.from('bills').upsert({
+        id: '__system_ai_keys__',
+        type: 'config',
+        month: 'global',
+        data: { groqKey: groqKey || '', geminiKey: geminiKey || '' },
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id' });
+      return !error;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Busca as chaves de IA compartilhadas pelo administrador no Supabase.
+   */
+  async fetchSystemAiKeys(): Promise<{ groqKey?: string; geminiKey?: string } | null> {
+    try {
+      const client = this.getClient();
+      const { data, error } = await client
+        .from('bills')
+        .select('data')
+        .eq('id', '__system_ai_keys__')
+        .maybeSingle();
+      if (error || !data || !data.data) return null;
+      return data.data as { groqKey?: string; geminiKey?: string };
+    } catch {
+      return null;
+    }
+  }
+
   private addLog(entry: string) {
     const time = new Date().toLocaleTimeString('pt-BR');
     this.syncLog.update(prev => [`[${time}] ${entry}`, ...prev.slice(0, 49)]);

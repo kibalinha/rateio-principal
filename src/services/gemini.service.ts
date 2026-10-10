@@ -13,6 +13,8 @@ export type { MeterOcrResult };
 export class GeminiService {
   private ai: GoogleGenAI | null = null;
   private sanitizer = inject(SecuritySanitizerService);
+  private cloudGroqKey = '';
+  private cloudGeminiKey = '';
 
   constructor() { }
 
@@ -39,7 +41,7 @@ export class GeminiService {
       const local = localStorage.getItem('gemini_api_key');
       if (local) return local;
     }
-    return '';
+    return this.cloudGeminiKey || '';
   }
 
   private getGroqApiKey(): string {
@@ -59,7 +61,15 @@ export class GeminiService {
       const local = localStorage.getItem('groq_api_key');
       if (local) return local;
     }
-    return '';
+    return this.cloudGroqKey || '';
+  }
+
+  setCloudApiKeys(groqKey?: string, geminiKey?: string) {
+    if (groqKey) this.cloudGroqKey = groqKey.trim();
+    if (geminiKey) {
+      this.cloudGeminiKey = geminiKey.trim();
+      this.ai = null; // Reseta cliente
+    }
   }
 
   hasConfiguredApiKey(): boolean {
@@ -245,6 +255,12 @@ export class GeminiService {
       return primary;
     }
 
+    // Otimização crucial para Mobile: se a leitura já veio com Alta Confiança,
+    // não gasta mais 15s de rede móvel fazendo uma segunda chamada desnecessária!
+    if (primary.confidence === 'high') {
+      return primary;
+    }
+
     // Identifica o segundo motor para cross-validation
     const secondaryProvider = primary.provider === 'qwen' ? 'gemini' : 'qwen';
     try {
@@ -327,7 +343,7 @@ Se o visor estiver ilegível, escuro ou sem medidor visível:
     const dataUrl = `data:${mimeType};base64,${cleanBase64}`;
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12000); // 12s timeout
+    const timeout = setTimeout(() => controller.abort(), 22000); // 22s timeout resiliente para redes móveis 3G/4G/5G
 
     try {
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {

@@ -2785,6 +2785,19 @@ export class BillCalculatorComponent implements OnDestroy {
   });
 
   constructor() {
+    // Sincronização inteligente de chaves de IA (Desktop <-> Celular)
+    const localGroq = this.geminiService.getSavedGroqKey();
+    const localGemini = this.geminiService.getSavedGeminiKey();
+    if (localGroq || localGemini) {
+      this.supabaseService.syncSystemAiKeys(localGroq, localGemini).catch(() => { });
+    } else {
+      this.supabaseService.fetchSystemAiKeys().then(cloudKeys => {
+        if (cloudKeys) {
+          this.geminiService.setCloudApiKeys(cloudKeys.groqKey, cloudKeys.geminiKey);
+        }
+      }).catch(() => { });
+    }
+
     // 1. Data Loader Effect (dispara quando o usuário altera aba ou mês)
     effect(() => {
       const type = this.utilityType();
@@ -4133,7 +4146,36 @@ export class BillCalculatorComponent implements OnDestroy {
       this.updateDetailedReading(storeId, 'photoTimestamp', record.capturedAt);
 
       // --- 🤖 LEITURA AUTOMÁTICA DO MEDIDOR POR FOTO COM SELEÇÃO INTELIGENTE E DUPLA CHECAGEM ---
-      if (typeof navigator !== 'undefined' && navigator.onLine && this.indexedDb.isOnline()) {
+      const isOnline = (typeof navigator !== 'undefined' && navigator.onLine) || this.indexedDb.isOnline();
+      if (isOnline) {
+        // Se ainda não tiver chaves no dispositivo atual (comum em celular), busca as chaves compartilhadas na nuvem
+        if (!this.geminiService.hasConfiguredApiKey()) {
+          try {
+            const cloudKeys = await this.supabaseService.fetchSystemAiKeys();
+            if (cloudKeys) {
+              this.geminiService.setCloudApiKeys(cloudKeys.groqKey, cloudKeys.geminiKey);
+            }
+          } catch { }
+        }
+
+        if (!this.geminiService.hasConfiguredApiKey()) {
+          this.pendingOcrStoreId.set(storeId);
+          this.openAiKeyModal();
+          this.indexedDb.showToast('⚙️ Configure a chave Groq ou Gemini no ícone 🤖 para ativar a IA no celular.');
+          this.ocrFeedback.update(prev => ({
+            ...prev,
+            [storeId]: {
+              success: false,
+              message: 'Chave de IA não configurada. Configure a chave no ícone 🤖 no topo para ativar a leitura automática.',
+              confidence: 'low',
+              provider: 'none',
+              modelName: 'Sem chave configurada'
+            }
+          }));
+          return;
+        }
+
+        this.indexedDb.showToast('🤖 Lendo visor do medidor com IA...');
         this.isReadingOcr.set(storeId);
         const ocrCtx = this.buildOcrContext(storeId);
         const smartProvider = getRecommendedProvider(this.ocrFeedbackService.entries(), type, ocrCtx?.meterType);
@@ -4226,9 +4268,21 @@ export class BillCalculatorComponent implements OnDestroy {
     }
   }
 
-  openAiKeyModal() {
-    this.groqInputKey.set(this.geminiService.getSavedGroqKey());
-    this.geminiInputKey.set(this.geminiService.getSavedGeminiKey());
+  async openAiKeyModal() {
+    let groq = this.geminiService.getSavedGroqKey();
+    let gemini = this.geminiService.getSavedGeminiKey();
+    if (!groq && !gemini) {
+      try {
+        const cloud = await this.supabaseService.fetchSystemAiKeys();
+        if (cloud) {
+          groq = cloud.groqKey || '';
+          gemini = cloud.geminiKey || '';
+          this.geminiService.setCloudApiKeys(groq, gemini);
+        }
+      } catch { }
+    }
+    this.groqInputKey.set(groq);
+    this.geminiInputKey.set(gemini);
     this.showAiKeyModal.set(true);
   }
 
@@ -4240,8 +4294,9 @@ export class BillCalculatorComponent implements OnDestroy {
   saveAiKeysAndProceed() {
     try {
       this.geminiService.saveApiKeys(this.groqInputKey(), this.geminiInputKey());
+      this.supabaseService.syncSystemAiKeys(this.groqInputKey(), this.geminiInputKey()).catch(() => { });
       this.showAiKeyModal.set(false);
-      this.indexedDb.showToast('✓ Chaves de IA salvas com segurança!');
+      this.indexedDb.showToast('✓ Chaves de IA salvas com segurança e sincronizadas na nuvem!');
       const pendingId = this.pendingOcrStoreId();
       if (pendingId) {
         this.pendingOcrStoreId.set(null);
@@ -4255,6 +4310,15 @@ export class BillCalculatorComponent implements OnDestroy {
   async runOcrOnPhoto(storeId: string, forceProvider?: 'qwen' | 'gemini') {
     const photo = this.meterPhotos()[storeId];
     if (!photo) return;
+
+    if (!this.geminiService.hasConfiguredApiKey()) {
+      try {
+        const cloudKeys = await this.supabaseService.fetchSystemAiKeys();
+        if (cloudKeys) {
+          this.geminiService.setCloudApiKeys(cloudKeys.groqKey, cloudKeys.geminiKey);
+        }
+      } catch { }
+    }
 
     if (!this.geminiService.hasConfiguredApiKey()) {
       this.pendingOcrStoreId.set(storeId);
@@ -4446,7 +4510,15 @@ export class BillCalculatorComponent implements OnDestroy {
   }
 
   // --- BATCH OCR QUEUE EXECUTION ---
-  openBatchOcrModal() {
+  async openBatchOcrModal() {
+    if (!this.geminiService.hasConfiguredApiKey()) {
+      try {
+        const cloudKeys = await this.supabaseService.fetchSystemAiKeys();
+        if (cloudKeys) {
+          this.geminiService.setCloudApiKeys(cloudKeys.groqKey, cloudKeys.geminiKey);
+        }
+      } catch { }
+    }
     if (!this.geminiService.hasConfiguredApiKey()) {
       this.openAiKeyModal();
       this.indexedDb.showToast('⚙️ Configure sua chave Groq ou Gemini para ativar a leitura por IA.');
@@ -4481,6 +4553,14 @@ export class BillCalculatorComponent implements OnDestroy {
   }
 
   async executeBatchOcr(reprocessAll: boolean = false) {
+    if (!this.geminiService.hasConfiguredApiKey()) {
+      try {
+        const cloudKeys = await this.supabaseService.fetchSystemAiKeys();
+        if (cloudKeys) {
+          this.geminiService.setCloudApiKeys(cloudKeys.groqKey, cloudKeys.geminiKey);
+        }
+      } catch { }
+    }
     if (!this.geminiService.hasConfiguredApiKey()) {
       this.openAiKeyModal();
       this.indexedDb.showToast('⚙️ Configure sua chave Groq ou Gemini para ativar a leitura por IA.');

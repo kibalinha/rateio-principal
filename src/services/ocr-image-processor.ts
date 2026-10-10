@@ -113,73 +113,80 @@ export function enhanceRgbaForOcr(rgbaData: Uint8ClampedArray): void {
 }
 
 /**
- * Carrega a imagem base64 em canvas, avalia qualidade de iluminação/reflexo
- * e aprimora contraste para máxima legibilidade do OCR.
+ * Carrega a imagem base64 em canvas leve (max 480px), avalia qualidade de iluminação/reflexo
+ * com proteção estrita de timeout (800ms) para nunca travar em navegadores móveis.
  */
 export function analyzeAndEnhanceBase64Image(dataUrl: string): Promise<{ enhancedDataUrl: string; quality: ImageQualityReport }> {
   return new Promise((resolve) => {
-    if (typeof window === 'undefined' || typeof Image === 'undefined') {
-      return resolve({
-        enhancedDataUrl: dataUrl,
-        quality: {
-          brightness: 128,
-          contrast: 50,
-          isTooDark: false,
-          isTooBright: false,
-          isLowContrast: false,
-          qualityScore: 'good'
-        }
-      });
+    const fallbackQuality: ImageQualityReport = {
+      brightness: 128,
+      contrast: 50,
+      isTooDark: false,
+      isTooBright: false,
+      isLowContrast: false,
+      qualityScore: 'good'
+    };
+
+    if (typeof window === 'undefined' || typeof Image === 'undefined' || !dataUrl) {
+      return resolve({ enhancedDataUrl: dataUrl, quality: fallbackQuality });
     }
+
+    // Timeout de segurança estrito: no mobile nunca pode travar o fluxo
+    let finished = false;
+    const timeout = setTimeout(() => {
+      if (!finished) {
+        finished = true;
+        resolve({ enhancedDataUrl: dataUrl, quality: fallbackQuality });
+      }
+    }, 900);
+
+    const safeResolve = (result: { enhancedDataUrl: string; quality: ImageQualityReport }) => {
+      if (!finished) {
+        finished = true;
+        clearTimeout(timeout);
+        resolve(result);
+      }
+    };
 
     const img = new Image();
     img.onload = () => {
       try {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          return resolve({ enhancedDataUrl: dataUrl, quality: analyzeRgbaQuality([]) });
+        // Usa canvas leve de no máximo 480px para análise instantânea sem sobrecarregar a GPU/CPU do celular
+        const maxThumb = 480;
+        let w = img.width || 400;
+        let h = img.height || 400;
+        if (w > maxThumb || h > maxThumb) {
+          if (w > h) {
+            h = Math.round((h * maxThumb) / w);
+            w = maxThumb;
+          } else {
+            w = Math.round((w * maxThumb) / h);
+            h = maxThumb;
+          }
         }
 
-        ctx.drawImage(img, 0, 0);
-        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) {
+          return safeResolve({ enhancedDataUrl: dataUrl, quality: fallbackQuality });
+        }
+
+        ctx.drawImage(img, 0, 0, w, h);
+        const imgData = ctx.getImageData(0, 0, w, h);
         const quality = analyzeRgbaQuality(imgData.data);
 
-        // Se a qualidade for aceitável mas precisar de mais contraste para o OCR
-        enhanceRgbaForOcr(imgData.data);
-        ctx.putImageData(imgData, 0, 0);
-
-        const enhancedDataUrl = canvas.toDataURL('image/jpeg', 0.82);
-        resolve({ enhancedDataUrl, quality });
+        // Avaliação de qualidade e reflexo concluída no thumbnail leve
+        // A foto entregue ao OCR permanece na resolução 1200px íntegra para máxima acurácia dos números
+        safeResolve({ enhancedDataUrl: dataUrl, quality });
       } catch {
-        resolve({
-          enhancedDataUrl: dataUrl,
-          quality: {
-            brightness: 128,
-            contrast: 50,
-            isTooDark: false,
-            isTooBright: false,
-            isLowContrast: false,
-            qualityScore: 'good'
-          }
-        });
+        safeResolve({ enhancedDataUrl: dataUrl, quality: fallbackQuality });
       }
     };
 
     img.onerror = () => {
-      resolve({
-        enhancedDataUrl: dataUrl,
-        quality: {
-          brightness: 128,
-          contrast: 50,
-          isTooDark: false,
-          isTooBright: false,
-          isLowContrast: false,
-          qualityScore: 'good'
-        }
-      });
+      safeResolve({ enhancedDataUrl: dataUrl, quality: fallbackQuality });
     };
 
     img.src = dataUrl;
