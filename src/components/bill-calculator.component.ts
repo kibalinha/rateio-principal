@@ -7,24 +7,30 @@ import { AuthService } from '../services/auth.service';
 import { ReportExportService } from '../services/report-export.service';
 import { IndexedDbService } from '../services/indexed-db.service';
 import { GeminiService } from '../services/gemini.service';
+import { OcrFeedbackService } from '../services/ocr-feedback.service';
+import { buildReadingContext } from '../services/ocr-context';
+import { analyzeAndEnhanceBase64Image } from '../services/ocr-image-processor';
+import { getRecommendedProvider } from '../services/ocr-stats';
 import { SupabaseService } from '../services/supabase.service';
 import * as XLSX from 'xlsx';
 import { ApportionmentEngineService } from '../services/apportionment-engine.service';
 
-import { 
+import {
   Store,
   BillData,
   StoreReading,
   StoreVoucherData,
   MeterPhotoRecord,
   MeterOcrResult,
-  CostItem, 
-  ExcelImportRowPreview, 
-  AnomalyModalData 
+  OcrPendingConfirmation,
+  CostItem,
+  ExcelImportRowPreview,
+  AnomalyModalData
 } from '../models';
 
 import { AnomalyModalComponent } from './anomaly-modal.component';
 import { MeterPhotoModalComponent } from './meter-photo-modal.component';
+import { OcrQualityPanelComponent } from './ocr-quality-panel.component';
 import { ExcelImportModalComponent, ExcelImportSuccessEvent } from './excel-import-modal.component';
 import { StoreVoucherModalComponent } from './store-voucher-modal.component';
 
@@ -34,12 +40,13 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
   selector: 'app-bill-calculator',
   standalone: true,
   imports: [
-    CommonModule, 
-    FormsModule, 
-    DecimalPipe, 
-    DatePipe, 
-    AnomalyModalComponent, 
+    CommonModule,
+    FormsModule,
+    DecimalPipe,
+    DatePipe,
+    AnomalyModalComponent,
     MeterPhotoModalComponent,
+    OcrQualityPanelComponent,
     ExcelImportModalComponent,
     StoreVoucherModalComponent
   ],
@@ -152,6 +159,18 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
              <span>🤖</span>
              <span class="hidden sm:inline">Chaves IA</span>
            </button>
+
+           <!-- Botão Qualidade do OCR (apenas administrador) -->
+           @if (authService.isAdmin()) {
+             <button
+               type="button"
+               (click)="showOcrQuality.set(true)"
+               class="px-3 py-2 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+               title="Ver a taxa de acerto do OCR e onde ele mais erra">
+               <span>📊</span>
+               <span class="hidden sm:inline">Qualidade OCR</span>
+             </button>
+           }
 
             <!-- Botão Processar OCR em Lote -->
             @if (pendingOcrCount() > 0 || isBatchOcrRunning()) {
@@ -1119,6 +1138,55 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                                 </div>
                               }
 
+                              <!-- Conferência da leitura sugerida pela IA -->
+                              @if (ocrPending()[item.storeId]; as pend) {
+                                <div class="mt-1 p-2 rounded-lg border-2 border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-950/60 text-[11px] space-y-1.5">
+                                  <p class="font-bold text-indigo-900 dark:text-indigo-100">
+                                    🤖 IA leu <span class="font-mono text-sm">{{ pend.ocrValue }}</span> — confere com a foto?
+                                  </p>
+                                  @if (pend.confidence !== 'high') {
+                                    <p class="text-amber-700 dark:text-amber-300 font-semibold">⚠️ Confiança {{ pend.confidence === 'medium' ? 'média' : 'baixa' }}: confira com atenção.</p>
+                                  }
+                                  <p class="text-slate-600 dark:text-slate-400">Se estiver errado, corrija o número no campo abaixo e confirme.</p>
+
+                                  <!-- Seleção Rápida de Divergência entre Motores de IA -->
+                                  @if (pend.dualCheck && !pend.dualCheck.agreement && pend.dualCheck.qwenValue !== null && pend.dualCheck.geminiValue !== null) {
+                                    <div class="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/70 border border-amber-300 dark:border-amber-700 text-amber-950 dark:text-amber-100 space-y-1">
+                                      <p class="font-bold text-[10px] flex items-center gap-1">
+                                        <span>⚠️</span>
+                                        <span>Motores de IA divergiram: toque no valor correto:</span>
+                                      </p>
+                                      <div class="grid grid-cols-2 gap-1.5">
+                                        <button type="button" (click)="updateDetailedReading(item.storeId, 'reading', pend.dualCheck.qwenValue); confirmOcrReading(item.storeId, pend.dualCheck.qwenValue)"
+                                          class="py-1 px-1.5 rounded-md bg-white dark:bg-slate-900 border border-indigo-300 dark:border-indigo-700 font-mono font-bold text-xs hover:bg-indigo-50 dark:hover:bg-indigo-950/50 cursor-pointer text-indigo-700 dark:text-indigo-300">
+                                          ⚡ Qwen: {{ pend.dualCheck.qwenValue }}
+                                        </button>
+                                        <button type="button" (click)="updateDetailedReading(item.storeId, 'reading', pend.dualCheck.geminiValue); confirmOcrReading(item.storeId, pend.dualCheck.geminiValue)"
+                                          class="py-1 px-1.5 rounded-md bg-white dark:bg-slate-900 border border-teal-300 dark:border-teal-700 font-mono font-bold text-xs hover:bg-teal-50 dark:hover:bg-teal-950/50 cursor-pointer text-teal-700 dark:text-teal-300">
+                                          🤖 Gemini: {{ pend.dualCheck.geminiValue }}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  }
+                                  @if (item.validationAlert.hasAlert) {
+                                    <div class="p-1.5 rounded-md bg-rose-100 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-100 font-semibold">
+                                      <p>{{ item.validationAlert.title }}</p>
+                                      <p class="font-normal mt-0.5">{{ item.validationAlert.message }}</p>
+                                      <button type="button" (click)="retryOcrWithOtherEngine(item.storeId)"
+                                        [disabled]="isReadingOcr() === item.storeId"
+                                        class="mt-1 w-full py-1 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold cursor-pointer">
+                                        🔄 Reler com {{ pend.provider === 'qwen' ? 'Gemini' : 'Qwen' }}
+                                      </button>
+                                    </div>
+                                  }
+                                  <button type="button" (click)="confirmOcrReading(item.storeId, item.currentReading)"
+                                    [disabled]="!canEdit()"
+                                    class="w-full py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold cursor-pointer">
+                                    ✓ Confirmar leitura
+                                  </button>
+                                </div>
+                              }
+
                               <div class="relative mt-0.5">
                                 <input type="number" 
                                    inputmode="decimal"
@@ -1578,6 +1646,55 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                           </div>
                         }
 
+                        <!-- Conferência da leitura sugerida pela IA -->
+                        @if (ocrPending()[stepStore.storeId]; as pend) {
+                          <div class="p-3 rounded-xl border-2 border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-950/60 text-xs space-y-2">
+                            <p class="font-bold text-indigo-900 dark:text-indigo-100 text-sm">
+                              🤖 A IA leu <span class="font-mono text-lg">{{ pend.ocrValue }}</span> — confere com a foto?
+                            </p>
+                            @if (pend.confidence !== 'high') {
+                              <p class="text-amber-700 dark:text-amber-300 font-semibold">⚠️ Confiança {{ pend.confidence === 'medium' ? 'média' : 'baixa' }}: confira com atenção.</p>
+                            }
+                            <p class="text-slate-600 dark:text-slate-400">Se estiver errado, corrija o número no campo abaixo e confirme.</p>
+
+                            <!-- Seleção Rápida de Divergência entre Motores de IA no Passo a Passo -->
+                            @if (pend.dualCheck && !pend.dualCheck.agreement && pend.dualCheck.qwenValue !== null && pend.dualCheck.geminiValue !== null) {
+                              <div class="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/70 border border-amber-300 dark:border-amber-700 text-amber-950 dark:text-amber-100 space-y-1.5">
+                                <p class="font-bold text-xs flex items-center gap-1">
+                                  <span>⚠️</span>
+                                  <span>Motores de IA divergiram: toque no valor correto da foto:</span>
+                                </p>
+                                <div class="grid grid-cols-2 gap-2">
+                                  <button type="button" (click)="updateDetailedReading(stepStore.storeId, 'reading', pend.dualCheck.qwenValue); confirmOcrReading(stepStore.storeId, pend.dualCheck.qwenValue)"
+                                    class="py-2 px-2 rounded-lg bg-white dark:bg-slate-900 border-2 border-indigo-300 dark:border-indigo-700 font-mono font-bold text-sm hover:bg-indigo-50 dark:hover:bg-indigo-950/50 cursor-pointer text-indigo-700 dark:text-indigo-300">
+                                    ⚡ Qwen: {{ pend.dualCheck.qwenValue }}
+                                  </button>
+                                  <button type="button" (click)="updateDetailedReading(stepStore.storeId, 'reading', pend.dualCheck.geminiValue); confirmOcrReading(stepStore.storeId, pend.dualCheck.geminiValue)"
+                                    class="py-2 px-2 rounded-lg bg-white dark:bg-slate-900 border-2 border-teal-300 dark:border-teal-700 font-mono font-bold text-sm hover:bg-teal-50 dark:hover:bg-teal-950/50 cursor-pointer text-teal-700 dark:text-teal-300">
+                                    🤖 Gemini: {{ pend.dualCheck.geminiValue }}
+                                  </button>
+                                </div>
+                              </div>
+                            }
+                            @if (stepStore.validationAlert.hasAlert) {
+                              <div class="p-2 rounded-lg bg-rose-100 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-100 font-semibold">
+                                <p>{{ stepStore.validationAlert.title }}</p>
+                                <p class="font-normal mt-0.5">{{ stepStore.validationAlert.message }}</p>
+                                <button type="button" (click)="retryOcrWithOtherEngine(stepStore.storeId)"
+                                  [disabled]="isReadingOcr() === stepStore.storeId"
+                                  class="mt-1.5 w-full py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold cursor-pointer">
+                                  🔄 Reler com {{ pend.provider === 'qwen' ? 'Gemini' : 'Qwen' }}
+                                </button>
+                              </div>
+                            }
+                            <button type="button" (click)="confirmOcrReading(stepStore.storeId, stepStore.currentReading)"
+                              [disabled]="!canEdit()"
+                              class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold cursor-pointer">
+                              ✓ Confirmar leitura
+                            </button>
+                          </div>
+                        }
+
                         <input type="number" 
                           inputmode="decimal"
                           step="0.0001"
@@ -1899,6 +2016,8 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
         (replacePhoto)="onPhotoCaptured($event.event, $event.photo.storeId, $event.photo.storeName, $event.photo.luc, $event.photo.readingValue)"
         (dismissFeedback)="dismissOcrFeedback($event)"
       />
+
+      <app-ocr-quality-panel [isOpen]="showOcrQuality()" (close)="showOcrQuality.set(false)" />
 
       <!-- Modal de Configuração de Chaves de IA (Groq & Gemini) -->
       @if (showAiKeyModal()) {
@@ -2438,16 +2557,17 @@ export class BillCalculatorComponent implements OnDestroy {
   exportService = inject(ReportExportService);
   indexedDb = inject(IndexedDbService);
   geminiService = inject(GeminiService);
+  ocrFeedbackService = inject(OcrFeedbackService);
   supabaseService = inject(SupabaseService);
   apportionmentEngine = inject(ApportionmentEngineService);
 
   utilityType = signal<'luz' | 'agua' | 'gas'>('luz');
-  
+
   // Date State
   selectedMonth = signal<string>(new Date().toISOString().substring(0, 7)); // YYYY-MM
   dataLoaded = signal(false);
   lastSaved = signal<string | null>(null);
-  
+
   // Auto-Save Status
   saveStatus = signal<'saved' | 'saving' | 'error'>('saved');
   isProgrammaticLoading = false;
@@ -2490,7 +2610,7 @@ export class BillCalculatorComponent implements OnDestroy {
   geminiInputKey = signal<string>('');
   pendingOcrStoreId = signal<string | null>(null);
 
-    // --- STORE VOUCHER / ESPELHO DO LOJISTA STATE ---
+  // --- STORE VOUCHER / ESPELHO DO LOJISTA STATE ---
   showVoucherModal = signal<boolean>(false);
   selectedVoucherData = signal<StoreVoucherData | null>(null);
 
@@ -2545,12 +2665,15 @@ export class BillCalculatorComponent implements OnDestroy {
     modelName?: string;
     fallbackUsed?: boolean;
   }>>({});
+  // Leituras sugeridas pela IA aguardando conferência do técnico (por storeId)
+  ocrPending = signal<Record<string, OcrPendingConfirmation>>({});
+  showOcrQuality = signal(false);
 
   // Utility counts for header badges:
   utilityStats = computed(() => {
     const all = this.storeService.stores();
     const reads = this.readings();
-    
+
     const countUtil = (type: 'luz' | 'agua' | 'gas') => {
       const stores = all.filter(s => {
         const uses = type === 'luz' ? s.usesLuz : (type === 'agua' ? s.usesAgua : s.usesGas);
@@ -2592,7 +2715,7 @@ export class BillCalculatorComponent implements OnDestroy {
     { id: '17', name: 'Fluxo de caixa', value: 0 },
     { id: '18', name: 'Guia judicial', value: 0 }
   ]);
-  
+
   luzConsumption = signal({
     bss1: 0,
     bss2: 0,
@@ -2634,20 +2757,20 @@ export class BillCalculatorComponent implements OnDestroy {
 
   // Stores Previous Month Data for Calculations
   previousReadings = signal<Map<string, { reading: number, consumption: number }>>(new Map());
-  
+
   // Excel Import State
   showExcelImportModal = signal<boolean>(false);
-  
+
   // AI State
   isAnalyzing = signal(false);
   aiAnalysis = signal('');
-  
+
   // FILTERED STORES
   activeStores = computed(() => {
     const type = this.utilityType();
     const allStores = this.storeService.stores();
     const readingsMap = this.readings()[type];
-    
+
     return allStores.filter(s => {
       const usesUtil = type === 'luz' ? s.usesLuz : (type === 'agua' ? s.usesAgua : s.usesGas);
       if (!usesUtil) return false;
@@ -2674,10 +2797,10 @@ export class BillCalculatorComponent implements OnDestroy {
 
     // 2. Mobile Config Optimization: Collapse config if Tech user on Mobile
     effect(() => {
-       const isTech = this.authService.isTech();
-       if (isTech && this.isMobile()) {
-           this.isConfigOpen.set(false);
-       }
+      const isTech = this.authService.isTech();
+      if (isTech && this.isMobile()) {
+        this.isConfigOpen.set(false);
+      }
     }, { allowSignalWrites: true });
 
     // 3. Sincronização de alterações remotas da nuvem
@@ -2696,27 +2819,27 @@ export class BillCalculatorComponent implements OnDestroy {
 
     // 4. Auto-Save Effect (executa apenas quando o usuário edita leituras ou custos)
     effect((onCleanup) => {
-       const _costs = this.currentCostItems();
-       const _luzCons = this.luzConsumption();
-       const _aguaCons = this.aguaTotalReading();
-       const _gasCons = this.gasTotalReading();
-       const _ac = this.currentACConsumption();
-       const _reads = this.readings();
-       
-       untracked(() => {
-           // NUNCA salvar durante o carregamento de outra aba ou mês
-           if (this.isProgrammaticLoading) return;
-           if (!this.authService.canEditReadings()) return;
+      const _costs = this.currentCostItems();
+      const _luzCons = this.luzConsumption();
+      const _aguaCons = this.aguaTotalReading();
+      const _gasCons = this.gasTotalReading();
+      const _ac = this.currentACConsumption();
+      const _reads = this.readings();
 
-           this.saveStatus.set('saving');
-           const timer = setTimeout(() => {
-               if (!this.isProgrammaticLoading) {
-                 this.internalSave();
-               }
-           }, 800); 
+      untracked(() => {
+        // NUNCA salvar durante o carregamento de outra aba ou mês
+        if (this.isProgrammaticLoading) return;
+        if (!this.authService.canEditReadings()) return;
 
-           onCleanup(() => clearTimeout(timer));
-       });
+        this.saveStatus.set('saving');
+        const timer = setTimeout(() => {
+          if (!this.isProgrammaticLoading) {
+            this.internalSave();
+          }
+        }, 800);
+
+        onCleanup(() => clearTimeout(timer));
+      });
     });
 
     // 5. Inscrição em tempo real para fotos de medidores do Supabase (inserção, edição e exclusão)
@@ -2766,18 +2889,18 @@ export class BillCalculatorComponent implements OnDestroy {
     if (this.photoSubscriptionUnsubscribe) {
       try {
         this.photoSubscriptionUnsubscribe();
-      } catch {}
+      } catch { }
       this.photoSubscriptionUnsubscribe = null;
     }
   }
 
   isMobile() {
-      // Simple check, can be improved with ResizeObserver
-      return typeof window !== 'undefined' ? window.innerWidth < 1280 : false; 
+    // Simple check, can be improved with ResizeObserver
+    return typeof window !== 'undefined' ? window.innerWidth < 1280 : false;
   }
 
   toggleConfigVisibility() {
-      this.isConfigOpen.update(v => !v);
+    this.isConfigOpen.update(v => !v);
   }
 
   setUtility(type: 'luz' | 'agua' | 'gas') {
@@ -2796,7 +2919,7 @@ export class BillCalculatorComponent implements OnDestroy {
   }
 
   createDefaultReading(): StoreReading {
-      return { reading: 0, constant: 1, virtual: undefined, adjustment: 1, calculatedConsumption: 0 };
+    return { reading: 0, constant: 1, virtual: undefined, adjustment: 1, calculatedConsumption: 0 };
   }
 
   // --- IMPORTAÇÃO INTELIGENTE DE PLANILHA EXCEL ---
@@ -2851,31 +2974,31 @@ export class BillCalculatorComponent implements OnDestroy {
     if (this.isProgrammaticLoading) return;
     this.isSaving = true;
     this.dataLoaded.set(true);
-    
+
     const type = this.utilityType();
     const month = this.selectedMonth();
-    
+
     const currentTableData = this.tableData();
     const readingsMap = this.readings()[type] as Map<string, StoreReading>;
     const readingsToSave: Record<string, StoreReading> = {};
 
     currentTableData.forEach(row => {
-        const original = readingsMap.get(row.storeId) || this.createDefaultReading();
-        
-        readingsToSave[row.storeId] = {
-            ...original,
-            rawConsumption: row.rawConsumption,
-            gasFactor: row.gasFactor,
-            calculatedConsumption: row.consumption 
-        };
+      const original = readingsMap.get(row.storeId) || this.createDefaultReading();
+
+      readingsToSave[row.storeId] = {
+        ...original,
+        rawConsumption: row.rawConsumption,
+        gasFactor: row.gasFactor,
+        calculatedConsumption: row.consumption
+      };
     });
 
     const dataToSave: BillData = {
       costItems: this.currentCostItems(),
-      consumptionInput: type === 'luz' ? this.luzConsumption() : 
-                        type === 'agua' ? this.aguaTotalReading() : this.gasTotalReading(),
+      consumptionInput: type === 'luz' ? this.luzConsumption() :
+        type === 'agua' ? this.aguaTotalReading() : this.gasTotalReading(),
       acInput: this.currentACConsumption(),
-      readings: readingsToSave, 
+      readings: readingsToSave,
       lastUpdated: new Date().toISOString(),
       isLocked: this.isLocked(),
       lockedAt: this.lockedAt() || undefined,
@@ -2925,7 +3048,7 @@ export class BillCalculatorComponent implements OnDestroy {
     this.isProgrammaticLoading = true;
     const type = this.utilityType();
     const month = this.selectedMonth();
-    
+
     // 1. Load Current Month Data
     const existingData = this.historyService.getBill(type, month);
 
@@ -2947,24 +3070,24 @@ export class BillCalculatorComponent implements OnDestroy {
 
       if (type === 'luz') this.luzAC.set(existingData.acInput);
       else if (type === 'agua') this.aguaAC.set(existingData.acInput);
-      
+
       // Load Readings
       const map = new Map<string, StoreReading>();
       if (existingData.readings) {
-         Object.entries(existingData.readings).forEach(([k, v]) => {
-            if (typeof v === 'number') {
-                 map.set(k, { reading: v, constant: 1, virtual: undefined, adjustment: 1, calculatedConsumption: 0 });
-            } else {
-                 const readingObj = { ...(v as StoreReading) };
-                 if (readingObj.virtual === 0 && readingObj.calculatedConsumption && readingObj.calculatedConsumption > 0) {
-                   readingObj.virtual = undefined;
-                 }
-                 map.set(k, readingObj);
+        Object.entries(existingData.readings).forEach(([k, v]) => {
+          if (typeof v === 'number') {
+            map.set(k, { reading: v, constant: 1, virtual: undefined, adjustment: 1, calculatedConsumption: 0 });
+          } else {
+            const readingObj = { ...(v as StoreReading) };
+            if (readingObj.virtual === 0 && readingObj.calculatedConsumption && readingObj.calculatedConsumption > 0) {
+              readingObj.virtual = undefined;
             }
-         });
+            map.set(k, readingObj);
+          }
+        });
       }
       this.readings.update(curr => ({ ...curr, [type]: map }));
-     
+
       this.lastSaved.set(existingData.lastUpdated);
       this.dataLoaded.set(true);
 
@@ -3045,13 +3168,13 @@ export class BillCalculatorComponent implements OnDestroy {
     });
 
     if (prevData) {
-        Object.entries(prevData.readings).forEach(([k, v]) => {
-            if (typeof v === 'object' && v !== null) {
-                prevMap.set(k, { reading: (v as any).reading || 0, consumption: (v as any).calculatedConsumption || 0 });
-            } else if (typeof v === 'number') {
-                prevMap.set(k, { reading: v, consumption: v }); 
-            }
-        });
+      Object.entries(prevData.readings).forEach(([k, v]) => {
+        if (typeof v === 'object' && v !== null) {
+          prevMap.set(k, { reading: (v as any).reading || 0, consumption: (v as any).calculatedConsumption || 0 });
+        } else if (typeof v === 'number') {
+          prevMap.set(k, { reading: v, consumption: v });
+        }
+      });
     }
     this.previousReadings.set(prevMap);
 
@@ -3064,7 +3187,7 @@ export class BillCalculatorComponent implements OnDestroy {
           if (cloudPrev) {
             combinedPrev = { ...cloudPrev, ...combinedPrev };
           }
-        } catch {}
+        } catch { }
       }
       this.prevMonthPhotos.set(combinedPrev);
     }).catch(() => {
@@ -3106,7 +3229,7 @@ export class BillCalculatorComponent implements OnDestroy {
   // ---
 
   currentCostItems = computed(() => {
-    switch(this.utilityType()) {
+    switch (this.utilityType()) {
       case 'luz': return this.luzCostItems();
       case 'agua': return this.aguaCostItems();
       case 'gas': return this.gasCostItems();
@@ -3123,7 +3246,7 @@ export class BillCalculatorComponent implements OnDestroy {
     if (!this.authService.canConfigureBill()) return;
     const newId = crypto.randomUUID();
     const newItem = { id: newId, name: 'Novo Item de Custo', value: 0 };
-    
+
     if (this.utilityType() === 'luz') this.luzCostItems.update(items => [...items, newItem]);
     else if (this.utilityType() === 'agua') this.aguaCostItems.update(items => [...items, newItem]);
     else if (this.utilityType() === 'gas') this.gasCostItems.update(items => [...items, newItem]);
@@ -3160,7 +3283,7 @@ export class BillCalculatorComponent implements OnDestroy {
   }
 
   getUnit() {
-    switch(this.utilityType()) {
+    switch (this.utilityType()) {
       case 'luz': return 'kWh';
       case 'agua': return 'm³';
       case 'gas': return 'm³';
@@ -3173,8 +3296,8 @@ export class BillCalculatorComponent implements OnDestroy {
 
   totalConsumption = computed(() => {
     if (this.utilityType() === 'luz') {
-       const c = this.luzConsumption();
-       return (c.bss1 || 0) + (c.bss2 || 0) + (c.bss3 || 0) + (c.bss4 || 0);
+      const c = this.luzConsumption();
+      return (c.bss1 || 0) + (c.bss2 || 0) + (c.bss3 || 0) + (c.bss4 || 0);
     }
     if (this.utilityType() === 'agua') return this.aguaTotalReading();
     if (this.utilityType() === 'gas') return this.gasTotalReading();
@@ -3247,9 +3370,9 @@ export class BillCalculatorComponent implements OnDestroy {
     const price = this.calculatedUnitPrice();
     const type = this.utilityType();
     const unit = type === 'luz' ? 'kWh' : 'm³';
-    
+
     const readingsStore = this.readings();
-    const prevReadings = this.previousReadings(); 
+    const prevReadings = this.previousReadings();
     const histAvgMap = this.historicalStats();
 
     // Se for Gás, pré-calculamos a soma bruta do consumo medido em campo para todas as lojas
@@ -3288,7 +3411,7 @@ export class BillCalculatorComponent implements OnDestroy {
       let consumption = 0;
       let rawConsumption = 0;
       let cost = 0;
-      
+
       let prevReading = 0;
       let currentReading = 0;
       let constant = 1;
@@ -3302,7 +3425,7 @@ export class BillCalculatorComponent implements OnDestroy {
       const storeMap = readingsStore[type] as Map<string, StoreReading>;
       const data = storeMap.get(store.id) || this.createDefaultReading();
       const prevData = prevReadings.get(store.id) || { reading: 0, consumption: 0 };
-      
+
       currentReading = data.reading;
       prevReading = prevData.reading;
       constant = data.constant || 1;
@@ -3311,52 +3434,52 @@ export class BillCalculatorComponent implements OnDestroy {
       }
       const isConfirmed = !!data.anomalyConfirmed;
       const isRollover = !!data.isRollover;
-      
+
       if (type === 'gas') {
-         adjustment = data.adjustment !== undefined ? data.adjustment : 1.347; 
-         adjustmentAdd = data.adjustmentAdd || 0;
-         fcm = data.fcm || 1.0727; 
-         fluxoCost = data.fluxoCost || 0;
+        adjustment = data.adjustment !== undefined ? data.adjustment : 1.347;
+        adjustmentAdd = data.adjustmentAdd || 0;
+        fcm = data.fcm || 1.0727;
+        fluxoCost = data.fluxoCost || 0;
       } else {
-         adjustment = data.adjustment || 1;
+        adjustment = data.adjustment || 1;
       }
 
       // CALCULATION LOGIC: Medição bruta de campo (com suporte a virada de relógio)
       // Se virtual estiver preenchido (inclusive 0), usa como override. Caso vazio, calcula pela leitura normal.
       if (virtual !== undefined) {
-          rawConsumption = virtual;
+        rawConsumption = virtual;
       } else {
-          let diff = currentReading - prevReading;
-          if (isRollover && currentReading < prevReading && prevReading > 0) {
-            const digitsBase = prevReading > 10000 ? 100000 : (prevReading > 1000 ? 10000 : 1000);
-            diff = (digitsBase - prevReading) + currentReading;
-          } else if (diff < 0) {
-            diff = 0;
-          }
+        let diff = currentReading - prevReading;
+        if (isRollover && currentReading < prevReading && prevReading > 0) {
+          const digitsBase = prevReading > 10000 ? 100000 : (prevReading > 1000 ? 10000 : 1000);
+          diff = (digitsBase - prevReading) + currentReading;
+        } else if (diff < 0) {
+          diff = 0;
+        }
 
-          if (type === 'gas') {
-              const initial = (diff * adjustment) + adjustmentAdd;
-              rawConsumption = initial * fcm;
-          } else {
-              rawConsumption = diff * constant * adjustment;
-          }
+        if (type === 'gas') {
+          const initial = (diff * adjustment) + adjustmentAdd;
+          rawConsumption = initial * fcm;
+        } else {
+          rawConsumption = diff * constant * adjustment;
+        }
       }
 
       // Distribuição Proporcional Automática no Gás (100% Rateável)
       if (type === 'gas' && isGasAuto && gasConcessionaria > 0 && totalRawGas > 0) {
-          consumption = rawConsumption * gasFactor;
+        consumption = rawConsumption * gasFactor;
       } else {
-          consumption = rawConsumption;
+        consumption = rawConsumption;
       }
 
       if (prevData.consumption > 0) {
-          variation = ((consumption - prevData.consumption) / prevData.consumption) * 100;
+        variation = ((consumption - prevData.consumption) / prevData.consumption) * 100;
       }
 
       cost = consumption * price;
 
       if (type === 'gas') {
-          cost += fluxoCost;
+        cost += fluxoCost;
       }
 
       const note = data.note || '';
@@ -3391,12 +3514,19 @@ export class BillCalculatorComponent implements OnDestroy {
       // 5. Alerta de Consumo Zero no mês atual (loja ativa)
       const isZeroThisMonth = isRead && store.active !== false && prevReading > 0 && (currentReading === prevReading || consumption === 0) && !is2MonthsZero;
 
-      const hasSuspiciousAlert = isNegative || is3xJump || isExtremeJump || is2MonthsZero || isZeroThisMonth;
-      
-      const alertSeverity: 'none' | 'warning' | 'critical' = 
-        isConfirmed ? 'none' : ((isNegative || isExtremeJump) ? 'critical' : ((is3xJump || is2MonthsZero || isZeroThisMonth) ? 'warning' : 'none'));
+      // 6. Alerta de Dígitos a Mais: leitura com mais dígitos que a anterior sem ser uma virada natural
+      // (ex.: 1510 -> 15100). Cobre lojas sem histórico, onde o alerta de salto não dispara.
+      const intDigits = (n: number) => Math.floor(Math.abs(n)).toString().length;
+      const isDigitsMismatch = isRead && !isNegative && !isRollover && virtual === undefined &&
+        prevReading >= 100 && intDigits(currentReading) > intDigits(prevReading) &&
+        currentReading > prevReading * 2 && !isExtremeJump;
 
-      let alertType: 'none' | 'negative' | 'leak_suspect' | 'typo_extreme' | 'zero_2months' | 'zero_month' = 'none';
+      const hasSuspiciousAlert = isNegative || is3xJump || isExtremeJump || isDigitsMismatch || is2MonthsZero || isZeroThisMonth;
+
+      const alertSeverity: 'none' | 'warning' | 'critical' =
+        isConfirmed ? 'none' : ((isNegative || isExtremeJump) ? 'critical' : ((is3xJump || isDigitsMismatch || is2MonthsZero || isZeroThisMonth) ? 'warning' : 'none'));
+
+      let alertType: 'none' | 'negative' | 'leak_suspect' | 'typo_extreme' | 'digits_mismatch' | 'zero_2months' | 'zero_month' = 'none';
       let alertBadge = '';
       let alertTitle = '';
       let alertMessage = '';
@@ -3418,6 +3548,11 @@ export class BillCalculatorComponent implements OnDestroy {
         alertBadge = isConfirmed ? '✓ Salto Auditado' : '⚠️ Salto >3x (Vazamento?)';
         alertTitle = '⚠️ Suspeita de Vazamento / Salto Abrupto (>3x Média)';
         alertMessage = `Atenção: Consumo desta loja deu ${consumption.toFixed(1)} ${unit} (a média histórica é ${avgCons.toFixed(1)} ${unit}). Deseja confirmar ou conferir o relógio no local?`;
+      } else if (isDigitsMismatch) {
+        alertType = 'digits_mismatch';
+        alertBadge = isConfirmed ? '✓ Dígitos Auditados' : '🔢 Dígito a Mais?';
+        alertTitle = '🔢 Leitura com Mais Dígitos que a Anterior';
+        alertMessage = `A leitura (${currentReading}) tem ${intDigits(currentReading)} dígitos e a anterior (${prevReading}) tinha ${intDigits(prevReading)}. Confira no visor se não foi lido um dígito a mais (ex.: casa decimal ou roleta vermelha).`;
       } else if (is2MonthsZero) {
         alertType = 'zero_2months';
         alertBadge = isConfirmed ? '✓ Relógio Checado' : '⏱️ Relógio Parado (2m Zerado)';
@@ -3577,11 +3712,11 @@ export class BillCalculatorComponent implements OnDestroy {
       anomalies: {
         passed: hasZeroAnomalies,
         uninspectedCount: uninspectedAnomalies.length,
-        uninspectedList: uninspectedAnomalies.map(i => ({ 
-          id: i.storeId, 
-          luc: i.luc, 
-          name: i.storeName, 
-          type: i.validationAlert.type, 
+        uninspectedList: uninspectedAnomalies.map(i => ({
+          id: i.storeId,
+          luc: i.luc,
+          name: i.storeName,
+          type: i.validationAlert.type,
           badge: i.validationAlert.badgeLabel,
           currentReading: i.currentReading,
           prevReading: i.prevReading,
@@ -3624,7 +3759,7 @@ export class BillCalculatorComponent implements OnDestroy {
     }
 
     if (q) {
-      list = list.filter(item => 
+      list = list.filter(item =>
         item.storeName.toLowerCase().includes(q) ||
         item.luc.toLowerCase().includes(q) ||
         (item.contrato && item.contrato.toLowerCase().includes(q))
@@ -3760,68 +3895,68 @@ export class BillCalculatorComponent implements OnDestroy {
   // --- UPDATERS ---
 
   updateDetailedReading(storeId: string, field: keyof StoreReading, value: any) {
-      if (!this.authService.canEditReadings()) return;
-      // Tech can edit 'reading', 'note', 'hasPhoto', 'photoTimestamp', 'anomalyConfirmed', 'isRollover'
-      if (this.authService.isTech() && 
-          field !== 'reading' && 
-          field !== 'note' && 
-          field !== 'hasPhoto' && 
-          field !== 'photoTimestamp' &&
-          field !== 'anomalyConfirmed' &&
-          field !== 'isRollover') return;
+    if (!this.authService.canEditReadings()) return;
+    // Tech can edit 'reading', 'note', 'hasPhoto', 'photoTimestamp', 'anomalyConfirmed', 'isRollover'
+    if (this.authService.isTech() &&
+      field !== 'reading' &&
+      field !== 'note' &&
+      field !== 'hasPhoto' &&
+      field !== 'photoTimestamp' &&
+      field !== 'anomalyConfirmed' &&
+      field !== 'isRollover') return;
 
-      this.dataLoaded.set(true);
+    this.dataLoaded.set(true);
 
-      let cleanValue = value;
-      if (field === 'reading') {
-        if (typeof value === 'string') {
-          const str = value.trim();
-          if (/^\d{1,3}\.\d{3}$/.test(str)) {
-            cleanValue = parseInt(str.replace('.', ''), 10);
-          } else if (str.includes('.') && str.includes(',')) {
-            cleanValue = parseFloat(str.replace(/\./g, '').replace(',', '.'));
-          } else if (str.includes(',')) {
-            cleanValue = parseFloat(str.replace(',', '.'));
-          } else {
-            cleanValue = parseFloat(str);
-          }
-        }
-        if (cleanValue === null || cleanValue === undefined || isNaN(cleanValue)) {
-          cleanValue = 0;
+    let cleanValue = value;
+    if (field === 'reading') {
+      if (typeof value === 'string') {
+        const str = value.trim();
+        if (/^\d{1,3}\.\d{3}$/.test(str)) {
+          cleanValue = parseInt(str.replace('.', ''), 10);
+        } else if (str.includes('.') && str.includes(',')) {
+          cleanValue = parseFloat(str.replace(/\./g, '').replace(',', '.'));
+        } else if (str.includes(',')) {
+          cleanValue = parseFloat(str.replace(',', '.'));
+        } else {
+          cleanValue = parseFloat(str);
         }
       }
+      if (cleanValue === null || cleanValue === undefined || isNaN(cleanValue)) {
+        cleanValue = 0;
+      }
+    }
 
-      if (field === 'virtual') {
-        if (value === null || value === undefined || value === '') {
+    if (field === 'virtual') {
+      if (value === null || value === undefined || value === '') {
+        cleanValue = undefined;
+      } else {
+        const str = String(value).trim();
+        if (str === '' || str === '-' || str === '—') {
           cleanValue = undefined;
         } else {
-          const str = String(value).trim();
-          if (str === '' || str === '-' || str === '—') {
-            cleanValue = undefined;
-          } else {
-            const parsed = typeof value === 'number' ? value : parseFloat(str.replace(',', '.'));
-            cleanValue = isNaN(parsed) ? undefined : parsed;
-          }
+          const parsed = typeof value === 'number' ? value : parseFloat(str.replace(',', '.'));
+          cleanValue = isNaN(parsed) ? undefined : parsed;
         }
       }
+    }
 
-      const type = this.utilityType();
+    const type = this.utilityType();
 
-      this.readings.update(curr => {
-          const map = new Map(curr[type] as Map<string, StoreReading>);
-          const currentData = map.get(storeId) || this.createDefaultReading();
-          
-          const safeData: StoreReading = currentData;
-          const newData: StoreReading = { ...safeData, [field]: cleanValue };
-          if (field === 'reading') {
-            newData.anomalyConfirmed = false;
-            newData.isRollover = false;
-          }
-          
-          map.set(storeId, newData);
+    this.readings.update(curr => {
+      const map = new Map(curr[type] as Map<string, StoreReading>);
+      const currentData = map.get(storeId) || this.createDefaultReading();
 
-          return { ...curr, [type]: map };
-      });
+      const safeData: StoreReading = currentData;
+      const newData: StoreReading = { ...safeData, [field]: cleanValue };
+      if (field === 'reading') {
+        newData.anomalyConfirmed = false;
+        newData.isRollover = false;
+      }
+
+      map.set(storeId, newData);
+
+      return { ...curr, [type]: map };
+    });
   }
 
   // --- ANOMALY AUDIT MODAL METHODS (ETAPA 1) ---
@@ -3948,6 +4083,12 @@ export class BillCalculatorComponent implements OnDestroy {
         watermarkText: watermark
       });
 
+      // 🔍 Análise de Qualidade da Foto (iluminação / reflexo) & Realce de Contraste para OCR
+      const { enhancedDataUrl, quality } = await analyzeAndEnhanceBase64Image(compressedBase64);
+      if (quality.warningMessage) {
+        this.indexedDb.showToast(quality.warningMessage);
+      }
+
       const record: MeterPhotoRecord = {
         id: `${type}_${month}_${storeId}`,
         type,
@@ -3991,21 +4132,34 @@ export class BillCalculatorComponent implements OnDestroy {
       this.updateDetailedReading(storeId, 'hasPhoto', true);
       this.updateDetailedReading(storeId, 'photoTimestamp', record.capturedAt);
 
-      // --- 🤖 LEITURA AUTOMÁTICA DO MEDIDOR POR FOTO (1º QWEN 3.8 27B GROQ -> 2º GEMINI FALLBACK) ---
+      // --- 🤖 LEITURA AUTOMÁTICA DO MEDIDOR POR FOTO COM SELEÇÃO INTELIGENTE E DUPLA CHECAGEM ---
       if (typeof navigator !== 'undefined' && navigator.onLine && this.indexedDb.isOnline()) {
         this.isReadingOcr.set(storeId);
-        this.ocrCurrentModelLabel.set('Qwen 3.8 27B (Groq)');
+        const ocrCtx = this.buildOcrContext(storeId);
+        const smartProvider = getRecommendedProvider(this.ocrFeedbackService.entries(), type, ocrCtx?.meterType);
+        const initialLabel = smartProvider === 'gemini'
+          ? 'Gemini 3.8 Flash (Recomendado pelo Histórico)'
+          : smartProvider === 'qwen'
+            ? 'Qwen 3.8 27B (Groq)'
+            : 'Qwen 3.8 27B + Gemini Fallback';
+        this.ocrCurrentModelLabel.set(initialLabel);
+
         try {
-          const ocrResult = await this.geminiService.extractMeterReading(compressedBase64, type);
+          const ocrResult = await this.geminiService.extractWithDualCheck(
+            enhancedDataUrl,
+            type,
+            ocrCtx
+          );
           if (ocrResult.success && ocrResult.reading !== null) {
             // Preenche automaticamente o campo de leitura com o valor extraído pela IA
             this.updateDetailedReading(storeId, 'reading', ocrResult.reading);
+            this.registerOcrPending(storeId, ocrResult);
 
             // Atualiza também o registro fotográfico com a nova leitura
             record.readingValue = ocrResult.reading;
             await this.indexedDb.saveMeterPhoto(record);
             if (this.indexedDb.isOnline()) {
-              this.supabaseService.syncMeterPhoto(record).catch(() => {});
+              this.supabaseService.syncMeterPhoto(record).catch(() => { });
             }
             if (this.activePhotoRecord()?.storeId === storeId) {
               this.activePhotoRecord.set({ ...record });
@@ -4015,10 +4169,10 @@ export class BillCalculatorComponent implements OnDestroy {
             // Salva a fatura imediatamente no banco e no navegador
             this.internalSave();
 
-            const modelDesc = ocrResult.fallbackUsed 
-              ? '🤖 Gemini 3.8 Flash (Fallback)' 
-              : ocrResult.provider === 'qwen' 
-                ? '⚡ Qwen 3.8 27B (Groq)' 
+            const modelDesc = ocrResult.fallbackUsed
+              ? '🤖 Gemini 3.8 Flash (Fallback)'
+              : ocrResult.provider === 'qwen'
+                ? '⚡ Qwen 3.8 27B (Groq)'
                 : '🤖 Gemini 3.8 Flash';
 
             this.ocrFeedback.update(prev => ({
@@ -4109,28 +4263,42 @@ export class BillCalculatorComponent implements OnDestroy {
       return;
     }
 
+    const ocrCtx = this.buildOcrContext(storeId);
+    const smartProvider = forceProvider || getRecommendedProvider(this.ocrFeedbackService.entries(), this.utilityType(), ocrCtx?.meterType);
+
     this.isReadingOcr.set(storeId);
     this.ocrCurrentModelLabel.set(
-      forceProvider === 'gemini' 
-        ? 'Gemini 3.8 Flash' 
-        : forceProvider === 'qwen' 
-          ? 'Qwen 3.8 27B (Groq)' 
-          : 'Qwen 3.8 27B (Groq) + Gemini Fallback'
+      forceProvider === 'gemini'
+        ? 'Gemini 3.8 Flash'
+        : forceProvider === 'qwen'
+          ? 'Qwen 3.8 27B (Groq)'
+          : smartProvider === 'gemini'
+            ? 'Gemini 3.8 Flash (Recomendado)'
+            : 'Qwen 3.8 27B (Groq) + Gemini Fallback'
     );
 
     try {
-      const ocrResult = await this.geminiService.extractMeterReading(
-        photo.photoDataUrl, 
-        this.utilityType(),
-        forceProvider
-      );
+      // Se não forçar provedor estrito, executa com dupla checagem (consenso)
+      const ocrResult = forceProvider
+        ? await this.geminiService.extractMeterReading(
+            photo.photoDataUrl,
+            this.utilityType(),
+            forceProvider,
+            ocrCtx
+          )
+        : await this.geminiService.extractWithDualCheck(
+            photo.photoDataUrl,
+            this.utilityType(),
+            ocrCtx
+          );
 
       if (ocrResult.success && ocrResult.reading !== null) {
         this.updateDetailedReading(storeId, 'reading', ocrResult.reading);
+        this.registerOcrPending(storeId, ocrResult);
         photo.readingValue = ocrResult.reading;
         await this.indexedDb.saveMeterPhoto(photo);
         if (this.indexedDb.isOnline()) {
-          this.supabaseService.syncMeterPhoto(photo).catch(() => {});
+          this.supabaseService.syncMeterPhoto(photo).catch(() => { });
         }
         if (this.activePhotoRecord()?.storeId === storeId) {
           this.activePhotoRecord.set({ ...photo });
@@ -4140,10 +4308,10 @@ export class BillCalculatorComponent implements OnDestroy {
         // Salva a fatura imediatamente no banco e no navegador
         this.internalSave();
 
-        const modelLabel = ocrResult.fallbackUsed 
-          ? '🤖 Gemini 3.8 Flash (Fallback)' 
-          : ocrResult.provider === 'qwen' 
-            ? '⚡ Qwen 3.8 27B (Groq)' 
+        const modelLabel = ocrResult.fallbackUsed
+          ? '🤖 Gemini 3.8 Flash (Fallback)'
+          : ocrResult.provider === 'qwen'
+            ? '⚡ Qwen 3.8 27B (Groq)'
             : '🤖 Gemini 3.8 Flash';
 
         this.ocrFeedback.update(prev => ({
@@ -4184,6 +4352,89 @@ export class BillCalculatorComponent implements OnDestroy {
     } finally {
       this.isReadingOcr.set(null);
     }
+  }
+
+  /** Guarda a leitura da IA para o técnico conferir (passo 1 do aprendizado do OCR). */
+  private registerOcrPending(storeId: string, ocrResult: MeterOcrResult) {
+    if (ocrResult.reading === null) return;
+    this.ocrPending.update(prev => ({
+      ...prev,
+      [storeId]: {
+        ocrValue: ocrResult.reading as number,
+        detectedDigits: ocrResult.detectedDigits ?? null,
+        meterType: ocrResult.meterType,
+        confidence: ocrResult.confidence,
+        provider: ocrResult.provider,
+        modelName: ocrResult.modelName,
+        fallbackUsed: ocrResult.fallbackUsed,
+        dualCheck: ocrResult.dualCheck
+      }
+    }));
+  }
+
+  /** Contexto do medidor (leitura anterior + correções passadas) para melhorar a precisão do OCR. */
+  private buildOcrContext(storeId: string) {
+    const item = this.tableData().find(s => s.storeId === storeId);
+    return buildReadingContext(this.ocrFeedbackService.entries(), {
+      storeId,
+      utilityType: this.utilityType(),
+      previousReading: item?.prevReading ?? null
+    });
+  }
+
+  /** Relê a foto com o motor diferente do usado antes (útil quando a leitura falha na validação). */
+  retryOcrWithOtherEngine(storeId: string) {
+    const pending = this.ocrPending()[storeId];
+    const next: 'qwen' | 'gemini' = pending?.provider === 'qwen' ? 'gemini' : 'qwen';
+    return this.runOcrOnPhoto(storeId, next);
+  }
+
+  /** Técnico confirma (ou corrige no campo) a leitura sugerida pela IA e a correção é registrada. */
+  confirmOcrReading(storeId: string, currentValue: number | string | null | undefined) {
+    const pending = this.ocrPending()[storeId];
+    if (!pending) return;
+
+    const finalValue = Number(currentValue);
+    if (currentValue === null || currentValue === undefined || currentValue === '' || !Number.isFinite(finalValue)) {
+      this.indexedDb.showToast('⚠️ Informe a leitura antes de confirmar.');
+      return;
+    }
+
+    const store = this.storeService.stores().find(s => s.id === storeId);
+    const entry = this.ocrFeedbackService.record({
+      storeId,
+      storeName: store?.name || this.meterPhotos()[storeId]?.storeName || storeId,
+      utilityType: this.utilityType(),
+      month: this.selectedMonth(),
+      finalValue,
+      pending
+    });
+
+    // Mantém o registro fotográfico alinhado com o valor conferido
+    const photo = this.meterPhotos()[storeId];
+    if (photo && photo.readingValue !== finalValue) {
+      const updated = { ...photo, readingValue: finalValue };
+      this.indexedDb.saveMeterPhoto(updated).then(() => {
+        if (this.indexedDb.isOnline()) {
+          this.supabaseService.syncMeterPhoto(updated).catch(() => { });
+        }
+      });
+      this.meterPhotos.update(prev => ({ ...prev, [storeId]: updated }));
+      if (this.activePhotoRecord()?.storeId === storeId) {
+        this.activePhotoRecord.set(updated);
+      }
+    }
+
+    this.ocrPending.update(prev => {
+      const next = { ...prev };
+      delete next[storeId];
+      return next;
+    });
+    this.dismissOcrFeedback(storeId);
+    this.internalSave();
+    this.indexedDb.showToast(entry.wasCorrected
+      ? `✏️ Correção registrada: IA ${entry.ocrValue} → ${entry.finalValue}`
+      : '✓ Leitura confirmada!');
   }
 
   dismissOcrFeedback(storeId: string) {
@@ -4306,15 +4557,18 @@ export class BillCalculatorComponent implements OnDestroy {
         try {
           const ocrResult = await this.geminiService.extractMeterReading(
             photo.photoDataUrl,
-            this.utilityType()
+            this.utilityType(),
+            undefined,
+            this.buildOcrContext(storeItem.storeId)
           );
 
           if (ocrResult.success && ocrResult.reading !== null) {
             this.updateDetailedReading(storeItem.storeId, 'reading', ocrResult.reading);
+            this.registerOcrPending(storeItem.storeId, ocrResult);
             photo.readingValue = ocrResult.reading;
             await this.indexedDb.saveMeterPhoto(photo);
             if (this.indexedDb.isOnline()) {
-              this.supabaseService.syncMeterPhoto(photo).catch(() => {});
+              this.supabaseService.syncMeterPhoto(photo).catch(() => { });
             }
             this.meterPhotos.update(prev => ({ ...prev, [storeItem.storeId]: { ...photo } }));
             success++;
@@ -4427,7 +4681,7 @@ export class BillCalculatorComponent implements OnDestroy {
     // 5. Exclui do IndexedDB local (que gerencia fila offline se sem internet) e do Supabase
     await this.indexedDb.deleteMeterPhoto(type, month, storeId);
     if (this.indexedDb.isOnline()) {
-      await this.supabaseService.deleteMeterPhoto(type, month, storeId).catch(() => {});
+      await this.supabaseService.deleteMeterPhoto(type, month, storeId).catch(() => { });
     }
 
     // 6. Notificação de confirmação imediata
@@ -4444,70 +4698,70 @@ export class BillCalculatorComponent implements OnDestroy {
   }
 
   onPasteCell(event: ClipboardEvent, startStoreId: string, field: keyof StoreReading) {
-      if (!this.authService.canEditReadings()) return;
-      if (this.authService.isTech() && field !== 'reading') return;
+    if (!this.authService.canEditReadings()) return;
+    if (this.authService.isTech() && field !== 'reading') return;
 
-      const text = event.clipboardData?.getData('text') || '';
-      
-      // If the text contains newlines, or multiple lines, it's a list from Excel/Sheets
-      if (text.includes('\n') || text.includes('\r')) {
-          event.preventDefault(); // Prevent pasting all rows into a single cell
+    const text = event.clipboardData?.getData('text') || '';
 
-          // Convert into string array
-          const rawLines = text.split(/\r?\n/).map(line => line.trim());
-          // Filter out last line if it's empty, common on copy-paste
-          const valList = rawLines.filter((l, i) => l !== '' || i < rawLines.length - 1);
-          if (valList.length === 0) return;
+    // If the text contains newlines, or multiple lines, it's a list from Excel/Sheets
+    if (text.includes('\n') || text.includes('\r')) {
+      event.preventDefault(); // Prevent pasting all rows into a single cell
 
-          const dataList = this.tableData();
-          const startIndex = dataList.findIndex(item => item.storeId === startStoreId);
-          if (startIndex === -1) return;
+      // Convert into string array
+      const rawLines = text.split(/\r?\n/).map(line => line.trim());
+      // Filter out last line if it's empty, common on copy-paste
+      const valList = rawLines.filter((l, i) => l !== '' || i < rawLines.length - 1);
+      if (valList.length === 0) return;
 
-          const type = this.utilityType();
+      const dataList = this.tableData();
+      const startIndex = dataList.findIndex(item => item.storeId === startStoreId);
+      if (startIndex === -1) return;
 
-          this.readings.update(curr => {
-              const map = new Map(curr[type] as Map<string, StoreReading>);
-              
-              valList.forEach((line, i) => {
-                  const targetIndex = startIndex + i;
-                  if (targetIndex >= dataList.length) return;
+      const type = this.utilityType();
 
-                  const targetStoreId = dataList[targetIndex].storeId;
-                  const currentData = map.get(targetStoreId) || this.createDefaultReading();
-                  
-                  // In case they copied a table, take the first column value
-                  const cellStr = line.split('\t')[0]?.trim() || '';
-                  if (field === 'virtual' && (cellStr === '' || cellStr === '-' || cellStr === '—')) {
-                      const newData: StoreReading = { ...currentData, virtual: undefined };
-                      map.set(targetStoreId, newData);
-                      return;
-                  }
-                  if (cellStr === '') return;
+      this.readings.update(curr => {
+        const map = new Map(curr[type] as Map<string, StoreReading>);
 
-                  // Parse Brazilian/international numbers correctly:
-                  // Handles thousand separators "." and decimal commas ","
-                  let cleanVal = cellStr;
-                  if (cellStr.includes(',') && cellStr.includes('.')) {
-                     // e.g., "1.234,56" -> "1234.56"
-                     cleanVal = cellStr.replace(/\./g, '').replace(',', '.');
-                  } else if (/^\d{1,3}\.\d{3}$/.test(cellStr)) {
-                     // e.g., "1.510" (milhar brasileiro sem decimais) -> "1510"
-                     cleanVal = cellStr.replace(/\./g, '');
-                  } else if (cellStr.includes(',')) {
-                     // e.g., "1234,56" -> "1234.56"
-                     cleanVal = cellStr.replace(',', '.');
-                  }
+        valList.forEach((line, i) => {
+          const targetIndex = startIndex + i;
+          if (targetIndex >= dataList.length) return;
 
-                  const numVal = parseFloat(cleanVal);
-                  if (!isNaN(numVal)) {
-                      const newData: StoreReading = { ...currentData, [field]: numVal };
-                      map.set(targetStoreId, newData);
-                  }
-              });
+          const targetStoreId = dataList[targetIndex].storeId;
+          const currentData = map.get(targetStoreId) || this.createDefaultReading();
 
-              return { ...curr, [type]: map };
-          });
-      }
+          // In case they copied a table, take the first column value
+          const cellStr = line.split('\t')[0]?.trim() || '';
+          if (field === 'virtual' && (cellStr === '' || cellStr === '-' || cellStr === '—')) {
+            const newData: StoreReading = { ...currentData, virtual: undefined };
+            map.set(targetStoreId, newData);
+            return;
+          }
+          if (cellStr === '') return;
+
+          // Parse Brazilian/international numbers correctly:
+          // Handles thousand separators "." and decimal commas ","
+          let cleanVal = cellStr;
+          if (cellStr.includes(',') && cellStr.includes('.')) {
+            // e.g., "1.234,56" -> "1234.56"
+            cleanVal = cellStr.replace(/\./g, '').replace(',', '.');
+          } else if (/^\d{1,3}\.\d{3}$/.test(cellStr)) {
+            // e.g., "1.510" (milhar brasileiro sem decimais) -> "1510"
+            cleanVal = cellStr.replace(/\./g, '');
+          } else if (cellStr.includes(',')) {
+            // e.g., "1234,56" -> "1234.56"
+            cleanVal = cellStr.replace(',', '.');
+          }
+
+          const numVal = parseFloat(cleanVal);
+          if (!isNaN(numVal)) {
+            const newData: StoreReading = { ...currentData, [field]: numVal };
+            map.set(targetStoreId, newData);
+          }
+        });
+
+        return { ...curr, [type]: map };
+      });
+    }
   }
 
   // ---
@@ -4521,17 +4775,17 @@ export class BillCalculatorComponent implements OnDestroy {
   });
 
   setAirConditioning(val: any) {
-      if (!this.authService.canConfigureBill()) return;
-      const num = Number(val);
-      const safeVal = isNaN(num) ? 0 : num;
-      if (this.utilityType() === 'luz') this.luzAC.set(safeVal);
-      else if (this.utilityType() === 'agua') this.aguaAC.set(safeVal);
+    if (!this.authService.canConfigureBill()) return;
+    const num = Number(val);
+    const safeVal = isNaN(num) ? 0 : num;
+    if (this.utilityType() === 'luz') this.luzAC.set(safeVal);
+    else if (this.utilityType() === 'agua') this.aguaAC.set(safeVal);
   }
 
   airConditioningConsumption = computed(() => this.currentACConsumption());
 
   airConditioningCost = computed(() => {
-     return this.airConditioningConsumption() * this.calculatedUnitPrice();
+    return this.airConditioningConsumption() * this.calculatedUnitPrice();
   });
 
   commonArea = computed(() => {
@@ -4564,8 +4818,8 @@ export class BillCalculatorComponent implements OnDestroy {
     try {
       const type = this.utilityType();
       const label = type === 'luz' ? 'Luz' : type === 'agua' ? 'Agua' : 'Gas';
-      const inputCons = type === 'luz' 
-        ? this.luzConsumption() 
+      const inputCons = type === 'luz'
+        ? this.luzConsumption()
         : (type === 'agua' ? this.aguaTotalReading() : this.gasTotalReading());
 
       this.exportService.exportCalculatorToExcel({
@@ -4602,8 +4856,8 @@ export class BillCalculatorComponent implements OnDestroy {
       const type = this.utilityType();
       const label = type === 'luz' ? 'Luz' : type === 'agua' ? 'Agua' : 'Gas';
       const month = this.selectedMonth();
-      const inputCons = type === 'luz' 
-        ? this.luzConsumption() 
+      const inputCons = type === 'luz'
+        ? this.luzConsumption()
         : (type === 'agua' ? this.aguaTotalReading() : this.gasTotalReading());
 
       // Coleta fotos do signal + mescla com fotos do IndexedDB caso alguma esteja salva localmente
@@ -4649,7 +4903,7 @@ export class BillCalculatorComponent implements OnDestroy {
   }
   // --- STORE VOUCHER / ESPELHO DO LOJISTA METHODS ---
   getUtilityLabel() {
-    switch(this.utilityType()) {
+    switch (this.utilityType()) {
       case 'luz': return 'Energia Elétrica';
       case 'agua': return 'Água & Esgoto';
       case 'gas': return 'Gás GLP';

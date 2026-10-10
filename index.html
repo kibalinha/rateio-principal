@@ -1,18 +1,20 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
   <meta charset="UTF-8">
   <title>ShopRateio</title>
-  
+
   <!-- PWA & Mobile Optimization -->
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#0f172a">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="ShopRateio">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="description" content="Gestão de Rateio para Shoppings - Modo Offline">
-  
+
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
@@ -24,7 +26,7 @@
       if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
         document.documentElement.classList.add('dark');
       }
-    } catch (e) {}
+    } catch (e) { }
 
     // Runtime process.env shim for client-side API calls
     window.process = window.process || { env: {} };
@@ -37,7 +39,7 @@
     window.process.env.NEXT_PUBLIC_SUPABASE_URL = window.process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://epazfolcfbmedjxlchqb.supabase.co';
     window.process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = window.process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_c--UjXXWohgzQqj_Ky496g_G7h62ned';
   </script>
-<script type="importmap">
+  <script type="importmap">
 {
   "imports": {
     "rxjs": "https://esm.sh/rxjs@^7.8.2?conditions=es2015",
@@ -58,19 +60,21 @@
   }
 }
 </script>
-<script>
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js')
-        .then(reg => {
-          reg.update().catch(() => {});
-        })
-        .catch(err => console.log('SW reg error', err));
-    });
-  }
-</script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then(reg => {
+            reg.update().catch(() => { });
+          })
+          .catch(err => console.log('SW reg error', err));
+      });
+    }
+  </script>
 </head>
+
 <body class="overflow-hidden"> <!-- Prevent body scroll if main/sidebar handles it -->
   <app-root></app-root>
 </body>
+
 </html>

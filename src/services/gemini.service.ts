@@ -2,7 +2,8 @@ import { Injectable, inject } from '@angular/core';
 import { GoogleGenAI } from '@google/genai';
 import { SecuritySanitizerService } from './security-sanitizer.service';
 
-import { MeterOcrResult } from '../models';
+import { MeterOcrResult, OcrReadingContext } from '../models';
+import { formatContextForPrompt } from './ocr-context';
 
 export type { MeterOcrResult };
 
@@ -13,7 +14,7 @@ export class GeminiService {
   private ai: GoogleGenAI | null = null;
   private sanitizer = inject(SecuritySanitizerService);
 
-  constructor() {}
+  constructor() { }
 
   private getGeminiApiKey(): string {
     if (typeof process !== 'undefined' && process.env) {
@@ -137,9 +138,10 @@ export class GeminiService {
    * ESTRATÉGIA: Prioriza Qwen 3.8 27B (Groq ultra-rápido) -> caso falhe ou não detecte, usa Gemini 3.8 Flash como fallback.
    */
   async extractMeterReading(
-    imageBase64: string, 
+    imageBase64: string,
     utilityType: string = 'luz',
-    forceProvider?: 'qwen' | 'gemini'
+    forceProvider?: 'qwen' | 'gemini',
+    context?: OcrReadingContext | null
   ): Promise<MeterOcrResult> {
     if (!imageBase64) {
       return {
@@ -192,20 +194,27 @@ export class GeminiService {
       cleanBase64 = parts[1];
     }
 
-    // Se o usuário forçou especificamente Gemini
+    // Se forçou Gemini, prioriza Gemini (com fallback para Qwen se falhar e não for estrito)
     if (forceProvider === 'gemini') {
-      return await this.extractWithGemini(cleanBase64, mimeType, utilityType, false);
+      try {
+        const gemResult = await this.extractWithGemini(cleanBase64, mimeType, utilityType, false, context);
+        if (gemResult.success && gemResult.reading !== null) return gemResult;
+        console.warn('[OCR Pipeline] Gemini não detectou leitura. Acionando Fallback Qwen 3.8 27B...');
+        return await this.extractWithQwen(cleanBase64, mimeType, utilityType, context);
+      } catch {
+        return await this.extractWithQwen(cleanBase64, mimeType, utilityType, context);
+      }
     }
 
-    // Se o usuário forçou especificamente Qwen
+    // Se forçou especificamente Qwen
     if (forceProvider === 'qwen') {
-      return await this.extractWithQwen(cleanBase64, mimeType, utilityType);
+      return await this.extractWithQwen(cleanBase64, mimeType, utilityType, context);
     }
 
     // FLUXO PADRÃO: 1º Qwen 3.8 27B (Groq) -> 2º Fallback Gemini 3.8 Flash
     try {
       console.log('[OCR Pipeline] Tentativa 1: Executando OCR com Qwen 3.8 27B (Groq)...');
-      const qwenResult = await this.extractWithQwen(cleanBase64, mimeType, utilityType);
+      const qwenResult = await this.extractWithQwen(cleanBase64, mimeType, utilityType, context);
 
       if (qwenResult.success && qwenResult.reading !== null) {
         console.log('[OCR Pipeline] Sucesso com Qwen 3.8 27B:', qwenResult.reading);
@@ -213,27 +222,74 @@ export class GeminiService {
       }
 
       console.warn('[OCR Pipeline] Qwen não identificou leitura válida ou retornou erro. Acionando Fallback Gemini 3.8 Flash...');
-      const geminiResult = await this.extractWithGemini(cleanBase64, mimeType, utilityType, true);
+      const geminiResult = await this.extractWithGemini(cleanBase64, mimeType, utilityType, true, context);
       return geminiResult;
     } catch (err) {
       console.error('[OCR Pipeline] Erro no Qwen 3.8 27B, acionando Gemini 3.8 Flash Fallback...', err);
-      return await this.extractWithGemini(cleanBase64, mimeType, utilityType, true);
+      return await this.extractWithGemini(cleanBase64, mimeType, utilityType, true, context);
     }
+  }
+
+  /**
+   * Executa dupla checagem (Consenso) comparando Qwen e Gemini na mesma foto.
+   * Se ambos concordarem, a confiança é elevada para 'high'.
+   * Se divergirem, alerta o usuário com os dois valores para conferência rápida.
+   */
+  async extractWithDualCheck(
+    imageBase64: string,
+    utilityType: string = 'luz',
+    context?: OcrReadingContext | null
+  ): Promise<MeterOcrResult> {
+    const primary = await this.extractMeterReading(imageBase64, utilityType, undefined, context);
+    if (!primary.success || primary.reading === null) {
+      return primary;
+    }
+
+    // Identifica o segundo motor para cross-validation
+    const secondaryProvider = primary.provider === 'qwen' ? 'gemini' : 'qwen';
+    try {
+      const secondary = await this.extractMeterReading(imageBase64, utilityType, secondaryProvider, context);
+
+      if (secondary.success && secondary.reading !== null) {
+        const agreement = Math.abs(primary.reading - secondary.reading) < 0.001;
+        const qwenVal = primary.provider === 'qwen' ? primary.reading : secondary.reading;
+        const geminiVal = primary.provider === 'gemini' ? primary.reading : secondary.reading;
+
+        return {
+          ...primary,
+          confidence: agreement ? 'high' : 'medium',
+          explanation: agreement
+            ? `✓ Consenso confirmado: Qwen e Gemini concordam com ${primary.reading}.`
+            : `⚠️ Atenção: Qwen leu ${qwenVal} e Gemini leu ${geminiVal}. Confira no mostrador!`,
+          dualCheck: {
+            performed: true,
+            qwenValue: qwenVal,
+            geminiValue: geminiVal,
+            agreement,
+            divergenceNotice: agreement ? undefined : `Qwen: ${qwenVal} | Gemini: ${geminiVal}`
+          }
+        };
+      }
+    } catch (secErr) {
+      console.warn('[OCR DualCheck] Falha na validação secundária, mantendo leitura primária:', secErr);
+    }
+
+    return primary;
   }
 
   /**
    * Extração de medidor com Qwen 3.8 27B via Groq API
    */
-  async extractWithQwen(cleanBase64: string, mimeType: string, utilityType: string): Promise<MeterOcrResult> {
+  async extractWithQwen(cleanBase64: string, mimeType: string, utilityType: string, context?: OcrReadingContext | null): Promise<MeterOcrResult> {
     const groqKey = this.getGroqApiKey();
     if (!groqKey) {
       throw new Error('Chave de API do Groq não configurada.');
     }
 
-    const utilDesc = utilityType === 'luz' 
-      ? 'energia elétrica (kWh)' 
-      : utilityType === 'agua' 
-        ? 'água / hidrômetro (m³)' 
+    const utilDesc = utilityType === 'luz'
+      ? 'energia elétrica (kWh)'
+      : utilityType === 'agua'
+        ? 'água / hidrômetro (m³)'
         : 'gás canalizado (m³)';
 
     const prompt = `
@@ -242,7 +298,7 @@ Analise a foto deste medidor (relógio analógico de roletes mecânicos ou visor
 
 OBJETIVO:
 Identificar o valor numérico acumulado atual de consumo no mostrador.
-
+${formatContextForPrompt(context) ? '\n' + formatContextForPrompt(context) + '\n' : ''}
 REGRAS OBRIGATÓRIAS DE LEITURA E FORMATAÇÃO:
 1. Extraia o valor do consumo acumulado principal exibido no mostrador.
 2. NUNCA use ponto ou vírgula como separador de milhar no número. "reading" DEVE ser um número numérico puro (exemplo: 1510 e JAMAIS 1.510 para significar mil quinhentos e dez). Se o relógio marcar 1510 kWh ou m³, retorne 1510.
@@ -343,10 +399,11 @@ Se o visor estiver ilegível, escuro ou sem medidor visível:
    * Extração de medidor com Google Gemini 3.8 Flash (Fallback ou Verificação)
    */
   async extractWithGemini(
-    cleanBase64: string, 
-    mimeType: string, 
+    cleanBase64: string,
+    mimeType: string,
     utilityType: string,
-    isFallback: boolean = false
+    isFallback: boolean = false,
+    context?: OcrReadingContext | null
   ): Promise<MeterOcrResult> {
     try {
       const client = this.initGeminiClient();
@@ -362,10 +419,10 @@ Se o visor estiver ilegível, escuro ou sem medidor visível:
         };
       }
 
-      const utilDesc = utilityType === 'luz' 
-        ? 'energia elétrica (kWh)' 
-        : utilityType === 'agua' 
-          ? 'água / hidrômetro (m³)' 
+      const utilDesc = utilityType === 'luz'
+        ? 'energia elétrica (kWh)'
+        : utilityType === 'agua'
+          ? 'água / hidrômetro (m³)'
           : 'gás canalizado (m³)';
 
       const prompt = `
@@ -374,7 +431,7 @@ Analise a imagem deste medidor (relógio analógico de roletes, ponteiros ou dis
 
 OBJETIVO PRINCIPAL:
 Identificar e extrair com máxima acurácia o número atual acumulado de consumo exibido no display/contador.
-
+${formatContextForPrompt(context) ? '\n' + formatContextForPrompt(context) + '\n' : ''}
 REGRAS OBRIGATÓRIAS DE LEITURA E FORMATAÇÃO:
 1. Extraia o valor do consumo acumulado principal exibido no mostrador.
 2. NUNCA use ponto ou vírgula como separador de milhar no número. "reading" DEVE ser um número numérico puro (exemplo: 1510 e JAMAIS 1.510 para significar mil quinhentos e dez). Se o relógio marcar 1510 kWh ou m³, retorne 1510.
