@@ -78,4 +78,14 @@ describe('OCR context', () => {
     expect(text).toContain('a IA leu 151');
     expect(text).toContain('NUNCA copie');
   });
+
+  it('inclui reforço explícito para descartar dígitos vermelhos decimais', () => {
+    const text = formatContextForPrompt({
+      previousReading: 1480,
+      expectedIntDigits: 4,
+      corrections: []
+    });
+    expect(text).toContain('NÚMEROS VERMELHOS');
+    expect(text).toContain('descarte-os totalmente');
+  });
 });

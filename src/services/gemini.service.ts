@@ -313,21 +313,33 @@ Você é um leitor óptico (OCR) industrial de precisão absoluta para medidores
 Analise a foto deste medidor (relógio analógico de roletes mecânicos ou visor digital LCD/LED).
 
 OBJETIVO:
-Identificar o valor numérico acumulado atual de consumo no mostrador.
+Identificar e extrair o valor numérico acumulado atual de consumo no mostrador principal.
 ${formatContextForPrompt(context) ? '\n' + formatContextForPrompt(context) + '\n' : ''}
 REGRAS OBRIGATÓRIAS DE LEITURA E FORMATAÇÃO:
-1. Extraia o valor do consumo acumulado principal exibido no mostrador.
-2. NUNCA use ponto ou vírgula como separador de milhar no número. "reading" DEVE ser um número numérico puro (exemplo: 1510 e JAMAIS 1.510 para significar mil quinhentos e dez). Se o relógio marcar 1510 kWh ou m³, retorne 1510.
-3. Foque sempre nos dígitos pretos inteiros. Na grande maioria dos medidores industriais de shopping (hidrômetros e relógios de luz), os dígitos pretos são a parte inteira (ex: 1510) e os dígitos vermelhos são frações/decimais. NÃO confunda os dígitos inteiros pretos com decimais (se houver 4 dígitos pretos "1510", o valor é 1510, NÃO é 1,510 nem 1.51).
-4. IGNORE número de série, ano, modelo, tensão (ex: 220V, 380V), amperagem ou código de barras.
-5. Se o rolete mecânico estiver entre dois números, use o dígito mais baixo já completado.
-6. Responda ESTRITAMENTE em formato JSON com esta estrutura:
+1. REGRA CRÍTICA - NÚMEROS VERMELHOS SÃO SEMPRE DESCARTADOS:
+   • Em medidores de água (hidrômetros), gás e energia elétrica, os dígitos VERMELHOS (roletes com fundo vermelho, números em vermelho, ponteiros vermelhos ou dígitos à direita de uma vírgula/faixa vermelha) representam frações decimais (litros, décimos, centésimos).
+   • No rateio e medição de shopping centers, ESSES VALORES DECIMAIS VERMELHOS SÃO SEMPRE DESCARTADOS E IGNORADOS!
+   • NUNCA, SOB HIPÓTESE ALGUMA, INCLUA OS DÍGITOS VERMELHOS NA LEITURA!
+   • NUNCA concatene os números vermelhos aos pretos!
+     - Exemplo 1: Se o medidor tem roletes pretos "0142" e rolete vermelho "8", a leitura correta é 142 (NUNCA 1428 e NUNCA 142.8).
+     - Exemplo 2: Se o medidor tem roletes pretos "0452" e roletes vermelhos "78", a leitura correta é 452 (NUNCA 45278 e NUNCA 452.78).
+     - Exemplo 3: Se o relógio marcar "1510" em preto e "5" em vermelho, retorne ESTRITAMENTE 1510. O "5" vermelho é descartado!
+   • Extraia ESTRITAMENTE a sequência de dígitos PRETOS principais (número inteiro).
+   • Se houver vírgula separando roletes pretos de roletes vermelhos, considere APENAS a parte inteira à esquerda da vírgula.
+
+2. NUNCA use ponto ou vírgula como separador de milhar no número. "reading" DEVE ser um número inteiro puro (exemplo: 1510 e JAMAIS 1.510 para significar mil quinhentos e dez). Se o relógio marcar 1510 nos dígitos pretos, retorne 1510.
+
+3. IGNORE número de série, ano, modelo, tensão (ex: 220V, 380V), amperagem ou código de barras.
+
+4. Se o rolete mecânico preto estiver entre dois números, use o dígito mais baixo já completado.
+
+5. Responda ESTRITAMENTE em formato JSON com esta estrutura:
 {
   "reading": 12345,
   "detectedDigits": "12345",
   "meterType": "digital" | "analogico_rolete" | "analogico_ponteiro" | "indeterminado",
   "confidence": "high" | "medium" | "low",
-  "explanation": "Leitura identificada no mostrador principal: 12345"
+  "explanation": "Leitura dos dígitos pretos inteiros: 12345 (números vermelhos decimais descartados)"
 }
 
 Se o visor estiver ilegível, escuro ou sem medidor visível:
@@ -446,21 +458,33 @@ Você é um leitor óptico (OCR) industrial de alta precisão para medidores de 
 Analise a imagem deste medidor (relógio analógico de roletes, ponteiros ou display digital LCD/LED).
 
 OBJETIVO PRINCIPAL:
-Identificar e extrair com máxima acurácia o número atual acumulado de consumo exibido no display/contador.
+Identificar e extrair com máxima acurácia o número atual acumulado de consumo exibido no mostrador principal.
 ${formatContextForPrompt(context) ? '\n' + formatContextForPrompt(context) + '\n' : ''}
 REGRAS OBRIGATÓRIAS DE LEITURA E FORMATAÇÃO:
-1. Extraia o valor do consumo acumulado principal exibido no mostrador.
-2. NUNCA use ponto ou vírgula como separador de milhar no número. "reading" DEVE ser um número numérico puro (exemplo: 1510 e JAMAIS 1.510 para significar mil quinhentos e dez). Se o relógio marcar 1510 kWh ou m³, retorne 1510.
-3. Foque prioritariamente nos dígitos pretos inteiros. Na grande maioria dos medidores industriais de shopping (hidrômetros e relógios de luz), os dígitos pretos são a parte inteira (ex: 1510) e os dígitos vermelhos são frações/decimais. NÃO confunda os dígitos inteiros pretos com decimais (se houver 4 dígitos pretos "1510", o valor é 1510, NÃO é 1,510 nem 1.51).
-4. IGNORE qualquer número de série, ano de fabricação, código de barras, modelo, tensão (ex: 220V, 380V), amperagem ou constante do disco.
-5. Se o relógio estiver entre dois números num rolete, considere o dígito mais baixo já ultrapassado (regra padrão de leituristas de utilidades).
-6. Responda ESTRITAMENTE em formato JSON compatível com:
+1. REGRA CRÍTICA - NÚMEROS VERMELHOS SÃO SEMPRE DESCARTADOS:
+   • Em medidores de água (hidrômetros), gás e energia elétrica, os dígitos VERMELHOS (roletes com fundo vermelho, números em vermelho, ponteiros vermelhos ou dígitos à direita de uma vírgula/faixa vermelha) representam frações decimais (litros, décimos, centésimos).
+   • No rateio e medição de shopping centers, ESSES VALORES DECIMAIS VERMELHOS SÃO SEMPRE DESCARTADOS E IGNORADOS!
+   • NUNCA, SOB HIPÓTESE ALGUMA, INCLUA OS DÍGITOS VERMELHOS NA LEITURA!
+   • NUNCA concatene os números vermelhos aos pretos!
+     - Exemplo 1: Se o medidor tem roletes pretos "0142" e rolete vermelho "8", a leitura correta é 142 (NUNCA 1428 e NUNCA 142.8).
+     - Exemplo 2: Se o medidor tem roletes pretos "0452" e roletes vermelhos "78", a leitura correta é 452 (NUNCA 45278 e NUNCA 452.78).
+     - Exemplo 3: Se o relógio marcar "1510" em preto e "5" em vermelho, retorne ESTRITAMENTE 1510. O "5" vermelho é descartado!
+   • Extraia ESTRITAMENTE a sequência de dígitos PRETOS principais (número inteiro).
+   • Se houver vírgula separando roletes pretos de roletes vermelhos, considere APENAS a parte inteira à esquerda da vírgula.
+
+2. NUNCA use ponto ou vírgula como separador de milhar no número. "reading" DEVE ser um número inteiro puro (exemplo: 1510 e JAMAIS 1.510 para significar mil quinhentos e dez). Se o relógio marcar 1510 nos dígitos pretos, retorne 1510.
+
+3. IGNORE qualquer número de série, ano de fabricação, código de barras, modelo, tensão (ex: 220V, 380V), amperagem ou constante do disco.
+
+4. Se o relógio estiver entre dois números num rolete preto, considere o dígito mais baixo já ultrapassado (regra padrão de leituristas de utilidades).
+
+5. Responda ESTRITAMENTE em formato JSON compatível com:
 {
   "reading": 12345,
   "detectedDigits": "12345",
   "meterType": "digital" | "analogico_rolete" | "analogico_ponteiro" | "indeterminado",
   "confidence": "high" | "medium" | "low",
-  "explanation": "Identificado no mostrador de roletes pretos principais: 12345"
+  "explanation": "Identificado no mostrador de roletes pretos inteiros: 12345 (números vermelhos decimais descartados)"
 }
 
 Se a imagem estiver sem medidor, com desfoque total ou ilegível:
@@ -558,7 +582,8 @@ Se a imagem estiver sem medidor, com desfoque total ou ilegível:
   /**
    * Sanitiza e normaliza números extraídos por OCR.
    * Evita que separadores de milhar como "1.510" ou "1,510" sejam interpretados
-   * como decimais pequenos (1.51), garantindo a grandeza real do medidor.
+   * como decimais pequenos (1.51), e garante que casas decimais de números vermelhos
+   * sejam totalmente descartadas, preservando estritamente a parte inteira dos dígitos pretos.
    */
   private parseOcrNumber(rawVal: any, detectedDigits?: any): number | null {
     if (typeof rawVal === 'number' && !isNaN(rawVal)) {
@@ -571,6 +596,14 @@ Se a imagem estiver sem medidor, com desfoque total ou ilegível:
         if (/^\d{1,3},\d{3}$/.test(digitsStr)) {
           return parseInt(digitsStr.replace(',', ''), 10);
         }
+        // Se a string tem decimal explícito (ex: "142,8" ou "142.8" ou "452,75"), descarta os decimais vermelhos
+        if (/^\d+[,.]\d{1,3}$/.test(digitsStr)) {
+          return parseInt(digitsStr.split(/[,.]/)[0], 10);
+        }
+      }
+      // Se for float (ex: 142.8 ou 1510.5), descarta a fração decimal vermelha
+      if (!Number.isInteger(rawVal)) {
+        return Math.floor(rawVal);
       }
       return rawVal;
     }
@@ -583,28 +616,35 @@ Se a imagem estiver sem medidor, com desfoque total ou ilegível:
       return parseInt(str.replace('.', ''), 10);
     }
 
-    // Caso brasileiro com milhar e decimal: "1.510,5" -> 1510.5
-    if (str.includes('.') && str.includes(',')) {
-      const clean = str.replace(/\./g, '').replace(',', '.');
-      const n = parseFloat(clean);
-      return isNaN(n) ? null : n;
-    }
-
     // Caso com vírgula de milhar: "1,510" -> 1510
     if (/^\d{1,3},\d{3}$/.test(str)) {
       return parseInt(str.replace(',', ''), 10);
     }
 
-    // Se tiver apenas vírgula com 1 ou 2 casas (ex: "1510,5") -> 1510.5
-    if (str.includes(',')) {
-      const clean = str.replace(',', '.');
-      const n = parseFloat(clean);
+    // Caso com milhar e decimal: "1.510,5" -> descarta fração decimal vermelha: 1510
+    if (str.includes('.') && str.includes(',')) {
+      const parts = str.split(',');
+      const intPart = parts[0].replace(/\./g, '');
+      const n = parseInt(intPart, 10);
       return isNaN(n) ? null : n;
     }
 
-    const match = str.match(/[\d.]+/);
+    // Se tiver vírgula ou ponto decimal de 1 a 3 casas (ex: "142,8" ou "142.8" ou "452,75") -> descarta fração vermelha
+    if (/^\d+[,.]\d{1,3}$/.test(str)) {
+      const intPart = str.split(/[,.]/)[0];
+      const n = parseInt(intPart, 10);
+      return isNaN(n) ? null : n;
+    }
+
+    if (str.includes(',')) {
+      const intPart = str.split(',')[0];
+      const n = parseInt(intPart, 10);
+      return isNaN(n) ? null : n;
+    }
+
+    const match = str.match(/\d+/);
     if (match) {
-      const parsed = parseFloat(match[0]);
+      const parsed = parseInt(match[0], 10);
       return isNaN(parsed) ? null : parsed;
     }
 

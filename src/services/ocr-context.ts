@@ -55,6 +55,10 @@ export function formatContextForPrompt(ctx?: OcrReadingContext | null): string {
       `- Leitura do mês anterior deste medidor: ${ctx.previousReading} (${ctx.expectedIntDigits} dígitos inteiros). ` +
       `A leitura atual costuma ser maior ou igual a esse valor e ter o mesmo número de dígitos.`
     );
+    lines.push(
+      `- NÚMEROS VERMELHOS: Se o mostrador tiver dígitos vermelhos (frações decimais), descarte-os totalmente! ` +
+      `A leitura atual deve considerar apenas os ${ctx.expectedIntDigits} dígitos pretos inteiros (nunca concatene dígitos vermelhos).`
+    );
   }
   if (ctx.meterType) {
     lines.push(`- Tipo de medidor já identificado nesta loja: ${ctx.meterType}.`);
