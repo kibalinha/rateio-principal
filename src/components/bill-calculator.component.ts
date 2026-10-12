@@ -53,203 +53,260 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
   template: `
     <div class="space-y-6 pb-20 md:pb-0">
       
-      <!-- Top Bar: Month Selection, Utility Pills & Actions (Static flow on mobile & desktop so it doesn't freeze on screen) -->
-      <div class="bg-white dark:bg-slate-900 p-3.5 md:p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-3 transition-colors">
+      <!-- Top Bar: Month Selection, Utility Pills & Actions (Terceiro Pilar) -->
+      <div class="bg-white dark:bg-slate-900 p-3.5 md:p-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col xl:flex-row justify-between items-stretch xl:items-center gap-3.5 transition-colors">
+        
         <div class="flex items-center justify-between gap-3 flex-wrap">
-          <div class="flex flex-col">
-            <label class="text-[10px] md:text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Mês de Referência</label>
-            <input type="month" 
-              [ngModel]="selectedMonth()" 
-              (ngModelChange)="onMonthChange($event)"
-              class="px-2.5 py-1.5 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg focus:ring-2 focus:ring-teal-500 font-medium text-slate-700 dark:text-slate-200 text-xs sm:text-sm">
+          
+          <!-- SELETOR MENSAL DE REFERÊNCIA PREMIUM COM CONTROLES TEMPORAIS -->
+          <div class="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/90 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xs">
+            
+            <!-- Botão Mês Anterior -->
+            <button type="button" 
+              (click)="goToPreviousMonth()" 
+              class="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white flex items-center justify-center font-bold text-xs sm:text-sm shadow-xs transition-all active:scale-95 cursor-pointer border border-slate-200/80 dark:border-slate-600/80"
+              title="Ir para o mês anterior">
+              ◀
+            </button>
+
+            <!-- Card Central do Mês com Input Nativo Integrado -->
+            <div class="flex items-center gap-1.5 px-2 py-0.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xs">
+              <span class="text-xs">📅</span>
+              <div class="flex flex-col text-left">
+                <span class="text-[9px] uppercase font-black text-slate-400 dark:text-slate-500 tracking-wider">Mês de Referência</span>
+                <div class="flex items-center gap-1">
+                  <input type="month" 
+                    [ngModel]="selectedMonth()" 
+                    (ngModelChange)="onMonthChange($event)"
+                    class="bg-transparent border-none text-slate-800 dark:text-slate-100 font-extrabold text-xs sm:text-sm focus:ring-0 p-0 cursor-pointer outline-none font-mono"
+                    title="Clique para escolher qualquer mês no calendário">
+                  @if (isLocked()) {
+                    <span class="text-[9px] bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 px-1 py-0.2 rounded-md font-mono font-bold" title="Mês Congelado e Fechado para cobrança">🔒 Fechado</span>
+                  }
+                </div>
+              </div>
+            </div>
+
+            <!-- Botão Próximo Mês -->
+            <button type="button" 
+              (click)="goToNextMonth()" 
+              class="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white flex items-center justify-center font-bold text-xs sm:text-sm shadow-xs transition-all active:scale-95 cursor-pointer border border-slate-200/80 dark:border-slate-600/80"
+              title="Ir para o próximo mês">
+              ▶
+            </button>
+
+            <!-- Botão 'Hoje' / Mês Atual -->
+            @if (!isCurrentMonth()) {
+              <button type="button" 
+                (click)="goToCurrentMonth()" 
+                class="px-2 py-1 rounded-xl bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 hover:bg-teal-100 dark:hover:bg-teal-900/60 text-[10px] font-extrabold cursor-pointer transition-all shadow-2xs whitespace-nowrap"
+                title="Voltar para o mês corrente atual">
+                Hoje
+              </button>
+            }
           </div>
 
-          <!-- Utility Selector Pills with Counters -->
-          <div class="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+          <!-- ALTERNADOR DE CONCESSIONÁRIAS / UTILITIES SEGMENTED CONTROL -->
+          <div class="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/90 p-1 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xs">
+            
+            <!-- Energia / Luz -->
             <button type="button" (click)="setUtility('luz')"
-              [class]="utilityType() === 'luz' ? 'bg-teal-600 text-white shadow-xs font-bold' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 font-medium'"
-              class="px-2.5 py-1.5 rounded-lg text-xs transition-all flex items-center gap-1.5 cursor-pointer">
-              <span>⚡ Luz</span>
-              <span class="text-[10px] px-1.5 py-0.2 rounded-full font-mono"
-                    [class]="utilityType() === 'luz' ? 'bg-teal-700 text-teal-100' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'">
+              [class]="utilityType() === 'luz' 
+                ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-black shadow-md ring-2 ring-amber-400/40' 
+                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-700 font-bold'"
+              class="px-3 py-1.5 rounded-xl text-xs transition-all flex items-center gap-1.5 cursor-pointer">
+              <span>⚡ Energia</span>
+              <span class="text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold"
+                    [class]="utilityType() === 'luz' ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'">
                 {{ utilityStats().luz.completed }}/{{ utilityStats().luz.total }}
               </span>
             </button>
+
+            <!-- Água -->
             <button type="button" (click)="setUtility('agua')"
-              [class]="utilityType() === 'agua' ? 'bg-blue-600 text-white shadow-xs font-bold' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 font-medium'"
-              class="px-2.5 py-1.5 rounded-lg text-xs transition-all flex items-center gap-1.5 cursor-pointer">
+              [class]="utilityType() === 'agua' 
+                ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-black shadow-md ring-2 ring-blue-400/40' 
+                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-700 font-bold'"
+              class="px-3 py-1.5 rounded-xl text-xs transition-all flex items-center gap-1.5 cursor-pointer">
               <span>💧 Água</span>
-              <span class="text-[10px] px-1.5 py-0.2 rounded-full font-mono"
-                    [class]="utilityType() === 'agua' ? 'bg-blue-700 text-blue-100' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'">
+              <span class="text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold"
+                    [class]="utilityType() === 'agua' ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'">
                 {{ utilityStats().agua.completed }}/{{ utilityStats().agua.total }}
               </span>
             </button>
+
+            <!-- Gás -->
             <button type="button" (click)="setUtility('gas')"
-              [class]="utilityType() === 'gas' ? 'bg-red-600 text-white shadow-xs font-bold' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 font-medium'"
-              class="px-2.5 py-1.5 rounded-lg text-xs transition-all flex items-center gap-1.5 cursor-pointer">
+              [class]="utilityType() === 'gas' 
+                ? 'bg-gradient-to-r from-orange-500 to-rose-600 text-white font-black shadow-md ring-2 ring-rose-400/40' 
+                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-700 font-bold'"
+              class="px-3 py-1.5 rounded-xl text-xs transition-all flex items-center gap-1.5 cursor-pointer">
               <span>🔥 Gás</span>
-              <span class="text-[10px] px-1.5 py-0.2 rounded-full font-mono"
-                    [class]="utilityType() === 'gas' ? 'bg-red-700 text-red-100' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'">
+              <span class="text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold"
+                    [class]="utilityType() === 'gas' ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'">
                 {{ utilityStats().gas.completed }}/{{ utilityStats().gas.total }}
               </span>
             </button>
           </div>
           
-          <!-- Auto-Save Status Indicator -->
-          <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors"
-              [class]="saveStatus() === 'saving' ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800' : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'">
-            @if (saveStatus() === 'saving') {
-              <svg class="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              <span>Salvando</span>
+          <!-- AUTO-SAVE & STATUS DE REDE -->
+          <div class="flex items-center gap-2">
+            <!-- Indicador Auto-Save -->
+            <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs border"
+                [class]="saveStatus() === 'saving' 
+                  ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700' 
+                  : 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'">
+              @if (saveStatus() === 'saving') {
+                <svg class="animate-spin h-3.5 w-3.5 text-amber-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span>Salvando...</span>
+              } @else {
+                <span class="text-emerald-500 font-bold">✓</span>
+                <span class="hidden sm:inline">Salvo</span>
+              }
+            </div>
+
+            <!-- Pill IndexedDB Offline / Sincronização -->
+            @if (!indexedDb.isOnline()) {
+              <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 shadow-2xs"
+                   title="Modo offline ativo: as leituras são gravadas com segurança no IndexedDB e serão sincronizadas quando houver conexão">
+                <span>📡 Offline</span>
+                @if (indexedDb.pendingCount() > 0) {
+                  <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-200 dark:bg-amber-900 text-amber-950 dark:text-amber-100 font-mono">
+                    {{ indexedDb.pendingCount() }} pend.
+                  </span>
+                }
+              </div>
+            } @else if (indexedDb.pendingCount() > 0) {
+              <button type="button" 
+                (click)="indexedDb.syncPendingData()"
+                [disabled]="indexedDb.syncStatus() === 'syncing'"
+                class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-100 dark:bg-blue-950/70 text-blue-900 dark:text-blue-200 border border-blue-300 dark:border-blue-700 hover:bg-blue-200 cursor-pointer transition-all shadow-xs"
+                title="Clique para sincronizar agora com o sistema">
+                @if (indexedDb.syncStatus() === 'syncing') {
+                  <span class="animate-spin text-xs">⏳</span>
+                  <span>Sincronizando...</span>
+                } @else {
+                  <span>🔄 Sincronizar ({{ indexedDb.pendingCount() }})</span>
+                }
+              </button>
             } @else {
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-              </svg>
-              <span>Salvo</span>
+              <div class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+                   title="Banco local IndexedDB sincronizado">
+                <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span class="text-[11px] font-mono">IndexedDB OK</span>
+              </div>
             }
           </div>
 
-          <!-- IndexedDB Offline & Auto-Sync Pill -->
-          @if (!indexedDb.isOnline()) {
-            <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300"
-                 title="Modo offline ativo: as leituras são gravadas com segurança no IndexedDB e serão sincronizadas quando houver conexão">
-              <span>📡 Offline (IndexedDB)</span>
-              @if (indexedDb.pendingCount() > 0) {
-                <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-200 text-amber-950 font-mono">
-                  {{ indexedDb.pendingCount() }} pendente(s)
-                </span>
-              }
-            </div>
-          } @else if (indexedDb.pendingCount() > 0) {
-            <button type="button" 
-              (click)="indexedDb.syncPendingData()"
-              [disabled]="indexedDb.syncStatus() === 'syncing'"
-              class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-900 border border-blue-300 hover:bg-blue-200 cursor-pointer transition-colors shadow-xs"
-              title="Clique para sincronizar agora com o sistema">
-              @if (indexedDb.syncStatus() === 'syncing') {
-                <span class="animate-spin text-xs">⏳</span>
-                <span>Sincronizando...</span>
-              } @else {
-                <span>🔄 Sincronizar ({{ indexedDb.pendingCount() }})</span>
-              }
-            </button>
-          } @else {
-            <div class="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-800 border border-emerald-200"
-                 title="Banco local IndexedDB sincronizado">
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-              <span class="text-[11px]">IndexedDB OK</span>
-            </div>
-          }
         </div>
 
-        <div class="flex items-center gap-2 justify-between lg:justify-end">
-           <span class="hidden md:inline text-xs text-slate-400 italic">
-             {{ lastSaved() ? 'Sincronizado: ' + (lastSaved() | date:'shortTime') : '' }}
-           </span>
+        <!-- AÇÕES EXECUTIVAS E CONTÁBEIS -->
+        <div class="flex items-center gap-2 justify-between xl:justify-end flex-wrap">
+          <span class="hidden md:inline text-xs text-slate-400 italic font-mono">
+            {{ lastSaved() ? 'Sincronizado: ' + (lastSaved() | date:'shortTime') : '' }}
+          </span>
 
+          <!-- Botão Qualidade do OCR (apenas administrador) -->
+          @if (authService.isAdmin()) {
+            <button
+              type="button"
+              (click)="showOcrQuality.set(true)"
+              class="px-3 py-2 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+              title="Ver a taxa de acerto do OCR e onde ele mais erra">
+              <span>📊</span>
+              <span class="hidden sm:inline">Qualidade OCR</span>
+            </button>
+          }
 
-           <!-- Botão Qualidade do OCR (apenas administrador) -->
-           @if (authService.isAdmin()) {
-             <button
-               type="button"
-               (click)="showOcrQuality.set(true)"
-               class="px-3 py-2 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-               title="Ver a taxa de acerto do OCR e onde ele mais erra">
-               <span>📊</span>
-               <span class="hidden sm:inline">Qualidade OCR</span>
-             </button>
-           }
+          <!-- Botão Processar OCR em Lote -->
+          @if (pendingOcrCount() > 0 || isBatchOcrRunning()) {
+            <button 
+              type="button"
+              (click)="openBatchOcrModal()" 
+              [disabled]="isLocked()"
+              class="px-3 py-2 bg-gradient-to-r from-indigo-600 to-teal-600 hover:from-indigo-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+              [class.animate-pulse]="isBatchOcrRunning()"
+              title="Processar fotos pendentes em lote por inteligência artificial">
+              @if (isBatchOcrRunning()) {
+                <span class="animate-spin text-xs">⏳</span>
+                <span>{{ batchOcrProgress().current }}/{{ batchOcrProgress().total }}</span>
+              } @else {
+                <span>⚡</span>
+                <span class="hidden sm:inline">Processar Fotos</span>
+                <span class="bg-white/20 px-1.5 py-0.2 rounded-full font-mono text-[10px]">{{ pendingOcrCount() }}</span>
+              }
+            </button>
+          }
 
-            <!-- Botão Processar OCR em Lote -->
-            @if (pendingOcrCount() > 0 || isBatchOcrRunning()) {
-              <button 
-                type="button"
-                (click)="openBatchOcrModal()" 
-                [disabled]="isLocked()"
-                class="px-3 py-2 bg-gradient-to-r from-indigo-600 to-teal-600 hover:from-indigo-700 hover:to-teal-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-                [class.animate-pulse]="isBatchOcrRunning()"
-                title="Processar fotos pendentes em lote por inteligência artificial">
-                @if (isBatchOcrRunning()) {
-                  <span class="animate-spin text-xs">⏳</span>
-                  <span>{{ batchOcrProgress().current }}/{{ batchOcrProgress().total }}</span>
-                } @else {
-                  <span>⚡</span>
-                  <span class="hidden sm:inline">Processar Fotos</span>
-                  <span class="bg-white/20 px-1.5 py-0.2 rounded-full font-mono text-[10px]">{{ pendingOcrCount() }}</span>
-                }
-              </button>
+          <!-- Botão Checklist de Auditoria e Fechamento (Admin) -->
+          @if (authService.isAdmin()) {
+            <button 
+              type="button"
+              (click)="openClosingChecklist()" 
+              [class]="isLocked() ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-800 hover:bg-amber-200' : (closingChecklist().canFreeze ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-200')"
+              class="px-3.5 py-2 border rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+              title="Auditoria contábil e checklist de fechamento de mês">
+              <span>🛡️</span>
+              <span class="hidden sm:inline">Auditoria & Fechamento</span>
+              <span class="sm:hidden">Auditoria</span>
+              @if (isLocked()) {
+                <span class="text-[10px] bg-amber-200 dark:bg-amber-900 text-amber-950 dark:text-amber-100 px-1.5 py-0.2 rounded font-mono font-bold">🔒 Fechado</span>
+              } @else if (closingChecklist().canFreeze) {
+                <span class="text-[10px] bg-emerald-800 text-white px-1.5 py-0.2 rounded font-mono font-bold">Pronto</span>
+              } @else {
+                <span class="text-[10px] bg-amber-400 text-slate-950 px-1.5 py-0.2 rounded font-mono font-bold">{{ closingChecklist().readings.pendingStores + closingChecklist().anomalies.uninspectedCount }} pend.</span>
+              }
+            </button>
+          }
+
+          <!-- Botão Exportar Excel no Topo -->
+          <button 
+            type="button"
+            (click)="exportToExcel()" 
+            [disabled]="isExportingExcel() || tableData().length === 0"
+            class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed whitespace-nowrap"
+            title="Exportar demonstrativo completo de rateio em planilha Excel (.xlsx)">
+            @if (isExportingExcel()) {
+              <span class="animate-spin text-xs">⏳</span>
+              <span>Exportando...</span>
+            } @else {
+              <span>📊</span>
+              <span class="hidden sm:inline">Exportar Excel</span>
+              <span class="sm:hidden">Excel</span>
             }
+          </button>
 
-           <!-- Botão Checklist de Auditoria e Fechamento (Admin) -->
-           @if (authService.isAdmin()) {
-             <button 
-               type="button"
-               (click)="openClosingChecklist()" 
-               [class]="isLocked() ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-800 hover:bg-amber-200' : (closingChecklist().canFreeze ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-200')"
-               class="px-3.5 py-2 border rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-               title="Auditoria contábil e checklist de fechamento de mês">
-               <span>🛡️</span>
-               <span class="hidden sm:inline">Auditoria & Fechamento</span>
-               <span class="sm:hidden">Auditoria</span>
-               @if (isLocked()) {
-                 <span class="text-[10px] bg-amber-200 dark:bg-amber-900 text-amber-950 dark:text-amber-100 px-1.5 py-0.2 rounded font-mono font-bold">🔒 Fechado</span>
-               } @else if (closingChecklist().canFreeze) {
-                 <span class="text-[10px] bg-emerald-800 text-white px-1.5 py-0.2 rounded font-mono font-bold">Pronto</span>
-               } @else {
-                 <span class="text-[10px] bg-amber-400 text-slate-950 px-1.5 py-0.2 rounded font-mono font-bold">{{ closingChecklist().readings.pendingStores + closingChecklist().anomalies.uninspectedCount }} pend.</span>
-               }
-             </button>
-           }
+          <!-- Botão Exportar Pacote ZIP Completo -->
+          <button 
+            type="button"
+            (click)="exportPackageZip()" 
+            [disabled]="isExportingZip() || tableData().length === 0"
+            class="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed whitespace-nowrap border border-slate-700"
+            title="Exportar pacote completo de auditoria em arquivo ZIP contendo a planilha Excel (.xlsx) e as fotos dos medidores organizadas por Loja/LUC">
+            @if (isExportingZip()) {
+              <span class="animate-spin text-xs">⏳</span>
+              <span>Gerando ZIP...</span>
+            } @else {
+              <span>📦</span>
+              <span class="hidden sm:inline">Pacote ZIP</span>
+              <span class="sm:hidden">ZIP</span>
+            }
+          </button>
 
-           <!-- Botão Exportar Excel no Topo -->
-           <button 
-             type="button"
-             (click)="exportToExcel()" 
-             [disabled]="isExportingExcel() || tableData().length === 0"
-             class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed whitespace-nowrap ml-auto"
-             title="Exportar demonstrativo completo de rateio em planilha Excel (.xlsx)">
-             @if (isExportingExcel()) {
-               <span class="animate-spin text-xs">⏳</span>
-               <span>Exportando...</span>
-             } @else {
-               <span>📊</span>
-               <span class="hidden sm:inline">Exportar Excel</span>
-               <span class="sm:hidden">Excel</span>
-             }
-           </button>
-
-           <!-- Botão Exportar Pacote ZIP Completo -->
-           <button 
-             type="button"
-             (click)="exportPackageZip()" 
-             [disabled]="isExportingZip() || tableData().length === 0"
-             class="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed whitespace-nowrap border border-slate-700"
-             title="Exportar pacote completo de auditoria em arquivo ZIP contendo a planilha Excel (.xlsx) e as fotos dos medidores organizadas por Loja/LUC">
-             @if (isExportingZip()) {
-               <span class="animate-spin text-xs">⏳</span>
-               <span>Gerando ZIP...</span>
-             } @else {
-               <span>📦</span>
-               <span class="hidden sm:inline">Pacote ZIP (Excel + Fotos)</span>
-               <span class="sm:hidden">ZIP</span>
-             }
-           </button>
-
-           <!-- Botão Apagar Lojas deste Mês (apenas deste tipo e mês) -->
-           @if (authService.canConfigureBill() && !isLocked() && activeStores().length > 0) {
-             <button 
-               type="button"
-               (click)="confirmClearMonthStores()" 
-               class="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800 rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-               title="Apagar todas as lojas de {{ utilityType() === 'luz' ? 'Energia/Luz' : (utilityType() === 'agua' ? 'Água' : 'Gás') }} deste mês ({{ selectedMonth() }})">
-               <span>🗑️</span>
-               <span class="hidden sm:inline">Apagar lojas deste mês</span>
-               <span class="sm:hidden">Apagar lojas</span>
-             </button>
-           }
+          <!-- Botão Apagar Lojas deste Mês (apenas deste tipo e mês) -->
+          @if (authService.canConfigureBill() && !isLocked() && activeStores().length > 0) {
+            <button 
+              type="button"
+              (click)="confirmClearMonthStores()" 
+              class="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+              title="Apagar todas as lojas de {{ utilityType() === 'luz' ? 'Energia/Luz' : (utilityType() === 'agua' ? 'Água' : 'Gás') }} deste mês ({{ selectedMonth() }})">
+              <span>🗑️</span>
+              <span class="hidden sm:inline">Apagar lojas</span>
+            </button>
+          }
         </div>
       </div>
 
@@ -2970,6 +3027,23 @@ export class BillCalculatorComponent implements OnDestroy {
 
   // Date State
   selectedMonth = signal<string>(new Date().toISOString().substring(0, 7)); // YYYY-MM
+  
+  selectedMonthFormatted = computed(() => {
+    const m = this.selectedMonth();
+    if (!m || !m.includes('-')) return m;
+    const [yearStr, monthStr] = m.split('-');
+    const monthNum = parseInt(monthStr, 10);
+    const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+    const name = months[monthNum - 1] || monthStr;
+    return `${name} de ${yearStr}`;
+  });
+
+  isCurrentMonth = computed(() => {
+    const now = new Date();
+    const current = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    return this.selectedMonth() === current;
+  });
+
   dataLoaded = signal(false);
   lastSaved = signal<string | null>(null);
 
@@ -3383,6 +3457,28 @@ export class BillCalculatorComponent implements OnDestroy {
     this.isProgrammaticLoading = true;
     this.saveStatus.set('saved');
     this.selectedMonth.set(newMonth);
+  }
+
+  goToPreviousMonth() {
+    const current = this.selectedMonth();
+    const [year, month] = current.split('-').map(Number);
+    const d = new Date(year, month - 2, 1);
+    const prevStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    this.onMonthChange(prevStr);
+  }
+
+  goToNextMonth() {
+    const current = this.selectedMonth();
+    const [year, month] = current.split('-').map(Number);
+    const d = new Date(year, month, 1);
+    const nextStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    this.onMonthChange(nextStr);
+  }
+
+  goToCurrentMonth() {
+    const now = new Date();
+    const currentStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    this.onMonthChange(currentStr);
   }
 
   createDefaultReading(): StoreReading {
