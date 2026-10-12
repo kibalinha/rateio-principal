@@ -33,3 +33,6 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+# Agent Customizations & Skills (Local)
+.agents/
