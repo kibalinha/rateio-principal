@@ -60,13 +60,6 @@ import {
               <span class="hidden sm:inline">Atualizar</span>
             </button>
 
-            <!-- Botão Zerar Lojas -->
-            <button (click)="confirmClearAllStores()" 
-              title="Apagar todas as lojas para cadastrar do zero"
-              class="px-3 py-2 rounded-lg bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer">
-              <span>🗑️</span>
-              <span class="hidden sm:inline">Zerar Lojas</span>
-            </button>
 
             <!-- Botão Nova Loja -->
             <button (click)="toggleForm()" 
@@ -898,12 +891,6 @@ export class StoreManagerComponent {
     await this.storeService.refreshStoresFromSupabase();
   }
 
-  async confirmClearAllStores() {
-    if (confirm('Tem certeza que deseja apagar TODAS as lojas cadastradas? Esta ação apagará todas as lojas para você cadastrar as verdadeiras do zero.')) {
-      await this.storeService.clearAllStores();
-      this.indexedDb.showToast('🗑️ Todas as lojas foram apagadas com sucesso.');
-    }
-  }
 
   async loadDemoStores() {
     await this.storeService.loadDemoStores();
