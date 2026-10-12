@@ -56,8 +56,8 @@ export function formatContextForPrompt(ctx?: OcrReadingContext | null): string {
       `A leitura atual costuma ser maior ou igual a esse valor e ter o mesmo número de dígitos.`
     );
     lines.push(
-      `- NÚMEROS VERMELHOS: Se o mostrador tiver dígitos vermelhos (frações decimais), descarte-os totalmente! ` +
-      `A leitura atual deve considerar apenas os ${ctx.expectedIntDigits} dígitos pretos inteiros (nunca concatene dígitos vermelhos).`
+      `- NÚMEROS VERMELHOS vs PONTO/VÍRGULA: Se o mostrador tiver dígitos vermelhos (frações decimais), descarte-os totalmente! ` +
+      `Porém, se houver ponto ou vírgula entre dígitos normais/pretos (ex: 456.567 ou 456,567), considere o valor inteiro completo (456567).`
     );
   }
   if (ctx.meterType) {

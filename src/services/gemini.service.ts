@@ -316,18 +316,22 @@ OBJETIVO:
 Identificar e extrair o valor numérico acumulado atual de consumo no mostrador principal.
 ${formatContextForPrompt(context) ? '\n' + formatContextForPrompt(context) + '\n' : ''}
 REGRAS OBRIGATÓRIAS DE LEITURA E FORMATAÇÃO:
-1. REGRA CRÍTICA - NÚMEROS VERMELHOS SÃO SEMPRE DESCARTADOS:
-   • Em medidores de água (hidrômetros), gás e energia elétrica, os dígitos VERMELHOS (roletes com fundo vermelho, números em vermelho, ponteiros vermelhos ou dígitos à direita de uma vírgula/faixa vermelha) representam frações decimais (litros, décimos, centésimos).
-   • No rateio e medição de shopping centers, ESSES VALORES DECIMAIS VERMELHOS SÃO SEMPRE DESCARTADOS E IGNORADOS!
-   • NUNCA, SOB HIPÓTESE ALGUMA, INCLUA OS DÍGITOS VERMELHOS NA LEITURA!
+1. REGRA DE NÚMEROS VERMELHOS (APENAS COR FÍSICA VERMELHA):
+   • Em medidores mecânicos/analógicos de água (hidrômetros) ou gás com roletes coloridos, descarte APENAS os dígitos que tiverem fundo VERMELHO ou números impressos em VERMELHO (frações decimais).
    • NUNCA concatene os números vermelhos aos pretos!
-     - Exemplo 1: Se o medidor tem roletes pretos "0142" e rolete vermelho "8", a leitura correta é 142 (NUNCA 1428 e NUNCA 142.8).
-     - Exemplo 2: Se o medidor tem roletes pretos "0452" e roletes vermelhos "78", a leitura correta é 452 (NUNCA 45278 e NUNCA 452.78).
-     - Exemplo 3: Se o relógio marcar "1510" em preto e "5" em vermelho, retorne ESTRITAMENTE 1510. O "5" vermelho é descartado!
-   • Extraia ESTRITAMENTE a sequência de dígitos PRETOS principais (número inteiro).
-   • Se houver vírgula separando roletes pretos de roletes vermelhos, considere APENAS a parte inteira à esquerda da vírgula.
+     - Exemplo 1: Se o medidor tem roletes pretos "0142" e rolete vermelho "8", a leitura correta é 142 (o dígito vermelho é descartado).
+     - Exemplo 2: Se o medidor tem roletes pretos "0452" e roletes vermelhos "78", a leitura correta é 452.
+   • A regra de descarte aplica-se EXCLUSIVAMENTE a números com COR VERMELHA no mostrador!
 
-2. NUNCA use ponto ou vírgula como separador de milhar no número. "reading" DEVE ser um número inteiro puro (exemplo: 1510 e JAMAIS 1.510 para significar mil quinhentos e dez). Se o relógio marcar 1510 nos dígitos pretos, retorne 1510.
+2. REGRA CRÍTICA PARA PONTO (.) OU VÍRGULA (,) NO MOSTRADOR (EX: 456.567):
+   • Em medidores de energia elétrica ou visores digitais LCD/LED, números exibidos com ponto ou vírgula (como "456.567", "456,567" ou "123.456") NÃO são frações descartáveis!
+   • NUNCA descarte números após o ponto ou vírgula!
+   • Considere sempre o VALOR INTEIRO COMPLETO (unificando todos os dígitos):
+     - Se o mostrador exibir "456.567", a leitura DEVE ser 456567 (NUNCA descarte o 567 e NUNCA retorne 456).
+     - Se o mostrador exibir "456,567", a leitura DEVE ser 456567.
+     - Se o mostrador exibir "1.510", a leitura DEVE ser 1510.
+     - Se o mostrador exibir "000456.567", a leitura DEVE ser 456567.
+   • O campo "reading" DEVE ser o número inteiro puro (exemplo: 456567 ou 1510).
 
 3. IGNORE número de série, ano, modelo, tensão (ex: 220V, 380V), amperagem ou código de barras.
 
@@ -461,18 +465,22 @@ OBJETIVO PRINCIPAL:
 Identificar e extrair com máxima acurácia o número atual acumulado de consumo exibido no mostrador principal.
 ${formatContextForPrompt(context) ? '\n' + formatContextForPrompt(context) + '\n' : ''}
 REGRAS OBRIGATÓRIAS DE LEITURA E FORMATAÇÃO:
-1. REGRA CRÍTICA - NÚMEROS VERMELHOS SÃO SEMPRE DESCARTADOS:
-   • Em medidores de água (hidrômetros), gás e energia elétrica, os dígitos VERMELHOS (roletes com fundo vermelho, números em vermelho, ponteiros vermelhos ou dígitos à direita de uma vírgula/faixa vermelha) representam frações decimais (litros, décimos, centésimos).
-   • No rateio e medição de shopping centers, ESSES VALORES DECIMAIS VERMELHOS SÃO SEMPRE DESCARTADOS E IGNORADOS!
-   • NUNCA, SOB HIPÓTESE ALGUMA, INCLUA OS DÍGITOS VERMELHOS NA LEITURA!
+1. REGRA DE NÚMEROS VERMELHOS (APENAS COR FÍSICA VERMELHA):
+   • Em medidores mecânicos/analógicos de água (hidrômetros) ou gás com roletes coloridos, descarte APENAS os dígitos que tiverem fundo VERMELHO ou números impressos em VERMELHO (frações decimais).
    • NUNCA concatene os números vermelhos aos pretos!
-     - Exemplo 1: Se o medidor tem roletes pretos "0142" e rolete vermelho "8", a leitura correta é 142 (NUNCA 1428 e NUNCA 142.8).
-     - Exemplo 2: Se o medidor tem roletes pretos "0452" e roletes vermelhos "78", a leitura correta é 452 (NUNCA 45278 e NUNCA 452.78).
-     - Exemplo 3: Se o relógio marcar "1510" em preto e "5" em vermelho, retorne ESTRITAMENTE 1510. O "5" vermelho é descartado!
-   • Extraia ESTRITAMENTE a sequência de dígitos PRETOS principais (número inteiro).
-   • Se houver vírgula separando roletes pretos de roletes vermelhos, considere APENAS a parte inteira à esquerda da vírgula.
+     - Exemplo 1: Se o medidor tem roletes pretos "0142" e rolete vermelho "8", a leitura correta é 142 (o dígito vermelho é descartado).
+     - Exemplo 2: Se o medidor tem roletes pretos "0452" e roletes vermelhos "78", a leitura correta é 452.
+   • A regra de descarte aplica-se EXCLUSIVAMENTE a números com COR VERMELHA no mostrador!
 
-2. NUNCA use ponto ou vírgula como separador de milhar no número. "reading" DEVE ser um número inteiro puro (exemplo: 1510 e JAMAIS 1.510 para significar mil quinhentos e dez). Se o relógio marcar 1510 nos dígitos pretos, retorne 1510.
+2. REGRA CRÍTICA PARA PONTO (.) OU VÍRGULA (,) NO MOSTRADOR (EX: 456.567):
+   • Em medidores de energia elétrica ou visores digitais LCD/LED, números exibidos com ponto ou vírgula (como "456.567", "456,567" ou "123.456") NÃO são frações descartáveis!
+   • NUNCA descarte números após o ponto ou vírgula!
+   • Considere sempre o VALOR INTEIRO COMPLETO (unificando todos os dígitos):
+     - Se o mostrador exibir "456.567", a leitura DEVE ser 456567 (NUNCA descarte o 567 e NUNCA retorne 456).
+     - Se o mostrador exibir "456,567", a leitura DEVE ser 456567.
+     - Se o mostrador exibir "1.510", a leitura DEVE ser 1510.
+     - Se o mostrador exibir "000456.567", a leitura DEVE ser 456567.
+   • O campo "reading" DEVE ser o número inteiro puro (exemplo: 456567 ou 1510).
 
 3. IGNORE qualquer número de série, ano de fabricação, código de barras, modelo, tensão (ex: 220V, 380V), amperagem ou constante do disco.
 
@@ -581,74 +589,14 @@ Se a imagem estiver sem medidor, com desfoque total ou ilegível:
 
   /**
    * Sanitiza e normaliza números extraídos por OCR.
-   * Evita que separadores de milhar como "1.510" ou "1,510" sejam interpretados
-   * como decimais pequenos (1.51), e garante que casas decimais de números vermelhos
-   * sejam totalmente descartadas, preservando estritamente a parte inteira dos dígitos pretos.
+   * - Números com ponto (.) ou vírgula (,) no mostrador (ex: "456.567" ou "456,567" ou "1.510")
+   *   são interpretados como valor inteiro contínuo (ex: 456567).
+   * - Descarte de decimais aplica-se estritamente a dígitos com cor vermelha
+   *   identificados pelo modelo no prompt. Dígitos com ponto ou vírgula são
+   *   preservados integralmente como número inteiro.
    */
-  private parseOcrNumber(rawVal: any, detectedDigits?: any): number | null {
-    if (typeof rawVal === 'number' && !isNaN(rawVal)) {
-      // Se for um número decimal cuja string original tem padrão de milhar (ex: "1.510" virou 1.51 em JS)
-      if (detectedDigits) {
-        const digitsStr = String(detectedDigits).trim();
-        if (/^\d{1,3}\.\d{3}$/.test(digitsStr)) {
-          return parseInt(digitsStr.replace('.', ''), 10);
-        }
-        if (/^\d{1,3},\d{3}$/.test(digitsStr)) {
-          return parseInt(digitsStr.replace(',', ''), 10);
-        }
-        // Se a string tem decimal explícito (ex: "142,8" ou "142.8" ou "452,75"), descarta os decimais vermelhos
-        if (/^\d+[,.]\d{1,3}$/.test(digitsStr)) {
-          return parseInt(digitsStr.split(/[,.]/)[0], 10);
-        }
-      }
-      // Se for float (ex: 142.8 ou 1510.5), descarta a fração decimal vermelha
-      if (!Number.isInteger(rawVal)) {
-        return Math.floor(rawVal);
-      }
-      return rawVal;
-    }
-
-    const str = String(rawVal ?? detectedDigits ?? '').trim();
-    if (!str) return null;
-
-    // Caso "1.510" ou "12.345" com ponto separador de milhar brasileiro (sem decimais)
-    if (/^\d{1,3}\.\d{3}$/.test(str)) {
-      return parseInt(str.replace('.', ''), 10);
-    }
-
-    // Caso com vírgula de milhar: "1,510" -> 1510
-    if (/^\d{1,3},\d{3}$/.test(str)) {
-      return parseInt(str.replace(',', ''), 10);
-    }
-
-    // Caso com milhar e decimal: "1.510,5" -> descarta fração decimal vermelha: 1510
-    if (str.includes('.') && str.includes(',')) {
-      const parts = str.split(',');
-      const intPart = parts[0].replace(/\./g, '');
-      const n = parseInt(intPart, 10);
-      return isNaN(n) ? null : n;
-    }
-
-    // Se tiver vírgula ou ponto decimal de 1 a 3 casas (ex: "142,8" ou "142.8" ou "452,75") -> descarta fração vermelha
-    if (/^\d+[,.]\d{1,3}$/.test(str)) {
-      const intPart = str.split(/[,.]/)[0];
-      const n = parseInt(intPart, 10);
-      return isNaN(n) ? null : n;
-    }
-
-    if (str.includes(',')) {
-      const intPart = str.split(',')[0];
-      const n = parseInt(intPart, 10);
-      return isNaN(n) ? null : n;
-    }
-
-    const match = str.match(/\d+/);
-    if (match) {
-      const parsed = parseInt(match[0], 10);
-      return isNaN(parsed) ? null : parsed;
-    }
-
-    return null;
+  public parseOcrNumber(rawVal: any, detectedDigits?: any): number | null {
+    return parseOcrReadingNumber(rawVal, detectedDigits);
   }
 
   async analyzeRateio(data: any): Promise<string> {
@@ -678,4 +626,57 @@ Se a imagem estiver sem medidor, com desfoque total ou ilegível:
       return 'Erro ao conectar com a IA. Verifique sua chave de API ou tente novamente.';
     }
   }
+}
+
+/**
+ * Sanitiza e normaliza números extraídos por OCR.
+ * - Números com ponto (.) ou vírgula (,) no mostrador (ex: "456.567" ou "456,567" ou "1.510")
+ *   são interpretados como valor inteiro contínuo unificado (ex: 456567).
+ * - Descarte de frações aplica-se estritamente a dígitos com cor vermelha
+ *   filtrados no prompt da IA.
+ */
+export function parseOcrReadingNumber(rawVal: any, detectedDigits?: any): number | null {
+  // 1. Se detectedDigits tem separador de ponto ou vírgula (ex: "456.567" ou "456,567")
+  if (detectedDigits !== undefined && detectedDigits !== null) {
+    const digitsStr = String(detectedDigits).trim();
+    if (/[\d]+[.,][\d]+/.test(digitsStr)) {
+      const cleaned = digitsStr.replace(/[^\d]/g, '');
+      if (cleaned) {
+        const parsed = parseInt(cleaned, 10);
+        if (!isNaN(parsed)) return parsed;
+      }
+    }
+  }
+
+  // 2. Se rawVal for float (ex: 456.567 gerado pelo parser JSON)
+  if (typeof rawVal === 'number' && !isNaN(rawVal)) {
+    if (!Number.isInteger(rawVal)) {
+      const floatStr = String(rawVal).replace(/[^\d]/g, '');
+      const parsed = parseInt(floatStr, 10);
+      if (!isNaN(parsed)) return parsed;
+    }
+    return rawVal;
+  }
+
+  // 3. String de rawVal ou fallback para detectedDigits
+  const str = String(rawVal ?? detectedDigits ?? '').trim();
+  if (!str) return null;
+
+  // Se a string contiver ponto ou vírgula entre números (ex: "456.567" ou "456,567" ou "1.510")
+  if (/[\d]+[.,][\d]+/.test(str)) {
+    const cleaned = str.replace(/[^\d]/g, '');
+    if (cleaned) {
+      const parsed = parseInt(cleaned, 10);
+      if (!isNaN(parsed)) return parsed;
+    }
+  }
+
+  // Extração padrão de números contínuos
+  const match = str.match(/\d+/);
+  if (match) {
+    const parsed = parseInt(match[0], 10);
+    return isNaN(parsed) ? null : parsed;
+  }
+
+  return null;
 }
