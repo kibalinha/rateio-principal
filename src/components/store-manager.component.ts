@@ -1,7 +1,7 @@
 import { Component, inject, signal, computed, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { StoreService } from '../services/store.service';
+import { StoreService, isStoreActiveInMonth } from '../services/store.service';
 import { AuthService } from '../services/auth.service';
 import { IndexedDbService } from '../services/indexed-db.service';
 
@@ -171,7 +171,7 @@ import {
             @if (viewMode() === 'month') {
               @if (hasListForSelectedMonth()) {
                 <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
-                  <span>✓</span> Lista ativa ({{ totalUtilityCount() }} lojas)
+                  <span>✓</span> {{ activeCount() }} ativas @if (inactiveCount() > 0) { ({{ inactiveCount() }} inativas) } · {{ totalUtilityCount() }} no total
                 </span>
               } @else {
                 <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
@@ -536,7 +536,7 @@ import {
                   
                   <!-- Situação (Ativa / Inativa) -->
                   <td class="p-3.5 text-center">
-                    @if (store.active !== false) {
+                    @if (isStoreActiveInSelectedMonth(store)) {
                       <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-xs font-bold border border-emerald-200 dark:border-emerald-800 inline-flex items-center gap-1.5">
                         <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                         Ativa
@@ -777,12 +777,33 @@ export class StoreManagerComponent {
     this.showImport.set(true);
   }
 
+  isStoreActiveInSelectedMonth(store: Store): boolean {
+    if (this.viewMode() === 'month') {
+      return isStoreActiveInMonth(store, this.consultationMonth(), true);
+    }
+    return store.active !== false;
+  }
+
   activeCount = computed(() => {
-    return this.allTabStores().filter(s => s.active !== false).length;
+    const isMonthView = this.viewMode() === 'month';
+    const m = this.consultationMonth();
+    return this.allTabStores().filter(s => {
+      if (isMonthView) {
+        return isStoreActiveInMonth(s, m, true);
+      }
+      return s.active !== false;
+    }).length;
   });
 
   inactiveCount = computed(() => {
-    return this.allTabStores().filter(s => s.active === false).length;
+    const isMonthView = this.viewMode() === 'month';
+    const m = this.consultationMonth();
+    return this.allTabStores().filter(s => {
+      if (isMonthView) {
+        return !isStoreActiveInMonth(s, m, true);
+      }
+      return s.active === false;
+    }).length;
   });
 
   totalUtilityCount = computed(() => {
@@ -792,11 +813,13 @@ export class StoreManagerComponent {
   filteredStores = computed(() => {
      let list = this.allTabStores();
      const filter = this.statusFilter();
+     const isMonthView = this.viewMode() === 'month';
+     const m = this.consultationMonth();
 
      if (filter === 'active') {
-       list = list.filter(s => s.active !== false);
+       list = list.filter(s => isMonthView ? isStoreActiveInMonth(s, m, true) : s.active !== false);
      } else if (filter === 'inactive') {
-       list = list.filter(s => s.active === false);
+       list = list.filter(s => isMonthView ? !isStoreActiveInMonth(s, m, true) : s.active === false);
      }
 
      const query = this.searchTerm().trim().toLowerCase();

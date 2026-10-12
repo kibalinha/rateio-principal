@@ -883,6 +883,33 @@ export class IndexedDbService {
     }
   }
 
+  async saveMonthlyStoreLists(lists: Record<string, string[]>): Promise<void> {
+    try {
+      await this.putRecord('meta', { key: 'monthly_store_lists', value: lists });
+    } catch (e) {
+      console.warn('Erro ao salvar monthly_store_lists no IndexedDB:', e);
+    }
+  }
+
+  async getMonthlyStoreLists(): Promise<Record<string, string[]> | null> {
+    try {
+      const db = await this.ensureStoreExists('meta');
+      return await new Promise((resolve) => {
+        try {
+          const tx = db.transaction('meta', 'readonly');
+          const store = tx.objectStore('meta');
+          const req = store.get('monthly_store_lists');
+          req.onsuccess = () => resolve(req.result ? req.result.value : null);
+          req.onerror = () => resolve(null);
+        } catch {
+          resolve(null);
+        }
+      });
+    } catch {
+      return null;
+    }
+  }
+
   private async putRecord(storeName: string, item: any): Promise<void> {
     const db = await this.ensureStoreExists(storeName);
     return new Promise((resolve, reject) => {

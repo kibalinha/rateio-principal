@@ -112,4 +112,56 @@ describe('StoreService - Monthly Store Isolation & Consultation', () => {
     const storesAfter = service.getStoresForMonth('luz', '2026-10');
     expect(storesAfter.some(s => s.id === store!.id)).toBe(false);
   });
+
+  it('não deve apagar ou ocultar lojas do mês anterior (junho) ao subir o mês seguinte (julho) com lojas inativadas', () => {
+    // 1. Em junho (2026-06), importamos 3 lojas para água
+    const juneStores = [
+      { luc: 'L-01', contrato: '101', name: 'Loja 1' },
+      { luc: 'L-02', contrato: '102', name: 'Loja 2' },
+      { luc: 'L-03', contrato: '103', name: 'Loja 3' }
+    ];
+    service.processMonthlyStoreImport(juneStores, 'agua', '2026-06', false);
+
+    // Verifica que junho tem 3 lojas ativas
+    const juneBeforeJuly = service.getStoresForMonth('agua', '2026-06', false);
+    expect(juneBeforeJuly.length).toBe(3);
+
+    // 2. Em julho (2026-07), importamos apenas 2 lojas e inativamos as ausentes (L-03 sai)
+    const julyStores = [
+      { luc: 'L-01', contrato: '101', name: 'Loja 1' },
+      { luc: 'L-02', contrato: '102', name: 'Loja 2' }
+    ];
+    service.processMonthlyStoreImport(julyStores, 'agua', '2026-07', true);
+
+    // 3. Em julho, devem aparecer apenas 2 lojas ativas
+    const julyActive = service.getStoresForMonth('agua', '2026-07', false);
+    expect(julyActive.length).toBe(2);
+    expect(julyActive.some(s => s.luc === 'L-03')).toBe(false);
+
+    // 4. CRUCIAL: Ao voltar para junho (2026-06), TODAS as 3 lojas de junho continuam ativas e visíveis!
+    // A inativação em julho NUNCA pode apagar nem esconder lojas do mês anterior!
+    const juneAfterJuly = service.getStoresForMonth('agua', '2026-06', false);
+    expect(juneAfterJuly.length).toBe(3);
+    const store3InJune = juneAfterJuly.find(s => s.luc === 'L-03');
+    expect(store3InJune).toBeDefined();
+
+    // 5. Um terceiro mês sem lista (2026-08) deve continuar em branco
+    expect(service.getStoresForMonth('agua', '2026-08', false)).toEqual([]);
+    expect(service.hasMonthlyList('agua', '2026-08')).toBe(false);
+  });
+
+  it('deve isolar as utilidades para que lista importada para água não polua luz ou gás', () => {
+    service.processMonthlyStoreImport([
+      { luc: 'A-01', contrato: '11', name: 'Água Loja' }
+    ], 'agua', '2026-08', false);
+
+    expect(service.hasMonthlyList('agua', '2026-08')).toBe(true);
+    expect(service.getStoresForMonth('agua', '2026-08').length).toBe(1);
+
+    // Luz e Gás não tiveram listas importadas para 2026-08 e devem estar vazios
+    expect(service.hasMonthlyList('luz', '2026-08')).toBe(false);
+    expect(service.getStoresForMonth('luz', '2026-08')).toEqual([]);
+    expect(service.hasMonthlyList('gas', '2026-08')).toBe(false);
+    expect(service.getStoresForMonth('gas', '2026-08')).toEqual([]);
+  });
 });

@@ -6,6 +6,25 @@ import { Store, MonthlyImportResult } from '../models';
 
 export type { Store, MonthlyImportResult };
 
+/**
+ * Determina se uma loja estava ativa em um determinado mês de referência (YYYY-MM).
+ * - Se store.active !== false: loja atualmente ativa.
+ * - Se inativa, mas deactivatedAt > month: a inativação ocorreu apenas em mês futuro; no mês consultado ela estava 100% ativa!
+ * - Se inativa e deactivatedAt for nulo/indefinido (dados legados), mas a loja pertencia à lista explícita importada para o mês: estava ativa naquele mês.
+ */
+export function isStoreActiveInMonth(store: Store, month: string, isExplicitlyInMonthList: boolean = false): boolean {
+  if (store.active !== false) {
+    return true;
+  }
+  if (store.deactivatedAt && store.deactivatedAt > month) {
+    return true;
+  }
+  if (!store.deactivatedAt && isExplicitlyInMonthList) {
+    return true;
+  }
+  return false;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -35,6 +54,17 @@ export class StoreService {
       this.supabase = inject(SupabaseService);
     } catch {
       // Executando fora do contexto Angular (ex.: testes unitários isolados)
+    }
+
+    if (this.indexedDb?.getMonthlyStoreLists) {
+      this.indexedDb.getMonthlyStoreLists().then(idbLists => {
+        if (idbLists && Object.keys(idbLists).length > 0) {
+          this.monthlyStoreListsSignal.update(curr => ({
+            ...curr,
+            ...idbLists
+          }));
+        }
+      }).catch(() => {});
     }
 
     if (typeof this.supabase?.subscribeToStores === 'function') {
@@ -184,6 +214,7 @@ export class StoreService {
         console.error('Erro ao salvar listas mensais de lojas:', e);
       }
     }
+    this.indexedDb?.saveMonthlyStoreLists?.(lists);
   }
 
   private getHistoryBillsFallback(): Record<string, any> {
@@ -240,7 +271,11 @@ export class StoreService {
     const key = `${type}_${month}`;
     const lists = this.monthlyStoreListsSignal();
     if (lists[key] && lists[key].length > 0) return true;
-    if (lists[month] && lists[month].length > 0) return true;
+
+    // Fallback legado apenas se nenhuma lista por utilidade existir para o mês
+    if (lists[month] && lists[month].length > 0 && !lists[`luz_${month}`] && !lists[`agua_${month}`] && !lists[`gas_${month}`]) {
+      return true;
+    }
 
     const historyBills = this.getHistoryBillsFallback();
     const bill = historyBills[key];
@@ -254,7 +289,14 @@ export class StoreService {
   getStoresForMonth(type: 'luz' | 'agua' | 'gas', month: string, includeInactive: boolean = true): Store[] {
     const key = `${type}_${month}`;
     const lists = this.monthlyStoreListsSignal();
-    let storeIds = lists[key] || lists[month];
+    let storeIds = lists[key];
+
+    // Fallback para lista legada caso não exista lista específica desta utilidade
+    if (!storeIds || storeIds.length === 0) {
+      if (lists[month] && !lists[`luz_${month}`] && !lists[`agua_${month}`] && !lists[`gas_${month}`]) {
+        storeIds = lists[month];
+      }
+    }
 
     if (!storeIds || storeIds.length === 0) {
       const historyBills = this.getHistoryBillsFallback();
@@ -274,7 +316,12 @@ export class StoreService {
       if (!idSet.has(s.id)) return false;
       const matchesType = type === 'luz' ? s.usesLuz : (type === 'agua' ? s.usesAgua : s.usesGas);
       if (!matchesType) return false;
-      if (!includeInactive && s.active === false) return false;
+
+      if (!includeInactive) {
+        const isActiveInMonth = isStoreActiveInMonth(s, month, true);
+        if (!isActiveInMonth) return false;
+      }
+
       return true;
     });
   }
@@ -501,7 +548,10 @@ export class StoreService {
           const existingInactiveIndex = list.findIndex(s => 
             s.active === false && 
             s.luc.toLowerCase() === cleanLuc.toLowerCase() &&
-            cleanContrato && s.contrato && s.contrato.toLowerCase() === cleanContrato.toLowerCase()
+            (
+              (cleanContrato && s.contrato && s.contrato.toLowerCase() === cleanContrato.toLowerCase()) ||
+              (!cleanContrato && (!s.contrato || s.name.toLowerCase() === cleanName.toLowerCase()))
+            )
           );
 
           if (existingInactiveIndex > -1) {
