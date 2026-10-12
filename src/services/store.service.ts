@@ -11,8 +11,9 @@ export type { Store, MonthlyImportResult };
 })
 export class StoreService {
   private readonly STORAGE_KEY = 'shop_rateio_stores_data';
-  private indexedDb = inject(IndexedDbService);
-  private supabase = inject(SupabaseService);
+  private readonly MONTHLY_LISTS_STORAGE_KEY = 'shop_rateio_monthly_store_lists';
+  private indexedDb: IndexedDbService = ({} as any);
+  private supabase: SupabaseService = ({} as any);
 
   private defaultStores: Store[] = [
     { id: '1', luc: 'L-101', contrato: '10423', name: 'Zara Moda', active: true, usesLuz: true, usesAgua: true, usesGas: false, routeOrder: 1, meterNumber: 'REL-101' },
@@ -23,12 +24,23 @@ export class StoreService {
   ];
 
   private storesSignal = signal<Store[]>(this.loadInitialStores());
-
   readonly stores = computed(() => this.storesSignal());
 
+  private monthlyStoreListsSignal = signal<Record<string, string[]>>(this.loadInitialMonthlyLists());
+  readonly monthlyStoreLists = computed(() => this.monthlyStoreListsSignal());
+
   constructor() {
-    this.syncWithSupabaseOnStart();
-    this.setupRealtimeSync();
+    try {
+      this.indexedDb = inject(IndexedDbService);
+      this.supabase = inject(SupabaseService);
+    } catch {
+      // Executando fora do contexto Angular (ex.: testes unitários isolados)
+    }
+
+    if (typeof this.supabase?.subscribeToStores === 'function') {
+      this.syncWithSupabaseOnStart();
+      this.setupRealtimeSync();
+    }
   }
 
   private setupRealtimeSync() {
@@ -119,6 +131,71 @@ export class StoreService {
     return [];
   }
 
+  private loadInitialMonthlyLists(): Record<string, string[]> {
+    if (typeof localStorage === 'undefined') return {};
+    try {
+      if (localStorage.getItem(this.CLEAN_SLATE_KEY) !== 'done') {
+        localStorage.removeItem(this.MONTHLY_LISTS_STORAGE_KEY);
+        return {};
+      }
+      const stored = localStorage.getItem(this.MONTHLY_LISTS_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && typeof parsed === 'object') {
+          return parsed;
+        }
+      }
+
+      // Migração/Inicialização: se não há listas salvas ainda,
+      // verifica faturas já salvas no histórico com leituras existentes
+      const historyBills = this.getHistoryBillsFallback();
+      const initial: Record<string, string[]> = {};
+      for (const [key, bill] of Object.entries(historyBills)) {
+        if (bill && bill.readings && Object.keys(bill.readings).length > 0) {
+          initial[key] = Object.keys(bill.readings);
+        }
+      }
+
+      // Se ainda não há listas mensais e existem lojas cadastradas,
+      // vincula as lojas existentes ao mês corrente para não quebrar a visualização imediata do usuário
+      if (Object.keys(initial).length === 0) {
+        const currentMonth = new Date().toISOString().substring(0, 7);
+        const currentStores = this.loadInitialStores();
+        if (currentStores.length > 0) {
+          initial[`luz_${currentMonth}`] = currentStores.filter(s => s.usesLuz && s.active !== false).map(s => s.id);
+          initial[`agua_${currentMonth}`] = currentStores.filter(s => s.usesAgua && s.active !== false).map(s => s.id);
+          initial[`gas_${currentMonth}`] = currentStores.filter(s => s.usesGas && s.active !== false).map(s => s.id);
+          initial[currentMonth] = currentStores.filter(s => s.active !== false).map(s => s.id);
+        }
+      }
+
+      return initial;
+    } catch (e) {
+      console.warn('Erro ao carregar listas mensais de lojas:', e);
+      return {};
+    }
+  }
+
+  private persistMonthlyStoreLists(lists: Record<string, string[]>) {
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem(this.MONTHLY_LISTS_STORAGE_KEY, JSON.stringify(lists));
+      } catch (e) {
+        console.error('Erro ao salvar listas mensais de lojas:', e);
+      }
+    }
+  }
+
+  private getHistoryBillsFallback(): Record<string, any> {
+    if (typeof localStorage === 'undefined') return {};
+    try {
+      const data = localStorage.getItem('shop_rateio_history');
+      return data ? JSON.parse(data) : {};
+    } catch {
+      return {};
+    }
+  }
+
   private persistStores(list: Store[]) {
     if (typeof localStorage !== 'undefined') {
       try {
@@ -138,8 +215,10 @@ export class StoreService {
    */
   async clearAllStores() {
     this.storesSignal.set([]);
+    this.monthlyStoreListsSignal.set({});
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify([]));
+      localStorage.removeItem(this.MONTHLY_LISTS_STORAGE_KEY);
     }
     await this.indexedDb.saveStores([]);
     await this.supabase.clearAllStores();
@@ -154,6 +233,126 @@ export class StoreService {
     this.persistStores(list);
   }
 
+  /**
+   * Verifica se um mês possui lista mensal de lojas importada ou faturas salvas
+   */
+  hasMonthlyList(type: 'luz' | 'agua' | 'gas', month: string): boolean {
+    const key = `${type}_${month}`;
+    const lists = this.monthlyStoreListsSignal();
+    if (lists[key] && lists[key].length > 0) return true;
+    if (lists[month] && lists[month].length > 0) return true;
+
+    const historyBills = this.getHistoryBillsFallback();
+    const bill = historyBills[key];
+    return !!(bill && bill.readings && Object.keys(bill.readings).length > 0);
+  }
+
+  /**
+   * Retorna as lojas pertencentes a um mês específico de referência.
+   * Se o mês não possuir lista mensal importada e nem histórico, retorna vazio ([]).
+   */
+  getStoresForMonth(type: 'luz' | 'agua' | 'gas', month: string, includeInactive: boolean = true): Store[] {
+    const key = `${type}_${month}`;
+    const lists = this.monthlyStoreListsSignal();
+    let storeIds = lists[key] || lists[month];
+
+    if (!storeIds || storeIds.length === 0) {
+      const historyBills = this.getHistoryBillsFallback();
+      const bill = historyBills[key];
+      if (bill && bill.readings && Object.keys(bill.readings).length > 0) {
+        storeIds = Object.keys(bill.readings);
+      }
+    }
+
+    // Se o mês não tem lista mensal e nem fatura salva, fica em branco ([])
+    if (!storeIds || storeIds.length === 0) {
+      return [];
+    }
+
+    const idSet = new Set(storeIds);
+    return this.storesSignal().filter(s => {
+      if (!idSet.has(s.id)) return false;
+      const matchesType = type === 'luz' ? s.usesLuz : (type === 'agua' ? s.usesAgua : s.usesGas);
+      if (!matchesType) return false;
+      if (!includeInactive && s.active === false) return false;
+      return true;
+    });
+  }
+
+  /**
+   * Retorna os meses (YYYY-MM) que possuem lista mensal importada ou histórico
+   */
+  getAvailableMonths(type?: 'luz' | 'agua' | 'gas'): string[] {
+    const monthsSet = new Set<string>();
+    const lists = this.monthlyStoreListsSignal();
+
+    for (const key of Object.keys(lists)) {
+      if (type) {
+        if (key.startsWith(`${type}_`)) {
+          const m = key.substring(type.length + 1);
+          if (m && /^\d{4}-\d{2}$/.test(m)) monthsSet.add(m);
+        }
+      } else {
+        const parts = key.split('_');
+        const m = parts.length > 1 ? parts[1] : parts[0];
+        if (m && /^\d{4}-\d{2}$/.test(m)) monthsSet.add(m);
+      }
+    }
+
+    const historyBills = this.getHistoryBillsFallback();
+    for (const k of Object.keys(historyBills)) {
+      if (type) {
+        if (k.startsWith(`${type}_`)) {
+          const m = k.substring(type.length + 1);
+          if (m && /^\d{4}-\d{2}$/.test(m)) monthsSet.add(m);
+        }
+      } else {
+        const parts = k.split('_');
+        const m = parts.length > 1 ? parts[1] : parts[0];
+        if (m && /^\d{4}-\d{2}$/.test(m)) monthsSet.add(m);
+      }
+    }
+
+    return Array.from(monthsSet).sort().reverse();
+  }
+
+  /**
+   * Define e persiste a lista de lojas de um mês específico
+   */
+  setMonthlyStoreList(type: 'luz' | 'agua' | 'gas', month: string, storeIds: string[]) {
+    this.monthlyStoreListsSignal.update(current => {
+      const updated = {
+        ...current,
+        [`${type}_${month}`]: storeIds
+      };
+      const combinedMonthIds = new Set<string>(storeIds);
+      for (const t of ['luz', 'agua', 'gas'] as const) {
+        const otherIds = updated[`${t}_${month}`];
+        if (otherIds) {
+          otherIds.forEach(id => combinedMonthIds.add(id));
+        }
+      }
+      updated[month] = Array.from(combinedMonthIds);
+
+      this.persistMonthlyStoreLists(updated);
+      return updated;
+    });
+  }
+
+  addStoreToMonth(type: 'luz' | 'agua' | 'gas', month: string, storeId: string) {
+    this.monthlyStoreListsSignal.update(current => {
+      const key = `${type}_${month}`;
+      const existing = current[key] || [];
+      if (existing.includes(storeId)) return current;
+      const updated = {
+        ...current,
+        [key]: [...existing, storeId]
+      };
+      this.persistMonthlyStoreLists(updated);
+      return updated;
+    });
+  }
+
   // Helper para filtrar lojas por tipo (com opção de incluir inativas)
   storesByType(type: 'luz' | 'agua' | 'gas', includeInactive: boolean = true) {
     return computed(() => {
@@ -166,7 +365,7 @@ export class StoreService {
     });
   }
 
-  addStore(store: Omit<Store, 'id'>) {
+  addStore(store: Omit<Store, 'id'>, referenceMonth?: string) {
     const newStore: Store = { 
       ...store, 
       id: crypto.randomUUID(),
@@ -178,6 +377,12 @@ export class StoreService {
       this.persistStores(updated);
       return updated;
     });
+
+    if (referenceMonth) {
+      if (store.usesLuz) this.addStoreToMonth('luz', referenceMonth, newStore.id);
+      if (store.usesAgua) this.addStoreToMonth('agua', referenceMonth, newStore.id);
+      if (store.usesGas) this.addStoreToMonth('gas', referenceMonth, newStore.id);
+    }
   }
 
   // Alterna o status ativo/inativo de uma loja
@@ -214,9 +419,10 @@ export class StoreService {
       inactivatedMissing: []
     };
 
+    const processedStoreIds = new Set<string>();
+
     this.storesSignal.update(currentList => {
       let list = [...currentList];
-      const processedStoreIds = new Set<string>();
       const importedLucSet = new Set<string>();
 
       for (const item of items) {
@@ -358,6 +564,9 @@ export class StoreService {
       return list;
     });
 
+    // Registra a lista de lojas pertencentes a este mês de vigência
+    this.setMonthlyStoreList(type, referenceMonth, Array.from(processedStoreIds));
+
     return result;
   }
 
@@ -375,6 +584,15 @@ export class StoreService {
     this.storesSignal.update(list => {
       const updated = list.filter(s => s.id !== id);
       this.persistStores(updated);
+      return updated;
+    });
+
+    this.monthlyStoreListsSignal.update(current => {
+      const updated: Record<string, string[]> = {};
+      for (const [k, ids] of Object.entries(current)) {
+        updated[k] = ids.filter(storeId => storeId !== id);
+      }
+      this.persistMonthlyStoreLists(updated);
       return updated;
     });
 

@@ -1146,8 +1146,24 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                   }
                   @if (filteredTableData().length === 0) {
                     <tr>
-                      <td colspan="12" class="p-8 text-center text-slate-400 text-xs">
-                        Nenhuma loja encontrada para os filtros selecionados.
+                      <td colspan="15" class="p-10 text-center text-slate-400 text-xs">
+                        @if (searchQuery()) {
+                          Nenhuma loja encontrada para o termo pesquisado.
+                        } @else if (!hasMonthlyListForSelectedMonth()) {
+                          <div class="py-4 space-y-2 max-w-md mx-auto">
+                            <div class="text-3xl">📋</div>
+                            <p class="font-bold text-slate-700 dark:text-slate-200 text-sm">Mês {{ selectedMonth() }} em branco</p>
+                            <p class="text-slate-400 text-xs">
+                              Nenhuma lista de lojas foi importada para <strong>{{ selectedMonth() }}</strong>.
+                              Os meses sem importação permanecem em branco.
+                            </p>
+                            <a href="#stores" class="inline-block mt-2 px-3.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded text-xs font-bold transition-colors">
+                              Ir para a aba Lojas e Subir Lista Mensal
+                            </a>
+                          </div>
+                        } @else {
+                          Nenhuma loja encontrada para os filtros selecionados.
+                        }
                       </td>
                     </tr>
                   }
@@ -1554,13 +1570,23 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                   }
 
                   @if (filteredTableData().length === 0) {
-                    <div class="p-8 text-center bg-white dark:bg-slate-900 border border-transparent dark:border-slate-800 rounded-xl">
+                    <div class="p-8 text-center bg-white dark:bg-slate-900 border border-transparent dark:border-slate-800 rounded-xl my-3">
                       <div class="text-3xl mb-2">📋</div>
-                      <p class="font-bold text-slate-700 dark:text-slate-300 text-sm">Nenhuma loja encontrada</p>
-                      <p class="text-xs text-slate-400 mt-1">Ajuste o termo da busca ou o filtro de pendentes.</p>
-                      <button (click)="statusFilter.set('all'); searchQuery.set('')" class="mt-3 px-3 py-1.5 bg-teal-600 text-white rounded text-xs font-bold cursor-pointer">
-                        Ver Todas as Lojas
-                      </button>
+                      @if (searchQuery()) {
+                        <p class="font-bold text-slate-700 dark:text-slate-300 text-sm">Nenhuma loja encontrada</p>
+                        <p class="text-xs text-slate-400 mt-1">Ajuste o termo da busca ou o filtro.</p>
+                      } @else if (!hasMonthlyListForSelectedMonth()) {
+                        <p class="font-bold text-slate-700 dark:text-slate-200 text-sm">Mês {{ selectedMonth() }} em branco</p>
+                        <p class="text-xs text-slate-400 mt-1">Nenhuma lista mensal importada para este mês.</p>
+                        <a href="#stores" class="inline-block mt-3 px-3.5 py-1.5 bg-teal-600 text-white rounded text-xs font-bold">
+                          Ir para Lojas e Subir Lista
+                        </a>
+                      } @else {
+                        <p class="font-bold text-slate-700 dark:text-slate-300 text-sm">Nenhuma loja encontrada</p>
+                        <button (click)="statusFilter.set('all'); searchQuery.set('')" class="mt-3 px-3 py-1.5 bg-teal-600 text-white rounded text-xs font-bold cursor-pointer">
+                          Ver Todas as Lojas
+                        </button>
+                      }
                     </div>
                   }
                 </div>
@@ -2971,23 +2997,38 @@ export class BillCalculatorComponent implements OnDestroy {
   isAnalyzing = signal(false);
   aiAnalysis = signal('');
 
-  // FILTERED STORES
+  // FILTERED STORES (Isolação Mensal: apenas lojas vigentes no mês selecionado)
+  hasMonthlyListForSelectedMonth = computed(() => {
+    return this.storeService.hasMonthlyList(this.utilityType(), this.selectedMonth());
+  });
+
   activeStores = computed(() => {
     const type = this.utilityType();
-    const allStores = this.storeService.stores();
+    const month = this.selectedMonth();
     const readingsMap = this.readings()[type];
 
-    return allStores.filter(s => {
-      const usesUtil = type === 'luz' ? s.usesLuz : (type === 'agua' ? s.usesAgua : s.usesGas);
-      if (!usesUtil) return false;
+    // Obtém as lojas pertencentes a este mês específico (ou vazio se o mês não tem lista importada)
+    const monthStores = [...this.storeService.getStoresForMonth(type, month, false)];
 
-      // Se a loja está ativa, inclui no rateio deste mês
-      if (s.active !== false) return true;
+    // Se houver leituras salvas para lojas (ex.: lojas que estavam no rateio antes de serem inativadas),
+    // inclui-as para manter a integridade dos cálculos e histórico
+    if (readingsMap && readingsMap.size > 0) {
+      const allStoresMap = new Map(this.storeService.stores().map(s => [s.id, s]));
+      const monthStoreIds = new Set(monthStores.map(s => s.id));
+      for (const storeId of readingsMap.keys()) {
+        if (!monthStoreIds.has(storeId)) {
+          const s = allStoresMap.get(storeId);
+          if (s) {
+            const usesUtil = type === 'luz' ? s.usesLuz : (type === 'agua' ? s.usesAgua : s.usesGas);
+            if (usesUtil) {
+              monthStores.push(s);
+            }
+          }
+        }
+      }
+    }
 
-      // Se a loja está inativa, inclui apenas se já houver leitura registrada neste mês
-      const hasReadingInMonth = readingsMap && readingsMap.has(s.id);
-      return !!hasReadingInMonth;
-    });
+    return monthStores;
   });
 
   constructor() {

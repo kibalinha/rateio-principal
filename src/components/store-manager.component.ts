@@ -74,22 +74,35 @@ import {
       <div class="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 transition-colors">
         
         <!-- Header & Quick Filters -->
-        <div class="mb-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+        <div class="mb-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
            <div>
-             <h2 class="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+             <h2 class="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2 flex-wrap">
                 <span class="w-2.5 h-6 rounded" [class]="getTabColor()"></span>
-                Lojas de {{ getTabName() }}
+                <span>Lojas de {{ getTabName() }}</span>
+                @if (viewMode() === 'month') {
+                  <span class="text-xs bg-teal-100 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 border border-teal-300 dark:border-teal-800 px-2 py-0.5 rounded font-mono font-bold">
+                    📅 {{ consultationMonth() }}
+                  </span>
+                } @else {
+                  <span class="text-xs bg-indigo-100 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800 px-2 py-0.5 rounded font-bold">
+                    🌐 Catálogo Geral
+                  </span>
+                }
                 <span class="text-xs bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded-full font-bold ml-1">
                   {{ activeCount() }} ativas
                 </span>
                 @if (inactiveCount() > 0) {
                   <span class="text-xs bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 px-2 py-0.5 rounded-full font-semibold">
-                    {{ inactiveCount() }} inativas (histórico salvo)
+                    {{ inactiveCount() }} inativas
                   </span>
                 }
              </h2>
              <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                Lojas com troca de contrato são inativadas automaticamente sem perder o histórico anterior.
+                @if (viewMode() === 'month') {
+                  Mostrando apenas as lojas vigentes no mês <strong>{{ consultationMonth() }}</strong>. Meses sem importação ficam em branco.
+                } @else {
+                  Mostrando o catálogo geral de todas as lojas cadastradas no sistema.
+                }
              </p>
            </div>
 
@@ -129,6 +142,68 @@ import {
                }
              </div>
            </div>
+        </div>
+
+        <!-- SELETOR DE MÊS PARA CONSULTA MENSAL DE LOJAS -->
+        <div class="mb-5 p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs">
+          <div class="flex items-center gap-2.5 flex-wrap">
+            <span class="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+              <span>📅</span>
+              <span>Consultar Mês:</span>
+            </span>
+
+            <div class="flex items-center bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg shadow-2xs overflow-hidden">
+              <button type="button" (click)="prevMonth()" title="Mês anterior"
+                class="px-2 py-1 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold transition-colors cursor-pointer border-r border-slate-200 dark:border-slate-700">
+                ◀
+              </button>
+              <input 
+                type="month" 
+                [ngModel]="consultationMonth()" 
+                (ngModelChange)="onConsultationMonthChange($event)"
+                class="px-2 py-1 text-xs font-bold text-slate-800 dark:text-slate-100 bg-transparent outline-none cursor-pointer">
+              <button type="button" (click)="nextMonth()" title="Próximo mês"
+                class="px-2 py-1 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold transition-colors cursor-pointer border-l border-slate-200 dark:border-slate-700">
+                ▶
+              </button>
+            </div>
+
+            @if (viewMode() === 'month') {
+              @if (hasListForSelectedMonth()) {
+                <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                  <span>✓</span> Lista ativa ({{ totalUtilityCount() }} lojas)
+                </span>
+              } @else {
+                <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                  <span>⚠️</span> Mês em branco (sem lista)
+                </span>
+              }
+            }
+          </div>
+
+          <div class="flex items-center gap-2 flex-wrap">
+            @if (availableMonths().length > 0) {
+              <span class="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 hidden sm:inline">Meses disponíveis:</span>
+              <div class="flex items-center gap-1 overflow-x-auto max-w-[280px]">
+                @for (m of availableMonths().slice(0, 4); track m) {
+                  <button type="button" 
+                    (click)="onConsultationMonthChange(m); viewMode.set('month')"
+                    [class]="viewMode() === 'month' && consultationMonth() === m ? 'bg-teal-700 text-white font-bold shadow-2xs' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700'"
+                    class="px-2 py-0.5 rounded text-[11px] font-mono transition-colors cursor-pointer whitespace-nowrap">
+                    {{ m }}
+                  </button>
+                }
+              </div>
+            }
+
+            <button type="button" 
+              (click)="toggleViewMode()"
+              [class]="viewMode() === 'all' ? 'bg-indigo-600 text-white font-bold shadow-xs' : 'bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-slate-800'"
+              class="px-2.5 py-1 rounded-lg text-xs transition-colors font-medium cursor-pointer ml-1"
+              title="Alternar entre ver mês selecionado ou ver cadastro geral de todas as lojas">
+              {{ viewMode() === 'all' ? '📅 Ver por Mês' : '🌐 Todas (Geral)' }}
+            </button>
+          </div>
         </div>
 
         <!-- FORMULÁRIO MANUAL -->
@@ -522,17 +597,28 @@ import {
                           Nenhuma loja encontrada para o termo "{{ searchTerm() }}".
                         } @else if (statusFilter() === 'inactive') {
                           Nenhuma loja inativa cadastrada para {{ getTabName() }}.
+                        } @else if (viewMode() === 'month' && !hasListForSelectedMonth()) {
+                          Mês {{ consultationMonth() }} em branco
                         } @else {
                           0 lojas cadastradas no banco de dados para {{ getTabName() }}.
                         }
                       </p>
                       <p class="text-xs text-slate-500 dark:text-slate-400">
-                        O banco de dados está sincronizado em tempo real. Você pode cadastrar uma nova loja, importar a lista mensal ou carregar lojas de demonstração para testes.
+                        @if (viewMode() === 'month' && !hasListForSelectedMonth() && !searchTerm()) {
+                          Nenhuma lista mensal foi importada para {{ getTabName() }} em {{ consultationMonth() }}. Os meses sem importação permanecem em branco.
+                        } @else {
+                          O banco de dados está sincronizado em tempo real. Você pode cadastrar uma nova loja, importar a lista mensal ou carregar lojas de demonstração para testes.
+                        }
                       </p>
                       @if (!searchTerm() && statusFilter() === 'active') {
                         <div class="flex flex-wrap items-center justify-center gap-2 pt-2">
+                          @if (viewMode() === 'month' && !hasListForSelectedMonth()) {
+                            <button (click)="openImportForSelectedMonth()" class="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer">
+                              + Subir Lista Mensal para {{ consultationMonth() }}
+                            </button>
+                          }
                           <button (click)="toggleForm()" class="px-3.5 py-2 bg-slate-900 dark:bg-teal-600 hover:bg-slate-800 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer">
-                            + Adicionar Loja
+                            + Adicionar Loja Manual
                           </button>
                           <button (click)="loadDemoStores()" class="px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-bold border border-slate-300 dark:border-slate-700 cursor-pointer">
                             ⚡ Carregar Lojas de Exemplo
@@ -641,11 +727,55 @@ export class StoreManagerComponent {
   importReferenceMonth = signal<string>(new Date().toISOString().substring(0, 7));
   inactivateMissing = signal<boolean>(true);
 
-  // Stores in active tab
+  // Monthly Consultation & Isolation State
+  consultationMonth = signal<string>(new Date().toISOString().substring(0, 7));
+  viewMode = signal<'month' | 'all'>('month');
+
+  hasListForSelectedMonth = computed(() => {
+    return this.storeService.hasMonthlyList(this.activeTab(), this.consultationMonth());
+  });
+
+  availableMonths = computed(() => {
+    return this.storeService.getAvailableMonths(this.activeTab());
+  });
+
+  // Stores in active tab (respeitando o mês selecionado ou o catálogo geral)
   allTabStores = computed(() => {
      const type = this.activeTab();
-     return this.storeService.storesByType(type, true)();
+     if (this.viewMode() === 'all') {
+       return this.storeService.storesByType(type, true)();
+     }
+     return this.storeService.getStoresForMonth(type, this.consultationMonth(), true);
   });
+
+  prevMonth() {
+    const [year, month] = this.consultationMonth().split('-').map(Number);
+    const d = new Date(year, month - 2, 1);
+    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    this.onConsultationMonthChange(ym);
+  }
+
+  nextMonth() {
+    const [year, month] = this.consultationMonth().split('-').map(Number);
+    const d = new Date(year, month, 1);
+    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    this.onConsultationMonthChange(ym);
+  }
+
+  onConsultationMonthChange(month: string) {
+    if (!month) return;
+    this.consultationMonth.set(month);
+    this.importReferenceMonth.set(month);
+  }
+
+  toggleViewMode() {
+    this.viewMode.update(m => m === 'month' ? 'all' : 'month');
+  }
+
+  openImportForSelectedMonth() {
+    this.importReferenceMonth.set(this.consultationMonth());
+    this.showImport.set(true);
+  }
 
   activeCount = computed(() => {
     return this.allTabStores().filter(s => s.active !== false).length;
@@ -855,7 +985,7 @@ export class StoreManagerComponent {
             ...storePayload
         });
       } else {
-        this.storeService.addStore(storePayload);
+        this.storeService.addStore(storePayload, this.consultationMonth());
       }
       this.toggleForm();
     }
@@ -967,6 +1097,7 @@ export class StoreManagerComponent {
     if (data.length === 0) return;
 
     const result = this.storeService.processMonthlyStoreImport(data, type, refMonth, inactivate);
+    this.consultationMonth.set(refMonth);
 
     this.importText.set('');
     this.parsedImportData.set([]);
