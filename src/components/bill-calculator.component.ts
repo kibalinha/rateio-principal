@@ -874,12 +874,12 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                             }
                             <button type="button" 
                               (click)="toggleExcludeFromBill(item.storeId)" 
-                              [title]="item.excludedFromBill ? 'Esta loja NÃO entra no valor final da conta. Clique para incluir.' : 'Esta loja entra no valor final. Clique para retirar do valor final da conta.'" 
+                              [title]="item.excludedFromBill ? 'Esta loja NÃO entra no Valor SAP da conta (não altera a área comum). Clique para incluir no SAP.' : 'Esta loja entra no Valor SAP. Clique para retirar do Valor SAP.'" 
                               class="text-[10px] font-bold px-1.5 py-0.5 rounded cursor-pointer flex items-center gap-1 transition-all border shadow-2xs"
                               [class]="item.excludedFromBill 
                                 ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-700' 
                                 : 'bg-slate-50 dark:bg-slate-800 text-slate-500 hover:text-slate-700 dark:text-slate-400 border-slate-200 dark:border-slate-700'">
-                              <span>{{ item.excludedFromBill ? '🚫 Fora da Conta' : '✓ Na Conta' }}</span>
+                              <span>{{ item.excludedFromBill ? '🚫 Fora do SAP' : '✓ No SAP' }}</span>
                             </button>
                             <button type="button" (click)="openStoreVoucher(item)" title="Gerar espelho do lojista" class="ml-auto text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer flex items-center gap-0.5"><span>📲</span><span>Espelho</span></button>
                           </div>
@@ -1033,7 +1033,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                             R$ 0,00
                           </span>
                           <span class="text-[9px] text-amber-600 dark:text-amber-400 font-bold uppercase tracking-wider block">
-                            Fora do Total
+                            Fora do SAP
                           </span>
                         } @else {
                           {{ item.cost | currency:'BRL' }}
@@ -1091,7 +1091,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                                   [class]="item.excludedFromBill 
                                     ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-700' 
                                     : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700'">
-                                  <span>{{ item.excludedFromBill ? '🚫 Fora do Total' : '✓ Na Conta' }}</span>
+                                  <span>{{ item.excludedFromBill ? '🚫 Fora do SAP' : '✓ No SAP' }}</span>
                                 </button>
                              </div>
                              <div class="font-bold text-slate-900 dark:text-white text-base mt-1 leading-tight">
@@ -1337,7 +1337,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                                     {{ item.originalCost | currency:'BRL' }}
                                   </span>
                                   <strong class="font-mono text-amber-700 dark:text-amber-300">R$ 0,00</strong>
-                                  <span class="text-[9px] text-amber-600 dark:text-amber-400 font-bold block uppercase">Fora do Total</span>
+                                  <span class="text-[9px] text-amber-600 dark:text-amber-400 font-bold block uppercase">Fora do SAP</span>
                                 } @else {
                                   <strong class="font-mono text-teal-700 dark:text-teal-400">{{ item.cost | currency:'BRL' }}</strong>
                                 }
@@ -1529,7 +1529,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                               [class]="stepStore.excludedFromBill 
                                 ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-700' 
                                 : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'">
-                              <span>{{ stepStore.excludedFromBill ? '🚫 Fora do Total' : '✓ Na Conta' }}</span>
+                              <span>{{ stepStore.excludedFromBill ? '🚫 Fora do SAP' : '✓ No SAP' }}</span>
                             </button>
                           </div>
 
@@ -1942,7 +1942,14 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                   </div>
                 }
                 <div class="flex justify-between items-center text-sm pt-2 border-t border-orange-200/60 dark:border-orange-900/40">
-                   <span class="font-bold text-orange-900 dark:text-orange-200">Valor SAP (Lojas)</span>
+                   <div>
+                     <span class="font-bold text-orange-900 dark:text-orange-200">Valor SAP (Lojas)</span>
+                     @if (excludedSapCost() > 0) {
+                       <span class="text-[10px] text-amber-700 dark:text-amber-400 block font-semibold">
+                         ({{ excludedSapCount() }} loja(s) fora do SAP: -{{ excludedSapCost() | currency:'BRL' }})
+                       </span>
+                     }
+                   </div>
                    <span class="font-mono font-bold text-orange-800 dark:text-orange-300">{{ totalDistributedCost() | currency:'BRL' }}</span>
                 </div>
              </div>
@@ -1993,6 +2000,11 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                 <div class="bg-orange-700 text-white grid grid-cols-1 md:grid-cols-12 items-center p-3 border-b border-orange-800">
                     <div class="md:col-span-6 text-right pr-4">
                       <div class="font-bold text-sm uppercase tracking-wide">Valor SAP</div>
+                      @if (excludedSapCost() > 0) {
+                        <div class="text-[11px] text-orange-200">
+                          {{ excludedSapCount() }} loja(s) fora do SAP (-{{ excludedSapCost() | currency:'BRL' }})
+                        </div>
+                      }
                     </div>
                     <div class="md:col-span-3 text-right pr-4">
                       <div class="font-mono font-bold text-xl leading-tight text-white">{{ totalDistributedCost() | currency:'BRL' }}</div>
@@ -3495,7 +3507,6 @@ export class BillCalculatorComponent implements OnDestroy {
       const storeMap = readingsStore[type] as Map<string, StoreReading>;
       stores.forEach(s => {
         const d = storeMap.get(s.id) || this.createDefaultReading();
-        if (d.excludedFromBill) return;
         const p = prevReadings.get(s.id) || { reading: 0, consumption: 0 };
         const hasVirtual = d.virtual !== undefined && d.virtual !== null && !isNaN(Number(d.virtual));
         if (hasVirtual) {
@@ -3752,8 +3763,8 @@ export class BillCalculatorComponent implements OnDestroy {
     if (this.utilityType() !== 'gas') return null;
     const concessionaria = this.gasTotalReading() || 0;
     const table = this.tableData();
-    const rawTotal = table.reduce((acc, item) => acc + (item.excludedFromBill ? 0 : (item.rawConsumption !== undefined ? item.rawConsumption : item.consumption)), 0);
-    const distributedTotal = table.reduce((acc, item) => acc + (item.excludedFromBill ? 0 : item.consumption), 0);
+    const rawTotal = table.reduce((acc, item) => acc + (item.rawConsumption !== undefined ? item.rawConsumption : item.consumption), 0);
+    const distributedTotal = table.reduce((acc, item) => acc + item.consumption, 0);
     const diffM3 = concessionaria - rawTotal;
     const diffPct = rawTotal > 0 ? ((concessionaria - rawTotal) / rawTotal) * 100 : 0;
     const factor = (concessionaria > 0 && rawTotal > 0) ? (concessionaria / rawTotal) : 1.0;
@@ -3804,9 +3815,10 @@ export class BillCalculatorComponent implements OnDestroy {
     const type = this.utilityType();
     const billAmount = this.totalBillAmount() || 0;
     const distributed = this.totalDistributedCost() || 0;
+    const excludedCost = this.excludedSapCost() || 0;
     const acCost = this.airConditioningCost() || 0;
     const commonArea = this.commonAreaCost() || 0;
-    const totalReconciled = distributed + acCost + commonArea;
+    const totalReconciled = distributed + excludedCost + acCost + commonArea;
     const diffFinancial = Math.abs(totalReconciled - billAmount);
     // Tolerância de até R$ 0.50 para centavos de arredondamento fiscal
     const isReconciled = billAmount > 0 ? (diffFinancial <= 0.50) : true;
@@ -5006,12 +5018,30 @@ export class BillCalculatorComponent implements OnDestroy {
 
   // ---
 
+  // Consumo e Custo Físico Total de Todas as Lojas (usado para calcular Área Comum sem distorção)
+  totalStoresPhysicalConsumption = computed(() => {
+    return this.tableData().reduce((acc, item) => acc + item.consumption, 0);
+  });
+
+  totalStoresPhysicalCost = computed(() => {
+    return this.tableData().reduce((acc, item) => acc + (item.originalCost !== undefined ? item.originalCost : item.cost), 0);
+  });
+
+  // Total a Faturar no SAP (deduzindo lojas marcadas como fora do SAP)
   totalDistributedConsumption = computed(() => {
     return this.tableData().reduce((acc, item) => acc + (item.excludedFromBill ? 0 : item.consumption), 0);
   });
 
   totalDistributedCost = computed(() => {
     return this.tableData().reduce((acc, item) => acc + (item.excludedFromBill ? 0 : item.cost), 0);
+  });
+
+  excludedSapCost = computed(() => {
+    return this.tableData().reduce((acc, item) => acc + (item.excludedFromBill ? (item.originalCost !== undefined ? item.originalCost : item.cost) : 0), 0);
+  });
+
+  excludedSapCount = computed(() => {
+    return this.tableData().filter(item => item.excludedFromBill).length;
   });
 
   setAirConditioning(val: any) {
@@ -5032,8 +5062,8 @@ export class BillCalculatorComponent implements OnDestroy {
     return this.apportionmentEngine.calculateCommonArea(
       this.totalConsumption(),
       this.totalBillAmount(),
-      this.totalDistributedConsumption(),
-      this.totalDistributedCost(),
+      this.totalStoresPhysicalConsumption(),
+      this.totalStoresPhysicalCost(),
       this.airConditioningConsumption(),
       this.airConditioningCost(),
       this.utilityType() === 'gas' && this.gasAutoDistribute()
