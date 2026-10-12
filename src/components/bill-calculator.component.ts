@@ -237,6 +237,19 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                <span class="sm:hidden">ZIP</span>
              }
            </button>
+
+           <!-- Botão Apagar Lojas deste Mês (apenas deste tipo e mês) -->
+           @if (authService.canConfigureBill() && !isLocked() && activeStores().length > 0) {
+             <button 
+               type="button"
+               (click)="confirmClearMonthStores()" 
+               class="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800 rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+               title="Apagar todas as lojas de {{ utilityType() === 'luz' ? 'Energia/Luz' : (utilityType() === 'agua' ? 'Água' : 'Gás') }} deste mês ({{ selectedMonth() }})">
+               <span>🗑️</span>
+               <span class="hidden sm:inline">Apagar lojas deste mês</span>
+               <span class="sm:hidden">Apagar lojas</span>
+             </button>
+           }
         </div>
       </div>
 
@@ -545,6 +558,17 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                        <span>📥</span>
                        <span class="hidden sm:inline">Importar Planilha</span>
                        <span class="sm:hidden">Importar</span>
+                    </button>
+                  }
+
+                  <!-- Botão Apagar Lojas deste Mês (apenas deste tipo e mês) -->
+                  @if (authService.canConfigureBill() && !isLocked() && activeStores().length > 0) {
+                    <button type="button" (click)="confirmClearMonthStores()" 
+                       class="text-xs px-3 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800 rounded-lg font-semibold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                       title="Apagar todas as lojas de {{ utilityType() === 'luz' ? 'Energia/Luz' : (utilityType() === 'agua' ? 'Água' : 'Gás') }} deste mês ({{ selectedMonth() }})">
+                       <span>🗑️</span>
+                       <span class="hidden sm:inline">Apagar lojas do mês</span>
+                       <span class="sm:hidden">Apagar</span>
                     </button>
                   }
                   <div class="text-xs md:text-sm text-slate-600 dark:text-slate-300 md:ml-2 whitespace-nowrap">
@@ -3315,6 +3339,39 @@ export class BillCalculatorComponent implements OnDestroy {
       this.internalSave();
       this.indexedDb.showToast(`🔓 Rateio de ${typeLabel} (${month}) reaberto para edições.`);
     }
+  }
+
+  confirmClearMonthStores() {
+    const type = this.utilityType();
+    const month = this.selectedMonth();
+    const typeLabel = type === 'luz' ? 'Energia/Luz' : (type === 'agua' ? 'Água' : 'Gás');
+    const count = this.activeStores().length;
+
+    const confirmed = confirm(
+      `ATENÇÃO: Deseja apagar todas as lojas de ${typeLabel} do mês de referência ${month}?\n\n` +
+      `• Serão apagadas todas as ${count} lojas deste mês específico (${typeLabel} - ${month}).\n` +
+      `• Os outros meses e as outras utilidades (Água, Gás, Luz) NÃO serão afetados.\n` +
+      `• As lojas continuam salvas no Catálogo Geral.`
+    );
+
+    if (!confirmed) return;
+
+    // 1. Limpa a lista mensal específica desta utilidade e mês
+    this.storeService.clearMonthlyStoreList(type, month);
+
+    // 2. Limpa as leituras na calculadora para esta utilidade e mês
+    this.readings.update(prev => ({
+      ...prev,
+      [type]: new Map()
+    }));
+
+    // 3. Limpa o histórico de faturas salvas para este mês/tipo
+    this.historyService.clearBillForMonth(type, month);
+
+    // 4. Recarrega os dados do mês atual para refletir o estado limpo
+    this.loadDataForCurrentSelection();
+
+    this.indexedDb.showToast(`🗑️ Lojas de ${typeLabel} do mês ${month} foram apagadas com sucesso!`);
   }
 
   loadDataForCurrentSelection() {

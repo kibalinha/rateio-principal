@@ -200,4 +200,44 @@ describe('StoreService - Monthly Store Isolation & Consultation', () => {
     expect(storeInLuz!.active).toBe(true);
     expect(storeInLuz!.usesLuz).toBe(true);
   });
+
+  it('deve excluir todas as lojas APENAS daquele tipo e mês específico ao chamar clearMonthlyStoreList', () => {
+    // 1. Cadastra lojas para Luz em Outubro/2026, Luz em Setembro/2026 e Água em Outubro/2026
+    service.processMonthlyStoreImport([
+      { luc: 'L-101', contrato: '111', name: 'Loja Energia 1' },
+      { luc: 'L-102', contrato: '222', name: 'Loja Energia 2' }
+    ], 'luz', '2026-10', false);
+
+    service.processMonthlyStoreImport([
+      { luc: 'L-101', contrato: '111', name: 'Loja Energia 1' }
+    ], 'luz', '2026-09', false);
+
+    service.processMonthlyStoreImport([
+      { luc: 'A-201', contrato: '333', name: 'Loja Água 1' }
+    ], 'agua', '2026-10', false);
+
+    // Validações prévias
+    expect(service.getStoresForMonth('luz', '2026-10').length).toBe(2);
+    expect(service.hasMonthlyList('luz', '2026-10')).toBe(true);
+    expect(service.getStoresForMonth('luz', '2026-09').length).toBe(1);
+    expect(service.getStoresForMonth('agua', '2026-10').length).toBe(1);
+
+    // 2. Apaga lojas APENAS de Outubro/2026 de Energia (Luz)
+    service.clearMonthlyStoreList('luz', '2026-10');
+
+    // 3. Outubro/2026 Energia deve estar completamente limpo (0 lojas, hasMonthlyList = false)
+    expect(service.getStoresForMonth('luz', '2026-10')).toEqual([]);
+    expect(service.hasMonthlyList('luz', '2026-10')).toBe(false);
+
+    // 4. Outro mês de Energia (Setembro/2026) continua INTACTO!
+    expect(service.getStoresForMonth('luz', '2026-09').length).toBe(1);
+    expect(service.hasMonthlyList('luz', '2026-09')).toBe(true);
+
+    // 5. Outra utilidade no mesmo mês (Água em Outubro/2026) continua INTACTA!
+    expect(service.getStoresForMonth('agua', '2026-10').length).toBe(1);
+    expect(service.hasMonthlyList('agua', '2026-10')).toBe(true);
+
+    // 6. O Catálogo Geral de lojas continua INTACTO (as lojas não são deletadas do sistema global)
+    expect(service.stores().length).toBeGreaterThanOrEqual(3);
+  });
 });

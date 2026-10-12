@@ -270,7 +270,9 @@ export class StoreService {
   hasMonthlyList(type: 'luz' | 'agua' | 'gas', month: string): boolean {
     const key = `${type}_${month}`;
     const lists = this.monthlyStoreListsSignal();
-    if (lists[key] && lists[key].length > 0) return true;
+    if (key in lists) {
+      return (lists[key]?.length || 0) > 0;
+    }
 
     // Fallback legado apenas se nenhuma lista por utilidade existir para o mês
     if (lists[month] && lists[month].length > 0 && !lists[`luz_${month}`] && !lists[`agua_${month}`] && !lists[`gas_${month}`]) {
@@ -289,13 +291,32 @@ export class StoreService {
   getStoresForMonth(type: 'luz' | 'agua' | 'gas', month: string, includeInactive: boolean = true): Store[] {
     const key = `${type}_${month}`;
     const lists = this.monthlyStoreListsSignal();
-    let storeIds = lists[key];
 
-    // Fallback para lista legada caso não exista lista específica desta utilidade
-    if (!storeIds || storeIds.length === 0) {
-      if (lists[month] && !lists[`luz_${month}`] && !lists[`agua_${month}`] && !lists[`gas_${month}`]) {
-        storeIds = lists[month];
+    // Se esta utilidade e mês possuem lista explícita definida (mesmo que vazia [])
+    if (key in lists) {
+      const storeIds = lists[key];
+      if (!storeIds || storeIds.length === 0) {
+        return [];
       }
+      const idSet = new Set(storeIds);
+      return this.storesSignal().filter(s => {
+        if (!idSet.has(s.id)) return false;
+        const matchesType = type === 'luz' ? s.usesLuz : (type === 'agua' ? s.usesAgua : s.usesGas);
+        if (!matchesType) return false;
+
+        if (!includeInactive) {
+          const isActiveInMonth = isStoreActiveInMonth(s, month, true);
+          if (!isActiveInMonth) return false;
+        }
+
+        return true;
+      });
+    }
+
+    let storeIds: string[] | undefined;
+    // Fallback para lista legada caso não exista lista específica desta utilidade
+    if (lists[month] && !lists[`luz_${month}`] && !lists[`agua_${month}`] && !lists[`gas_${month}`]) {
+      storeIds = lists[month];
     }
 
     if (!storeIds || storeIds.length === 0) {
@@ -333,7 +354,8 @@ export class StoreService {
     const monthsSet = new Set<string>();
     const lists = this.monthlyStoreListsSignal();
 
-    for (const key of Object.keys(lists)) {
+    for (const [key, val] of Object.entries(lists)) {
+      if (!val || val.length === 0) continue;
       if (type) {
         if (key.startsWith(`${type}_`)) {
           const m = key.substring(type.length + 1);
@@ -347,13 +369,16 @@ export class StoreService {
     }
 
     const historyBills = this.getHistoryBillsFallback();
-    for (const k of Object.keys(historyBills)) {
+    for (const [k, bill] of Object.entries(historyBills)) {
+      if (!bill || !bill.readings || Object.keys(bill.readings).length === 0) continue;
       if (type) {
+        if (k in lists && (!lists[k] || lists[k].length === 0)) continue;
         if (k.startsWith(`${type}_`)) {
           const m = k.substring(type.length + 1);
           if (m && /^\d{4}-\d{2}$/.test(m)) monthsSet.add(m);
         }
       } else {
+        if (k in lists && (!lists[k] || lists[k].length === 0)) continue;
         const parts = k.split('_');
         const m = parts.length > 1 ? parts[1] : parts[0];
         if (m && /^\d{4}-\d{2}$/.test(m)) monthsSet.add(m);
@@ -389,6 +414,35 @@ export class StoreService {
       this.persistMonthlyStoreLists(updated);
       return updated;
     });
+  }
+
+  /**
+   * Remove todas as lojas da lista mensal de uma utilidade e mês específicos.
+   * Não afeta nenhum outro mês, nenhuma outra utilidade e não remove as lojas do catálogo global.
+   */
+  clearMonthlyStoreList(type: 'luz' | 'agua' | 'gas', month: string) {
+    const key = `${type}_${month}`;
+    this.monthlyStoreListsSignal.update(current => {
+      const updated = {
+        ...current,
+        [key]: []
+      };
+      this.persistMonthlyStoreLists(updated);
+      return updated;
+    });
+
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const hist = localStorage.getItem('shop_rateio_history');
+        if (hist) {
+          const parsed = JSON.parse(hist);
+          if (parsed && parsed[key]) {
+            parsed[key].readings = {};
+            localStorage.setItem('shop_rateio_history', JSON.stringify(parsed));
+          }
+        }
+      }
+    } catch {}
   }
 
   // Helper para filtrar lojas por tipo (com opção de incluir inativas)

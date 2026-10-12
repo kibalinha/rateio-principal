@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { StoreService, isStoreActiveInMonth } from '../services/store.service';
 import { AuthService } from '../services/auth.service';
 import { IndexedDbService } from '../services/indexed-db.service';
+import { HistoryService } from '../services/history.service';
 
 import { 
   Store,
@@ -173,6 +174,14 @@ import {
                 <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
                   <span>✓</span> {{ activeCount() }} ativas @if (inactiveCount() > 0) { ({{ inactiveCount() }} inativas) } · {{ totalUtilityCount() }} no total
                 </span>
+                @if (authService.canManageStores() && totalUtilityCount() > 0) {
+                  <button type="button" (click)="confirmClearMonthStores()"
+                    class="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800 font-bold text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer"
+                    title="Apagar todas as lojas de {{ getTabName() }} deste mês ({{ consultationMonth() }})">
+                    <span>🗑️</span>
+                    <span>Apagar lojas de {{ consultationMonth() }} ({{ getTabName() }})</span>
+                  </button>
+                }
               } @else {
                 <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
                   <span>⚠️</span> Mês em branco (sem lista)
@@ -700,6 +709,7 @@ import {
 })
 export class StoreManagerComponent {
   storeService = inject(StoreService);
+  historyService = inject(HistoryService);
   authService = inject(AuthService);
   indexedDb = inject(IndexedDbService);
   
@@ -775,6 +785,26 @@ export class StoreManagerComponent {
   openImportForSelectedMonth() {
     this.importReferenceMonth.set(this.consultationMonth());
     this.showImport.set(true);
+  }
+
+  confirmClearMonthStores() {
+    const tabName = this.getTabName();
+    const month = this.consultationMonth();
+    const type = this.activeTab();
+    const count = this.totalUtilityCount();
+
+    const confirmed = confirm(
+      `ATENÇÃO: Deseja apagar todas as lojas de ${tabName} do mês de referência ${month}?\n\n` +
+      `• Serão apagadas todas as ${count} lojas deste mês específico (${tabName} - ${month}).\n` +
+      `• Os outros meses e as outras utilidades (Água, Gás, Luz) NÃO serão afetados.\n` +
+      `• As lojas continuam salvas no Catálogo Geral.`
+    );
+
+    if (!confirmed) return;
+
+    this.storeService.clearMonthlyStoreList(type, month);
+    this.historyService.clearBillForMonth(type, month);
+    this.indexedDb.showToast(`🗑️ Lojas de ${tabName} do mês ${month} foram apagadas com sucesso!`);
   }
 
   isStoreActiveInSelectedMonth(store: Store): boolean {

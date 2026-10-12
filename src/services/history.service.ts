@@ -166,4 +166,18 @@ export class HistoryService {
   getAllData(): Record<string, BillData> {
     return this.billsSignal();
   }
+
+  clearBillForMonth(type: string, month: string) {
+    const key = this.generateKey(type, month);
+    const existing = this.billsSignal()[key];
+    if (existing) {
+      const updated: BillData = {
+        ...existing,
+        readings: {},
+        lastUpdated: new Date().toISOString(),
+        version: (existing.version || 0) + 1
+      };
+      this.saveBill(type, month, updated);
+    }
+  }
 }
