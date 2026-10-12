@@ -12,15 +12,29 @@ export type { StoreReading, BillData };
 export class HistoryService {
   private readonly STORAGE_KEY = 'shop_rateio_history';
   private readonly CLEAN_SLATE_KEY = 'shop_rateio_clean_slate_20261007_v1';
-  readonly indexedDb = inject(IndexedDbService);
-  readonly supabase = inject(SupabaseService);
+  readonly indexedDb: IndexedDbService = (() => {
+    try {
+      return inject(IndexedDbService);
+    } catch {
+      return {} as any;
+    }
+  })();
+  readonly supabase: SupabaseService = (() => {
+    try {
+      return inject(SupabaseService);
+    } catch {
+      return {} as any;
+    }
+  })();
 
   private billsSignal = signal<Record<string, BillData>>(this.getStorage());
   readonly bills = computed(() => this.billsSignal());
 
   constructor() {
-    this.syncWithSupabaseOnStart();
-    this.setupRealtimeSync();
+    if (typeof (this.supabase as any)?.subscribeToBills === 'function') {
+      this.syncWithSupabaseOnStart();
+      this.setupRealtimeSync();
+    }
   }
 
   private setupRealtimeSync() {
@@ -179,5 +193,73 @@ export class HistoryService {
       };
       this.saveBill(type, month, updated);
     }
+  }
+
+  /**
+   * Retorna a última leitura válida (> 0) de cada loja em meses estritamente anteriores a currentMonth.
+   * Se uma loja esteve desativada ou sem medição por um ou mais meses, faz a busca retroativa no histórico
+   * para encontrar a última medição real gravada no relógio, evitando que ela seja cobrada com valor absoluto.
+   */
+  getLastValidReadings(type: string, currentMonth: string): Map<string, { reading: number; consumption: number; month: string }> {
+    const allData = this.billsSignal();
+    const result = new Map<string, { reading: number; consumption: number; month: string }>();
+
+    // 1. Identifica todos os meses passados que possuem faturas salvas desta utilidade e que sejam anteriores a currentMonth
+    const pastMonths: string[] = [];
+    const prefix = `${type}_`;
+    for (const key of Object.keys(allData)) {
+      if (key.startsWith(prefix)) {
+        const m = key.substring(prefix.length);
+        if (m && /^\d{4}-\d{2}$/.test(m) && m < currentMonth) {
+          pastMonths.push(m);
+        }
+      }
+    }
+
+    // Calcula o mês imediatamente anterior cronológico caso ele ainda não esteja na lista
+    const [year, monthNum] = currentMonth.split('-').map(Number);
+    if (!isNaN(year) && !isNaN(monthNum)) {
+      const prevDate = new Date(year, monthNum - 2, 1);
+      const immediatePrev = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+      if (!pastMonths.includes(immediatePrev)) {
+        pastMonths.push(immediatePrev);
+      }
+    }
+
+    // Ordena os meses do mais recente para o mais antigo (ex.: 2026-03, 2026-02, 2026-01...)
+    pastMonths.sort().reverse();
+
+    // 2. Itera pelos meses passados mais recentes primeiro
+    for (const m of pastMonths) {
+      const bill = allData[`${prefix}${m}`];
+      if (!bill || !bill.readings) continue;
+
+      for (const [storeId, r] of Object.entries(bill.readings)) {
+        // Se já encontramos uma leitura válida (> 0) em um mês mais recente para esta loja, mantém ela
+        const existing = result.get(storeId);
+        if (existing && existing.reading > 0) {
+          continue;
+        }
+
+        let reading = 0;
+        let consumption = 0;
+        if (typeof r === 'object' && r !== null) {
+          reading = Number((r as any).reading) || 0;
+          consumption = Number((r as any).calculatedConsumption ?? (r as any).consumption) || 0;
+        } else if (typeof r === 'number') {
+          reading = Number(r) || 0;
+          consumption = Number(r) || 0;
+        }
+
+        if (reading > 0) {
+          result.set(storeId, { reading, consumption, month: m });
+        } else if (!existing) {
+          // Registra provisoriamente 0 com o mês mais recente caso nenhum mês anterior tenha leitura
+          result.set(storeId, { reading: 0, consumption: 0, month: m });
+        }
+      }
+    }
+
+    return result;
   }
 }

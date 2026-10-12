@@ -1013,6 +1013,11 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                       </td>
                       <td class="p-3 text-center text-slate-400 dark:text-slate-400 font-mono border-r border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950">
                         {{ item.prevReading | number:'1.0-0' }}
+                        @if (item.prevReadingMonth && item.prevReadingMonth !== getPreviousMonth(selectedMonth()) && item.prevReading > 0) {
+                          <span class="block text-[10px] text-teal-600 dark:text-teal-400 font-bold" [title]="'Última leitura válida no histórico (' + item.prevReadingMonth + ')'">
+                            ({{ item.prevReadingMonth }})
+                          </span>
+                        }
                       </td>
                       <td class="p-3 border-r border-slate-100 dark:border-slate-800">
                          <div class="flex flex-col gap-1">
@@ -1278,6 +1283,9 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                               <label class="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-400 tracking-wider">Leitura Anterior</label>
                               <div class="text-slate-700 dark:text-slate-200 font-mono text-lg font-bold mt-0.5">
                                  {{ item.prevReading | number:'1.0-0' }} <span class="text-xs font-normal text-slate-400">{{ getUnit() }}</span>
+                                 @if (item.prevReadingMonth && item.prevReadingMonth !== getPreviousMonth(selectedMonth()) && item.prevReading > 0) {
+                                   <span class="text-[10px] text-teal-600 dark:text-teal-400 font-bold ml-1">({{ item.prevReadingMonth }})</span>
+                                 }
                               </div>
                            </div>
                            
@@ -1732,6 +1740,9 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                                   </span>
                                   <span class="text-slate-800 dark:text-slate-200 font-mono font-bold text-sm">
                                     {{ stepStore.prevReading | number:'1.0-0' }} <span class="text-xs font-normal text-slate-400">{{ getUnit() }}</span>
+                                    @if (stepStore.prevReadingMonth && stepStore.prevReadingMonth !== getPreviousMonth(selectedMonth()) && stepStore.prevReading > 0) {
+                                      <span class="text-[10px] text-teal-600 dark:text-teal-400 font-bold ml-1">({{ stepStore.prevReadingMonth }})</span>
+                                    }
                                   </span>
                                   <button type="button" 
                                     (click)="openPhotoViewer(stepStore.storeId, prevPhoto)"
@@ -1744,6 +1755,9 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                               <div class="py-1 text-center">
                                 <span class="text-xs font-mono font-bold text-slate-700 dark:text-slate-300 block">
                                   Leitura Anterior: {{ stepStore.prevReading | number:'1.0-0' }} {{ getUnit() }}
+                                  @if (stepStore.prevReadingMonth && stepStore.prevReadingMonth !== getPreviousMonth(selectedMonth()) && stepStore.prevReading > 0) {
+                                    <span class="text-[10px] text-teal-600 dark:text-teal-400 font-bold ml-1">({{ stepStore.prevReadingMonth }})</span>
+                                  }
                                 </span>
                                 @if (stepStore.validationAlert.avgConsumption > 0) {
                                   <span class="text-[10px] text-slate-400 block mt-0.5">
@@ -3012,7 +3026,7 @@ export class BillCalculatorComponent implements OnDestroy {
   });
 
   // Stores Previous Month Data for Calculations
-  previousReadings = signal<Map<string, { reading: number, consumption: number }>>(new Map());
+  previousReadings = signal<Map<string, { reading: number, consumption: number, month?: string }>>(new Map());
 
   // Excel Import State
   showExcelImportModal = signal<boolean>(false);
@@ -3436,8 +3450,6 @@ export class BillCalculatorComponent implements OnDestroy {
 
     // 2. Load Previous Month Data
     const prevMonth = this.getPreviousMonth(month);
-    const prevData = this.historyService.getBill(type, prevMonth);
-    const prevMap = new Map<string, { reading: number, consumption: number }>();
 
     // 3. Load Meter Photos from IndexedDB (com merge e detecção de exclusões da nuvem)
     this.indexedDb.getMeterPhotosForMonth(type, month).then(async photos => {
@@ -3495,18 +3507,11 @@ export class BillCalculatorComponent implements OnDestroy {
       this.meterPhotos.set({});
     });
 
-    if (prevData) {
-      Object.entries(prevData.readings).forEach(([k, v]) => {
-        if (typeof v === 'object' && v !== null) {
-          prevMap.set(k, { reading: (v as any).reading || 0, consumption: (v as any).calculatedConsumption || 0 });
-        } else if (typeof v === 'number') {
-          prevMap.set(k, { reading: v, consumption: v });
-        }
-      });
-    }
+    // 2. Carrega Leituras Anteriores com busca retroativa inteligente pelo último valor válido caso a loja estivesse desativada
+    const prevMap: Map<string, { reading: number; consumption: number; month: string }> = this.historyService.getLastValidReadings(type, month);
     this.previousReadings.set(prevMap);
 
-    // Carrega fotos do mês anterior para comparação visual na Rota Guiada
+    // Carrega fotos do mês anterior (e fotos dos meses retroativos das lojas desativadas) para comparação visual
     this.indexedDb.getMeterPhotosForMonth(type, prevMonth).then(async prevPhotos => {
       let combinedPrev: Record<string, MeterPhotoRecord> = { ...prevPhotos };
       if (this.indexedDb.isOnline()) {
@@ -3517,6 +3522,24 @@ export class BillCalculatorComponent implements OnDestroy {
           }
         } catch { }
       }
+
+      // Se alguma loja teve a última medição em mês mais antigo, tenta buscar a foto daquele mês também
+      for (const [storeId, prevInfo] of prevMap.entries()) {
+        if (prevInfo.month && prevInfo.month !== prevMonth && !combinedPrev[storeId]) {
+          try {
+            const olderPhoto = await this.indexedDb.getMeterPhoto(type, prevInfo.month, storeId);
+            if (olderPhoto) {
+              combinedPrev[storeId] = olderPhoto;
+            } else if (this.indexedDb.isOnline()) {
+              const cloudPhotosOlder = await this.supabaseService.fetchMeterPhotos(type, prevInfo.month);
+              if (cloudPhotosOlder && cloudPhotosOlder[storeId]) {
+                combinedPrev[storeId] = cloudPhotosOlder[storeId];
+              }
+            }
+          } catch { }
+        }
+      }
+
       this.prevMonthPhotos.set(combinedPrev);
     }).catch(() => {
       this.prevMonthPhotos.set({});
@@ -3756,6 +3779,7 @@ export class BillCalculatorComponent implements OnDestroy {
 
       currentReading = data.reading;
       prevReading = prevData.reading;
+      const prevReadingMonth = (prevData as any).month || null;
       constant = data.constant || 1;
       if (data.virtual !== undefined && data.virtual !== null && !isNaN(Number(data.virtual))) {
         virtual = Number(data.virtual);
@@ -3929,6 +3953,7 @@ export class BillCalculatorComponent implements OnDestroy {
         originalCost: rawCost,
         excludedFromBill,
         prevReading,
+        prevReadingMonth,
         currentReading,
         constant,
         virtual,
