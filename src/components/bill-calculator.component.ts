@@ -696,20 +696,29 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                   <!-- Sort Selector -->
                   <div class="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs">
                     <span class="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 px-1.5 hidden sm:inline">Ordem:</span>
-                    <button type="button" (click)="sortBy.set('route')"
+                    <button type="button" (click)="setQuickSort('route')"
                       [class]="sortBy() === 'route' ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 font-bold shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'"
                       class="px-2 py-1 rounded text-xs transition-all cursor-pointer flex items-center gap-1" title="Ordem física da rota de leitura">
                       <span>📍 Rota</span>
+                      @if (sortBy() === 'route') {
+                        <span class="text-[9px]">{{ sortDirection() === 'asc' ? '▲' : '▼' }}</span>
+                      }
                     </button>
-                    <button type="button" (click)="sortBy.set('luc')"
+                    <button type="button" (click)="setQuickSort('luc')"
                       [class]="sortBy() === 'luc' ? 'bg-white dark:bg-slate-700 text-teal-700 dark:text-teal-300 font-bold shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'"
                       class="px-2 py-1 rounded text-xs transition-all cursor-pointer flex items-center gap-1" title="Ordem por número do LUC">
                       <span>🏢 LUC</span>
+                      @if (sortBy() === 'luc') {
+                        <span class="text-[9px]">{{ sortDirection() === 'asc' ? '▲' : '▼' }}</span>
+                      }
                     </button>
-                    <button type="button" (click)="sortBy.set('name')"
-                      [class]="sortBy() === 'name' ? 'bg-white dark:bg-slate-700 text-teal-700 dark:text-teal-300 font-bold shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'"
+                    <button type="button" (click)="setQuickSort('name')"
+                      [class]="(sortBy() === 'name' || sortBy() === 'storeName') ? 'bg-white dark:bg-slate-700 text-teal-700 dark:text-teal-300 font-bold shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'"
                       class="px-2 py-1 rounded text-xs transition-all cursor-pointer flex items-center gap-1" title="Ordem alfabética pelo nome da loja">
                       <span>🔤 Nome</span>
+                      @if (sortBy() === 'name' || sortBy() === 'storeName') {
+                        <span class="text-[9px]">{{ sortDirection() === 'asc' ? '▲' : '▼' }}</span>
+                      }
                     </button>
                   </div>
 
@@ -807,30 +816,133 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                 <table class="w-full text-left border-collapse text-sm">
                 <thead class="bg-teal-700 text-white sticky top-0 z-10 shadow-sm">
                   <tr>
-                    <th class="p-3 font-semibold uppercase text-xs w-28 border-r border-teal-600">Loja</th>
-                    <th class="p-3 font-semibold uppercase text-xs text-center w-20 border-r border-teal-600">Ant.</th>
-                    <th class="p-3 font-semibold uppercase text-xs text-right w-24 border-r border-teal-600">Leitura</th>
-                    @if (utilityType() === 'luz') {
-                      <th class="p-3 font-semibold uppercase text-xs text-center w-16 border-r border-teal-600">Const.</th>
-                    }
-                    <th class="p-3 font-semibold uppercase text-xs text-right w-20 border-r border-teal-600">Virtual</th>
-                    @if (utilityType() === 'gas') {
-                       <th class="p-3 font-semibold uppercase text-xs text-center w-16 border-r border-teal-600">Aj(x)</th>
-                       <th class="p-3 font-semibold uppercase text-xs text-center w-16 border-r border-teal-600">Aj(+)</th>
-                       <th class="p-3 font-semibold uppercase text-xs text-center w-16 border-r border-teal-600">FCM</th>
-                    } @else {
-                       <th class="p-3 font-semibold uppercase text-xs text-center w-16 border-r border-teal-600">Ajuste</th>
-                    }
-                    <th class="p-3 font-semibold uppercase text-xs text-right w-24 border-r border-teal-600">
-                        {{ utilityType() === 'gas' ? 'Cons. Rateado' : 'Consumo' }}
+                    <th (click)="toggleSort('storeName')" class="p-3 font-semibold uppercase text-xs w-28 border-r border-teal-600 cursor-pointer select-none hover:bg-teal-600 transition-colors" title="Ordenar por Loja">
+                      <div class="flex items-center justify-between gap-1">
+                        <span>Loja</span>
+                        <span class="text-[10px]" [class.opacity-100]="sortBy() === 'storeName' || sortBy() === 'name'" [class.opacity-40]="sortBy() !== 'storeName' && sortBy() !== 'name'">
+                          {{ (sortBy() === 'storeName' || sortBy() === 'name') ? (sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                        </span>
+                      </div>
                     </th>
-                    <th class="p-3 font-semibold uppercase text-xs text-right w-16 border-r border-teal-600">Var (%)</th>
-                    @if (utilityType() === 'gas') {
-                        <th class="p-3 font-semibold uppercase text-xs text-right w-24 border-r border-teal-600">Fluxo</th>
+                    <th (click)="toggleSort('prevReading')" class="p-3 font-semibold uppercase text-xs text-center w-20 border-r border-teal-600 cursor-pointer select-none hover:bg-teal-600 transition-colors" title="Ordenar por Leitura Anterior">
+                      <div class="flex items-center justify-center gap-1">
+                        <span>Ant.</span>
+                        <span class="text-[10px]" [class.opacity-100]="sortBy() === 'prevReading'" [class.opacity-40]="sortBy() !== 'prevReading'">
+                          {{ sortBy() === 'prevReading' ? (sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                        </span>
+                      </div>
+                    </th>
+                    <th (click)="toggleSort('currentReading')" class="p-3 font-semibold uppercase text-xs text-right w-24 border-r border-teal-600 cursor-pointer select-none hover:bg-teal-600 transition-colors" title="Ordenar por Leitura Atual">
+                      <div class="flex items-center justify-end gap-1">
+                        <span>Leitura</span>
+                        <span class="text-[10px]" [class.opacity-100]="sortBy() === 'currentReading'" [class.opacity-40]="sortBy() !== 'currentReading'">
+                          {{ sortBy() === 'currentReading' ? (sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                        </span>
+                      </div>
+                    </th>
+                    @if (utilityType() === 'luz') {
+                      <th (click)="toggleSort('constant')" class="p-3 font-semibold uppercase text-xs text-center w-16 border-r border-teal-600 cursor-pointer select-none hover:bg-teal-600 transition-colors" title="Ordenar por Constante">
+                        <div class="flex items-center justify-center gap-1">
+                          <span>Const.</span>
+                          <span class="text-[10px]" [class.opacity-100]="sortBy() === 'constant'" [class.opacity-40]="sortBy() !== 'constant'">
+                            {{ sortBy() === 'constant' ? (sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                          </span>
+                        </div>
+                      </th>
                     }
-                    <th class="p-3 font-semibold uppercase text-xs text-right w-24 border-r border-teal-600">Obs. Campo</th>
-                    <th class="p-3 font-semibold uppercase text-xs text-center w-24 border-r border-teal-600">Foto Medidor</th>
-                    <th class="p-3 font-semibold uppercase text-xs text-right w-28 bg-teal-800">Custo Total</th>
+                    <th (click)="toggleSort('virtual')" class="p-3 font-semibold uppercase text-xs text-right w-20 border-r border-teal-600 cursor-pointer select-none hover:bg-teal-600 transition-colors" title="Ordenar por Virtual">
+                      <div class="flex items-center justify-end gap-1">
+                        <span>Virtual</span>
+                        <span class="text-[10px]" [class.opacity-100]="sortBy() === 'virtual'" [class.opacity-40]="sortBy() !== 'virtual'">
+                          {{ sortBy() === 'virtual' ? (sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                        </span>
+                      </div>
+                    </th>
+                    @if (utilityType() === 'gas') {
+                       <th (click)="toggleSort('adjustment')" class="p-3 font-semibold uppercase text-xs text-center w-16 border-r border-teal-600 cursor-pointer select-none hover:bg-teal-600 transition-colors" title="Ordenar por Ajuste Multiplicador">
+                         <div class="flex items-center justify-center gap-1">
+                           <span>Aj(x)</span>
+                           <span class="text-[10px]" [class.opacity-100]="sortBy() === 'adjustment'" [class.opacity-40]="sortBy() !== 'adjustment'">
+                             {{ sortBy() === 'adjustment' ? (sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                           </span>
+                         </div>
+                       </th>
+                       <th (click)="toggleSort('adjustmentAdd')" class="p-3 font-semibold uppercase text-xs text-center w-16 border-r border-teal-600 cursor-pointer select-none hover:bg-teal-600 transition-colors" title="Ordenar por Ajuste Aditivo">
+                         <div class="flex items-center justify-center gap-1">
+                           <span>Aj(+)</span>
+                           <span class="text-[10px]" [class.opacity-100]="sortBy() === 'adjustmentAdd'" [class.opacity-40]="sortBy() !== 'adjustmentAdd'">
+                             {{ sortBy() === 'adjustmentAdd' ? (sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                           </span>
+                         </div>
+                       </th>
+                       <th (click)="toggleSort('fcm')" class="p-3 font-semibold uppercase text-xs text-center w-16 border-r border-teal-600 cursor-pointer select-none hover:bg-teal-600 transition-colors" title="Ordenar por FCM">
+                         <div class="flex items-center justify-center gap-1">
+                           <span>FCM</span>
+                           <span class="text-[10px]" [class.opacity-100]="sortBy() === 'fcm'" [class.opacity-40]="sortBy() !== 'fcm'">
+                             {{ sortBy() === 'fcm' ? (sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                           </span>
+                         </div>
+                       </th>
+                    } @else {
+                       <th (click)="toggleSort('adjustment')" class="p-3 font-semibold uppercase text-xs text-center w-16 border-r border-teal-600 cursor-pointer select-none hover:bg-teal-600 transition-colors" title="Ordenar por Ajuste">
+                         <div class="flex items-center justify-center gap-1">
+                           <span>Ajuste</span>
+                           <span class="text-[10px]" [class.opacity-100]="sortBy() === 'adjustment'" [class.opacity-40]="sortBy() !== 'adjustment'">
+                             {{ sortBy() === 'adjustment' ? (sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                           </span>
+                         </div>
+                       </th>
+                    }
+                    <th (click)="toggleSort('consumption')" class="p-3 font-semibold uppercase text-xs text-right w-24 border-r border-teal-600 cursor-pointer select-none hover:bg-teal-600 transition-colors" title="Ordenar por Consumo">
+                      <div class="flex items-center justify-end gap-1">
+                        <span>{{ utilityType() === 'gas' ? 'Cons. Rateado' : 'Consumo' }}</span>
+                        <span class="text-[10px]" [class.opacity-100]="sortBy() === 'consumption'" [class.opacity-40]="sortBy() !== 'consumption'">
+                          {{ sortBy() === 'consumption' ? (sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                        </span>
+                      </div>
+                    </th>
+                    <th (click)="toggleSort('variation')" class="p-3 font-semibold uppercase text-xs text-right w-16 border-r border-teal-600 cursor-pointer select-none hover:bg-teal-600 transition-colors" title="Ordenar por Variação">
+                      <div class="flex items-center justify-end gap-1">
+                        <span>Var (%)</span>
+                        <span class="text-[10px]" [class.opacity-100]="sortBy() === 'variation'" [class.opacity-40]="sortBy() !== 'variation'">
+                          {{ sortBy() === 'variation' ? (sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                        </span>
+                      </div>
+                    </th>
+                    @if (utilityType() === 'gas') {
+                      <th (click)="toggleSort('fluxoCost')" class="p-3 font-semibold uppercase text-xs text-right w-24 border-r border-teal-600 cursor-pointer select-none hover:bg-teal-600 transition-colors" title="Ordenar por Fluxo">
+                        <div class="flex items-center justify-end gap-1">
+                          <span>Fluxo</span>
+                          <span class="text-[10px]" [class.opacity-100]="sortBy() === 'fluxoCost'" [class.opacity-40]="sortBy() !== 'fluxoCost'">
+                            {{ sortBy() === 'fluxoCost' ? (sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                          </span>
+                        </div>
+                      </th>
+                    }
+                    <th (click)="toggleSort('note')" class="p-3 font-semibold uppercase text-xs text-right w-24 border-r border-teal-600 cursor-pointer select-none hover:bg-teal-600 transition-colors" title="Ordenar por Observações de Campo">
+                      <div class="flex items-center justify-end gap-1">
+                        <span>Obs. Campo</span>
+                        <span class="text-[10px]" [class.opacity-100]="sortBy() === 'note'" [class.opacity-40]="sortBy() !== 'note'">
+                          {{ sortBy() === 'note' ? (sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                        </span>
+                      </div>
+                    </th>
+                    <th (click)="toggleSort('hasPhoto')" class="p-3 font-semibold uppercase text-xs text-center w-24 border-r border-teal-600 cursor-pointer select-none hover:bg-teal-600 transition-colors" title="Ordenar por Foto do Medidor">
+                      <div class="flex items-center justify-center gap-1">
+                        <span>Foto Medidor</span>
+                        <span class="text-[10px]" [class.opacity-100]="sortBy() === 'hasPhoto'" [class.opacity-40]="sortBy() !== 'hasPhoto'">
+                          {{ sortBy() === 'hasPhoto' ? (sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                        </span>
+                      </div>
+                    </th>
+                    <th (click)="toggleSort('cost')" class="p-3 font-semibold uppercase text-xs text-right w-28 bg-teal-800 cursor-pointer select-none hover:bg-teal-700 transition-colors" title="Ordenar por Custo Total">
+                      <div class="flex items-center justify-end gap-1">
+                        <span>Custo Total</span>
+                        <span class="text-[10px]" [class.opacity-100]="sortBy() === 'cost'" [class.opacity-40]="sortBy() !== 'cost'">
+                          {{ sortBy() === 'cost' ? (sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                        </span>
+                      </div>
+                    </th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900 transition-colors">
@@ -2676,7 +2788,8 @@ export class BillCalculatorComponent implements OnDestroy {
   // --- FIELD / MOBILE ENHANCED STATE ---
   searchQuery = signal<string>('');
   statusFilter = signal<'all' | 'pending' | 'completed' | 'alert'>('all');
-  sortBy = signal<'route' | 'luc' | 'name'>('route');
+  sortBy = signal<string>('route');
+  sortDirection = signal<'asc' | 'desc'>('asc');
   mobileViewMode = signal<'cards' | 'step'>('cards');
   stepIndex = signal<number>(0);
   activeNoteStoreId = signal<string | null>(null);
@@ -3871,7 +3984,8 @@ export class BillCalculatorComponent implements OnDestroy {
     let list = this.tableData();
     const filter = this.statusFilter();
     const q = this.searchQuery().trim().toLowerCase();
-    const sort = this.sortBy();
+    const sortCol = this.sortBy();
+    const sortDir = this.sortDirection();
 
     if (filter === 'pending') {
       list = list.filter(item => !item.isRead);
@@ -3890,21 +4004,112 @@ export class BillCalculatorComponent implements OnDestroy {
     }
 
     const sorted = [...list];
-    if (sort === 'route') {
-      sorted.sort((a, b) => {
-        const orderA = a.routeOrder !== undefined && a.routeOrder !== null ? a.routeOrder : 9999;
-        const orderB = b.routeOrder !== undefined && b.routeOrder !== null ? b.routeOrder : 9999;
-        if (orderA !== orderB) return orderA - orderB;
-        return a.luc.localeCompare(b.luc, undefined, { numeric: true });
-      });
-    } else if (sort === 'luc') {
-      sorted.sort((a, b) => a.luc.localeCompare(b.luc, undefined, { numeric: true }));
-    } else if (sort === 'name') {
-      sorted.sort((a, b) => a.storeName.localeCompare(b.storeName));
-    }
+    sorted.sort((a, b) => {
+      let diff = 0;
+      switch (sortCol) {
+        case 'route': {
+          const orderA = a.routeOrder !== undefined && a.routeOrder !== null ? a.routeOrder : 9999;
+          const orderB = b.routeOrder !== undefined && b.routeOrder !== null ? b.routeOrder : 9999;
+          diff = orderA - orderB;
+          break;
+        }
+        case 'luc':
+          diff = a.luc.localeCompare(b.luc, undefined, { numeric: true });
+          break;
+        case 'name':
+        case 'storeName':
+          diff = a.storeName.localeCompare(b.storeName);
+          break;
+        case 'prevReading':
+          diff = (a.prevReading || 0) - (b.prevReading || 0);
+          break;
+        case 'currentReading':
+        case 'reading':
+          diff = (a.currentReading || 0) - (b.currentReading || 0);
+          break;
+        case 'constant':
+          diff = (a.constant || 1) - (b.constant || 1);
+          break;
+        case 'virtual':
+          diff = (a.virtual ?? 0) - (b.virtual ?? 0);
+          break;
+        case 'adjustment':
+          diff = (a.adjustment ?? 0) - (b.adjustment ?? 0);
+          break;
+        case 'adjustmentAdd':
+          diff = (a.adjustmentAdd ?? 0) - (b.adjustmentAdd ?? 0);
+          break;
+        case 'fcm':
+          diff = (a.fcm ?? 0) - (b.fcm ?? 0);
+          break;
+        case 'consumption':
+          diff = (a.consumption || 0) - (b.consumption || 0);
+          break;
+        case 'variation':
+          diff = (a.variation || 0) - (b.variation || 0);
+          break;
+        case 'fluxoCost':
+          diff = (a.fluxoCost || 0) - (b.fluxoCost || 0);
+          break;
+        case 'note':
+          diff = (a.note || '').localeCompare(b.note || '');
+          break;
+        case 'hasPhoto':
+        case 'photo':
+          diff = (a.hasPhoto ? 1 : 0) - (b.hasPhoto ? 1 : 0);
+          break;
+        case 'cost':
+          diff = (a.cost || 0) - (b.cost || 0);
+          break;
+        default: {
+          const orderA = a.routeOrder !== undefined && a.routeOrder !== null ? a.routeOrder : 9999;
+          const orderB = b.routeOrder !== undefined && b.routeOrder !== null ? b.routeOrder : 9999;
+          diff = orderA - orderB;
+          break;
+        }
+      }
+
+      if (diff !== 0) {
+        return sortDir === 'asc' ? diff : -diff;
+      }
+
+      // Tiebreaker determinístico para evitar instabilidade na visualização
+      const orderA = a.routeOrder !== undefined && a.routeOrder !== null ? a.routeOrder : 9999;
+      const orderB = b.routeOrder !== undefined && b.routeOrder !== null ? b.routeOrder : 9999;
+      if (orderA !== orderB) return orderA - orderB;
+      return a.luc.localeCompare(b.luc, undefined, { numeric: true });
+    });
 
     return sorted;
   });
+
+  toggleSort(col: string) {
+    const isCurrent = this.sortBy() === col || (col === 'storeName' && this.sortBy() === 'name');
+    if (isCurrent) {
+      this.sortDirection.update(d => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      this.sortBy.set(col);
+      // Colunas numéricas e de custos começam em ordem decrescente (maior para o menor)
+      const descFirstCols = [
+        'consumption', 'cost', 'currentReading', 'prevReading',
+        'variation', 'fluxoCost', 'virtual', 'hasPhoto'
+      ];
+      if (descFirstCols.includes(col)) {
+        this.sortDirection.set('desc');
+      } else {
+        this.sortDirection.set('asc');
+      }
+    }
+  }
+
+  setQuickSort(col: 'route' | 'luc' | 'name') {
+    if (this.sortBy() === col || (col === 'name' && this.sortBy() === 'storeName')) {
+      this.sortDirection.update(d => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      this.sortBy.set(col);
+      this.sortDirection.set('asc');
+    }
+  }
 
   currentStepStore = computed(() => {
     const list = this.tableData();
