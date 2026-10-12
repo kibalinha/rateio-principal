@@ -150,15 +150,6 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
              {{ lastSaved() ? 'Sincronizado: ' + (lastSaved() | date:'shortTime') : '' }}
            </span>
 
-           <!-- Botão Configurar Chaves de IA -->
-           <button 
-             type="button"
-             (click)="openAiKeyModal()" 
-             class="px-3 py-2 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-             title="Configurar chaves da Groq e Gemini para leitura de medidores por IA">
-             <span>🤖</span>
-             <span class="hidden sm:inline">Chaves IA</span>
-           </button>
 
            <!-- Botão Qualidade do OCR (apenas administrador) -->
            @if (authService.isAdmin()) {
