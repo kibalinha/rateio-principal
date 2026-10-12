@@ -437,7 +437,9 @@ FOR ALL USING (bucket_id = 'meter-photos') WITH CHECK (bucket_id = 'meter-photos
         .from('meter-photos')
         .getPublicUrl(filePath);
 
-      return publicUrlData?.publicUrl || null;
+      const rawPublicUrl = publicUrlData?.publicUrl || null;
+      const timestamp = new Date(photo.capturedAt).getTime() || Date.now();
+      return rawPublicUrl ? `${rawPublicUrl}?t=${timestamp}` : null;
     } catch {
       return null;
     }

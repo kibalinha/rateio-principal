@@ -169,14 +169,32 @@ import { MeterPhotoRecord } from '../models';
               }
 
               @if (enableReplace) {
-                <label class="flex-1 py-2.5 px-3 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer text-center">
-                  <span>🔄 Substituir</span>
+                <label class="flex-1 py-2.5 px-3 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer text-center"
+                       [class.opacity-60]="isReplacing"
+                       [class.pointer-events-none]="isReplacing">
+                  @if (isReplacing) {
+                    <span class="animate-spin text-sm">⏳</span>
+                    <span>Substituindo...</span>
+                  } @else {
+                    <span>🔄 Substituir</span>
+                  }
                   <input type="file" 
                          accept="image/*" 
                          capture="environment" 
                          (change)="onPhotoFileChange($event)" 
-                         class="hidden">
+                         class="hidden"
+                         [disabled]="isReplacing">
                 </label>
+              }
+
+              @if (enableDelete && !isConfirmingDelete) {
+                <button type="button" 
+                  (click)="isConfirmingDelete = true" 
+                  class="py-2.5 px-3 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                  title="Excluir evidência fotográfica">
+                  <span>🗑️</span>
+                  <span>Excluir</span>
+                </button>
               }
 
               <button type="button" 
@@ -184,6 +202,22 @@ import { MeterPhotoRecord } from '../models';
                 class="py-2.5 px-4 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-xl text-xs font-bold transition-colors cursor-pointer">
                 Fechar
               </button>
+
+              @if (enableDelete && isConfirmingDelete) {
+                <div class="w-full flex items-center gap-2 p-2.5 bg-rose-50 dark:bg-rose-950/80 border border-rose-200 dark:border-rose-800 rounded-xl animate-fade-in text-xs mt-1">
+                  <span class="text-rose-800 dark:text-rose-200 font-bold flex-1">Tem certeza que deseja excluir esta foto permanentemente?</span>
+                  <button type="button" 
+                    (click)="onDeletePhoto()" 
+                    class="py-1.5 px-3 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold shadow-xs cursor-pointer">
+                    Sim, Excluir
+                  </button>
+                  <button type="button" 
+                    (click)="isConfirmingDelete = false" 
+                    class="py-1.5 px-2.5 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg font-bold cursor-pointer">
+                    Cancelar
+                  </button>
+                </div>
+              }
             </div>
           </div>
         </div>
@@ -198,6 +232,8 @@ export class MeterPhotoModalComponent {
   @Input() enableOcr = false;
   @Input() enableVoucher = false;
   @Input() enableReplace = false;
+  @Input() enableDelete = true;
+  @Input() isReplacing = false;
   @Input() isReadingOcr: string | null = null;
   @Input() ocrModelLabel = '';
   @Input() ocrFeedback: Record<string, any> | null = null;
@@ -208,15 +244,30 @@ export class MeterPhotoModalComponent {
   @Output() runOcr = new EventEmitter<{ storeId: string; provider: 'auto' | 'qwen' | 'gemini' }>();
   @Output() openVoucher = new EventEmitter<string>();
   @Output() replacePhoto = new EventEmitter<{ event: Event; photo: MeterPhotoRecord }>();
+  @Output() deletePhoto = new EventEmitter<MeterPhotoRecord>();
   @Output() dismissFeedback = new EventEmitter<string>();
 
+  isConfirmingDelete = false;
+
   onClose() {
+    this.isConfirmingDelete = false;
     this.close.emit();
+  }
+
+  onDeletePhoto() {
+    if (this.photo) {
+      this.deletePhoto.emit(this.photo);
+      this.isConfirmingDelete = false;
+    }
   }
 
   onPhotoFileChange(event: Event) {
     if (this.photo) {
       this.replacePhoto.emit({ event, photo: this.photo });
+      const input = event.target as HTMLInputElement;
+      if (input) {
+        input.value = '';
+      }
     }
   }
 }

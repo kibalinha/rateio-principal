@@ -997,6 +997,12 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                               title="Ler visor com Qwen 3.8 27B (Groq) ou Gemini">
                               <span>⚡</span>
                             </button>
+                            <button type="button" 
+                              (click)="confirmDeletePhoto(item.storeId, item.storeName)" 
+                              class="p-0.5 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer text-[10px]"
+                              title="Excluir foto do medidor">
+                              <span>🗑️</span>
+                            </button>
                           </div>
                         } @else {
                           <label class="cursor-pointer text-[10px] text-slate-400 hover:text-teal-700 dark:hover:text-teal-400 inline-flex items-center gap-0.5 transition-colors">
@@ -1387,14 +1393,21 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                           </div>
 
                           @if (meterPhotos()[item.storeId]) {
-                            <label class="cursor-pointer text-[10px] font-semibold text-slate-500 hover:text-slate-800 underline shrink-0">
-                              <span>Substituir</span>
-                              <input type="file" 
-                                     accept="image/*" 
-                                     capture="environment" 
-                                     (change)="onPhotoCaptured($event, item.storeId, item.storeName, item.luc, item.currentReading)" 
-                                     class="hidden">
-                            </label>
+                            <div class="flex items-center gap-2.5 shrink-0">
+                              <label class="cursor-pointer text-[10px] font-semibold text-teal-700 dark:text-teal-400 hover:underline">
+                                <span>Substituir</span>
+                                <input type="file" 
+                                       accept="image/*" 
+                                       capture="environment" 
+                                       (change)="onPhotoCaptured($event, item.storeId, item.storeName, item.luc, item.currentReading)" 
+                                       class="hidden">
+                              </label>
+                              <button type="button" 
+                                (click)="confirmDeletePhoto(item.storeId, item.storeName)" 
+                                class="text-[10px] font-semibold text-rose-600 dark:text-rose-400 hover:underline cursor-pointer">
+                                🗑️ Excluir
+                              </button>
+                            </div>
                           }
                         </div>
                      </div>
@@ -1590,6 +1603,11 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                                       <span>Trocar</span>
                                       <input type="file" accept="image/*" capture="environment" (change)="onPhotoCaptured($event, stepStore.storeId, stepStore.storeName, stepStore.luc, stepStore.currentReading)" class="hidden">
                                     </label>
+                                    <button type="button" 
+                                      (click)="confirmDeletePhoto(stepStore.storeId, stepStore.storeName)" 
+                                      class="text-[10px] text-rose-500 dark:text-rose-400 hover:underline cursor-pointer">
+                                      <span>Excluir</span>
+                                    </button>
                                   </div>
                                 </div>
                               </div>
@@ -2005,6 +2023,8 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
         [enableOcr]="true"
         [enableVoucher]="true"
         [enableReplace]="true"
+        [enableDelete]="true"
+        [isReplacing]="isCapturingPhoto() === activePhotoRecord()?.storeId"
         [isReadingOcr]="isReadingOcr()"
         [ocrModelLabel]="ocrCurrentModelLabel()"
         [ocrFeedback]="ocrFeedback()"
@@ -2014,6 +2034,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
         (runOcr)="runOcrOnPhoto($event.storeId, $event.provider)"
         (openVoucher)="openStoreVoucherByStoreId($event)"
         (replacePhoto)="onPhotoCaptured($event.event, $event.photo.storeId, $event.photo.storeName, $event.photo.luc, $event.photo.readingValue)"
+        (deletePhoto)="removePhoto($event.storeId)"
         (dismissFeedback)="dismissOcrFeedback($event)"
       />
 
@@ -4145,6 +4166,7 @@ export class BillCalculatorComponent implements OnDestroy {
     const input = event.target as HTMLInputElement;
     if (!input.files || input.files.length === 0) return;
     const file = input.files[0];
+    input.value = '';
 
     this.isCapturingPhoto.set(storeId);
 
@@ -4200,11 +4222,11 @@ export class BillCalculatorComponent implements OnDestroy {
 
       this.meterPhotos.update(prev => ({
         ...prev,
-        [storeId]: record
+        [storeId]: { ...record }
       }));
 
       if (this.activePhotoRecord()?.storeId === storeId) {
-        this.activePhotoRecord.set(record);
+        this.activePhotoRecord.set({ ...record });
       }
 
       this.updateDetailedReading(storeId, 'hasPhoto', true);
@@ -4800,6 +4822,13 @@ export class BillCalculatorComponent implements OnDestroy {
     this.showPhotoModal.set(false);
     this.activePhotoRecord.set(null);
     this.isConfirmingPhotoDelete.set(false);
+  }
+
+  confirmDeletePhoto(storeId: string, storeName?: string) {
+    const name = storeName || 'desta loja';
+    if (confirm(`Tem certeza que deseja excluir a foto do medidor de ${name}?`)) {
+      this.removePhoto(storeId);
+    }
   }
 
   async removePhoto(storeId: string) {
