@@ -164,4 +164,40 @@ describe('StoreService - Monthly Store Isolation & Consultation', () => {
     expect(service.hasMonthlyList('gas', '2026-08')).toBe(false);
     expect(service.getStoresForMonth('gas', '2026-08')).toEqual([]);
   });
+
+  it('inativar ausentes em uma utilidade (ex: gás) JAMAIS deve inativar ou quebrar lojas nas outras utilidades (luz ou água)', () => {
+    // 1. Criamos uma loja que usa Luz e Gás
+    service.addStore({
+      luc: 'REST-01',
+      name: 'Restaurante Fogo',
+      contrato: 'CTR-77',
+      active: true,
+      usesLuz: true,
+      usesAgua: false,
+      usesGas: true
+    }, '2026-09');
+
+    // Verifica que ela está na lista de Luz e de Gás em 2026-09
+    service.setMonthlyStoreList('luz', '2026-09', service.stores().filter(s => s.usesLuz).map(s => s.id));
+    service.setMonthlyStoreList('gas', '2026-09', service.stores().filter(s => s.usesGas).map(s => s.id));
+
+    expect(service.getStoresForMonth('luz', '2026-09', false).some(s => s.luc === 'REST-01')).toBe(true);
+    expect(service.getStoresForMonth('gas', '2026-09', false).some(s => s.luc === 'REST-01')).toBe(true);
+
+    // 2. Agora, importamos a lista de Gás para 2026-10 SEM o Restaurante Fogo e marcando inactivateMissing = true
+    service.processMonthlyStoreImport([
+      { luc: 'REST-02', contrato: 'CTR-88', name: 'Outro Restaurante' }
+    ], 'gas', '2026-10', true);
+
+    // 3. Em Gás (2026-10), REST-01 não está presente
+    expect(service.getStoresForMonth('gas', '2026-10', false).some(s => s.luc === 'REST-01')).toBe(false);
+
+    // 4. CRUCIAL: Em Luz (2026-09), REST-01 CONTINUA 100% ATIVO!
+    // A inativação em Gás JAMAIS desativa a loja globalmente quando ela ainda utiliza Luz!
+    const luzStores = service.getStoresForMonth('luz', '2026-09', false);
+    const storeInLuz = luzStores.find(s => s.luc === 'REST-01');
+    expect(storeInLuz).toBeDefined();
+    expect(storeInLuz!.active).toBe(true);
+    expect(storeInLuz!.usesLuz).toBe(true);
+  });
 });

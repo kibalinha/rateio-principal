@@ -372,15 +372,6 @@ export class StoreService {
         ...current,
         [`${type}_${month}`]: storeIds
       };
-      const combinedMonthIds = new Set<string>(storeIds);
-      for (const t of ['luz', 'agua', 'gas'] as const) {
-        const otherIds = updated[`${t}_${month}`];
-        if (otherIds) {
-          otherIds.forEach(id => combinedMonthIds.add(id));
-        }
-      }
-      updated[month] = Array.from(combinedMonthIds);
-
       this.persistMonthlyStoreLists(updated);
       return updated;
     });
@@ -589,7 +580,7 @@ export class StoreService {
         }
       }
 
-      // 3. Se solicitado, inativa lojas da utilidade que não estavam presentes na planilha deste mês
+      // 3. Se solicitado, inativa ou desvincula lojas da utilidade que não estavam presentes na planilha deste mês
       if (inactivateMissing) {
         list = list.map(store => {
           const usesUtil = type === 'luz' ? store.usesLuz : (type === 'agua' ? store.usesAgua : store.usesGas);
@@ -599,12 +590,25 @@ export class StoreService {
               name: store.name,
               contrato: store.contrato
             });
-            return {
-              ...store,
-              active: false,
-              deactivatedAt: referenceMonth,
-              deactivationReason: `Não constava na planilha mensal de ${referenceMonth}`
-            };
+
+            // Verifica se a loja ainda utiliza outras utilidades ativas (ex.: ainda usa Luz ou Gás)
+            const usesOther = (type !== 'luz' && store.usesLuz) ||
+                              (type !== 'agua' && store.usesAgua) ||
+                              (type !== 'gas' && store.usesGas);
+
+            if (usesOther) {
+              // A loja continua 100% ativa no shopping para as outras utilidades.
+              // Para este mês nesta utilidade, ela simplesmente não entra na lista mensal deste mês.
+              return store;
+            } else {
+              // A loja não utiliza mais nenhuma outra utilidade no shopping: inativação completa
+              return {
+                ...store,
+                active: false,
+                deactivatedAt: referenceMonth,
+                deactivationReason: `Não constava na planilha mensal de ${type.toUpperCase()} (${referenceMonth})`
+              };
+            }
           }
           return store;
         });
