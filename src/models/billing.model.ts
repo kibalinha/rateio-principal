@@ -23,6 +23,7 @@ export type StoreReading = {
   anomalyConfirmed?: boolean; // Confirmado intencionalmente pelo técnico
   isRollover?: boolean;       // Marcado como virada física de medidor (9999 -> 0000)
   meterNumber?: string;       // Número de identificação/série do relógio
+  excludedFromBill?: boolean; // Se marcado, a loja é desconsiderada do rateio / valor final
 };
 
 export interface BillData {

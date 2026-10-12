@@ -863,7 +863,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                               </span>
                             }
                           </div>
-                          <div class="text-[10px] text-slate-400 font-mono flex items-center gap-1.5 mt-0.5">
+                          <div class="text-[10px] text-slate-400 font-mono flex items-center gap-1.5 mt-0.5 flex-wrap">
                             @if (item.routeOrder) {
                               <span class="bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 px-1.5 py-0.2 rounded font-bold shadow-2xs" title="Posição {{ item.routeOrder }} na rota de leitura">#{{ item.routeOrder }}</span>
                             }
@@ -872,6 +872,15 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                               <span class="text-slate-300 dark:text-slate-600">•</span>
                               <span class="text-slate-500 dark:text-slate-400 font-medium">Ctr: {{ item.contrato }}</span>
                             }
+                            <button type="button" 
+                              (click)="toggleExcludeFromBill(item.storeId)" 
+                              [title]="item.excludedFromBill ? 'Esta loja NÃO entra no valor final da conta. Clique para incluir.' : 'Esta loja entra no valor final. Clique para retirar do valor final da conta.'" 
+                              class="text-[10px] font-bold px-1.5 py-0.5 rounded cursor-pointer flex items-center gap-1 transition-all border shadow-2xs"
+                              [class]="item.excludedFromBill 
+                                ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-700' 
+                                : 'bg-slate-50 dark:bg-slate-800 text-slate-500 hover:text-slate-700 dark:text-slate-400 border-slate-200 dark:border-slate-700'">
+                              <span>{{ item.excludedFromBill ? '🚫 Fora da Conta' : '✓ Na Conta' }}</span>
+                            </button>
                             <button type="button" (click)="openStoreVoucher(item)" title="Gerar espelho do lojista" class="ml-auto text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer flex items-center gap-0.5"><span>📲</span><span>Espelho</span></button>
                           </div>
                       </td>
@@ -1016,7 +1025,19 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                         }
                       </td>
                       <td class="p-3 text-right font-mono font-bold text-teal-800 dark:text-teal-400 bg-teal-50/30 dark:bg-teal-950/20">
-                        {{ item.cost | currency:'BRL' }}
+                        @if (item.excludedFromBill) {
+                          <span class="text-amber-600 dark:text-amber-400 block line-through opacity-60 text-[10px]">
+                            {{ item.originalCost | currency:'BRL' }}
+                          </span>
+                          <span class="text-amber-700 dark:text-amber-300 font-extrabold text-xs block">
+                            R$ 0,00
+                          </span>
+                          <span class="text-[9px] text-amber-600 dark:text-amber-400 font-bold uppercase tracking-wider block">
+                            Fora do Total
+                          </span>
+                        } @else {
+                          {{ item.cost | currency:'BRL' }}
+                        }
                       </td>
                     </tr>
                   }
@@ -1064,6 +1085,14 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                                     Ctr: {{ item.contrato }}
                                   </span>
                                 }
+                                <button type="button" 
+                                  (click)="toggleExcludeFromBill(item.storeId)" 
+                                  class="text-[10px] font-bold px-2 py-0.5 rounded-md cursor-pointer flex items-center gap-1 transition-all border shadow-2xs"
+                                  [class]="item.excludedFromBill 
+                                    ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-700' 
+                                    : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700'">
+                                  <span>{{ item.excludedFromBill ? '🚫 Fora do Total' : '✓ Na Conta' }}</span>
+                                </button>
                              </div>
                              <div class="font-bold text-slate-900 dark:text-white text-base mt-1 leading-tight">
                                {{ item.storeName }}
@@ -1303,7 +1332,15 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                              </div>
                              <div class="text-right">
                                 <span class="text-[10px] text-slate-400 block">Custo Est.</span>
-                                <strong class="font-mono text-teal-700 dark:text-teal-400">{{ item.cost | currency:'BRL' }}</strong>
+                                @if (item.excludedFromBill) {
+                                  <span class="text-[10px] text-amber-600 dark:text-amber-400 line-through opacity-70 block font-mono">
+                                    {{ item.originalCost | currency:'BRL' }}
+                                  </span>
+                                  <strong class="font-mono text-amber-700 dark:text-amber-300">R$ 0,00</strong>
+                                  <span class="text-[9px] text-amber-600 dark:text-amber-400 font-bold block uppercase">Fora do Total</span>
+                                } @else {
+                                  <strong class="font-mono text-teal-700 dark:text-teal-400">{{ item.cost | currency:'BRL' }}</strong>
+                                }
                              </div>
                           </div>
                         }
@@ -1486,6 +1523,14 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                                 Ctr: {{ stepStore.contrato }}
                               </span>
                             }
+                            <button type="button" 
+                              (click)="toggleExcludeFromBill(stepStore.storeId)" 
+                              class="text-xs font-bold px-2.5 py-0.5 rounded-lg cursor-pointer flex items-center gap-1.5 transition-all border shadow-2xs"
+                              [class]="stepStore.excludedFromBill 
+                                ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-700' 
+                                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'">
+                              <span>{{ stepStore.excludedFromBill ? '🚫 Fora do Total' : '✓ Na Conta' }}</span>
+                            </button>
                           </div>
 
                           <span class="text-xs font-mono font-bold text-teal-800 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/70 px-2.5 py-1 rounded-lg border border-teal-200 dark:border-teal-800 flex items-center gap-1">
@@ -2986,7 +3031,7 @@ export class BillCalculatorComponent implements OnDestroy {
   }
 
   createDefaultReading(): StoreReading {
-    return { reading: 0, constant: 1, virtual: undefined, adjustment: 1, calculatedConsumption: 0 };
+    return { reading: 0, constant: 1, virtual: undefined, adjustment: 1, calculatedConsumption: 0, excludedFromBill: false };
   }
 
   // --- IMPORTAÇÃO INTELIGENTE DE PLANILHA EXCEL ---
@@ -3450,6 +3495,7 @@ export class BillCalculatorComponent implements OnDestroy {
       const storeMap = readingsStore[type] as Map<string, StoreReading>;
       stores.forEach(s => {
         const d = storeMap.get(s.id) || this.createDefaultReading();
+        if (d.excludedFromBill) return;
         const p = prevReadings.get(s.id) || { reading: 0, consumption: 0 };
         const hasVirtual = d.virtual !== undefined && d.virtual !== null && !isNaN(Number(d.virtual));
         if (hasVirtual) {
@@ -3545,11 +3591,14 @@ export class BillCalculatorComponent implements OnDestroy {
         variation = ((consumption - prevData.consumption) / prevData.consumption) * 100;
       }
 
-      cost = consumption * price;
+      let rawCost = consumption * price;
 
       if (type === 'gas') {
-        cost += fluxoCost;
+        rawCost += fluxoCost;
       }
+
+      const excludedFromBill = !!data.excludedFromBill;
+      cost = excludedFromBill ? 0 : rawCost;
 
       const note = data.note || '';
       const photoRec = this.meterPhotos()[store.id];
@@ -3664,6 +3713,8 @@ export class BillCalculatorComponent implements OnDestroy {
         gasFactor,
         isGasDistributed: type === 'gas' && isGasAuto && gasConcessionaria > 0 && totalRawGas > 0 && Math.abs(gasFactor - 1) > 0.0001,
         cost,
+        originalCost: rawCost,
+        excludedFromBill,
         prevReading,
         currentReading,
         constant,
@@ -3701,8 +3752,8 @@ export class BillCalculatorComponent implements OnDestroy {
     if (this.utilityType() !== 'gas') return null;
     const concessionaria = this.gasTotalReading() || 0;
     const table = this.tableData();
-    const rawTotal = table.reduce((acc, item) => acc + (item.rawConsumption !== undefined ? item.rawConsumption : item.consumption), 0);
-    const distributedTotal = table.reduce((acc, item) => acc + item.consumption, 0);
+    const rawTotal = table.reduce((acc, item) => acc + (item.excludedFromBill ? 0 : (item.rawConsumption !== undefined ? item.rawConsumption : item.consumption)), 0);
+    const distributedTotal = table.reduce((acc, item) => acc + (item.excludedFromBill ? 0 : item.consumption), 0);
     const diffM3 = concessionaria - rawTotal;
     const diffPct = rawTotal > 0 ? ((concessionaria - rawTotal) / rawTotal) * 100 : 0;
     const factor = (concessionaria > 0 && rawTotal > 0) ? (concessionaria / rawTotal) : 1.0;
@@ -4117,6 +4168,21 @@ export class BillCalculatorComponent implements OnDestroy {
 
   closeAnomalyModal() {
     this.activeAnomalyModal.set(null);
+  }
+
+  toggleExcludeFromBill(storeId: string) {
+    if (!this.canEdit()) return;
+    const type = this.utilityType();
+    this.readings.update(curr => {
+      const map = new Map(curr[type] as Map<string, StoreReading>);
+      const currentData = map.get(storeId) || this.createDefaultReading();
+      const updated: StoreReading = {
+        ...currentData,
+        excludedFromBill: !currentData.excludedFromBill
+      };
+      map.set(storeId, updated);
+      return { ...curr, [type]: map };
+    });
   }
 
   // --- MONTH CLOSING & AUDIT CHECKLIST METHODS (ETAPA 3) ---
@@ -4941,11 +5007,11 @@ export class BillCalculatorComponent implements OnDestroy {
   // ---
 
   totalDistributedConsumption = computed(() => {
-    return this.tableData().reduce((acc, item) => acc + item.consumption, 0);
+    return this.tableData().reduce((acc, item) => acc + (item.excludedFromBill ? 0 : item.consumption), 0);
   });
 
   totalDistributedCost = computed(() => {
-    return this.tableData().reduce((acc, item) => acc + item.cost, 0);
+    return this.tableData().reduce((acc, item) => acc + (item.excludedFromBill ? 0 : item.cost), 0);
   });
 
   setAirConditioning(val: any) {
