@@ -720,6 +720,33 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
             <!-- FIELD TECHNICIAN CONTROL CENTER (Painel de Progresso, Busca e Filtros de Campo) -->
             <div class="p-3.5 md:p-4 bg-slate-50/80 dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800 flex flex-col gap-3 transition-colors">
               
+              <!-- CELEBRAÇÃO VISUAL DE 100% DAS LOJAS LIDAS -->
+              @if (fieldStats().pending === 0 && fieldStats().total > 0) {
+                <div class="p-3.5 sm:p-4 bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-emerald-500/15 border border-emerald-400/40 rounded-2xl flex items-center justify-between gap-3 shadow-xs animate-fade-in animate-shimmer">
+                  <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center text-xl shadow-md shrink-0">
+                      🏆
+                    </div>
+                    <div>
+                      <h4 class="font-black text-sm text-emerald-950 dark:text-emerald-200 flex items-center gap-1.5">
+                        <span>Parabéns! Coleta 100% Finalizada</span>
+                        <span class="text-[10px] bg-emerald-600 text-white px-2 py-0.2 rounded-full font-mono font-bold">✓ {{ fieldStats().total }}/{{ fieldStats().total }}</span>
+                      </h4>
+                      <p class="text-xs text-emerald-800 dark:text-emerald-300 font-medium">Todas as lojas deste mês já possuem leituras registradas e conferidas.</p>
+                    </div>
+                  </div>
+                  @if (authService.isAdmin() && !isLocked()) {
+                    <button type="button" 
+                      (click)="openClosingChecklist()" 
+                      class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-xs cursor-pointer whitespace-nowrap transition-all flex items-center gap-1.5 shrink-0">
+                      <span>🛡️</span>
+                      <span class="hidden sm:inline">Revisar & Fechar Mês</span>
+                      <span class="sm:hidden">Fechar Mês</span>
+                    </button>
+                  }
+                </div>
+              }
+              
               <!-- Progress Bar & Mode Toggle -->
               <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                 <div class="flex-1">
@@ -2403,9 +2430,9 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
       <!-- NOTE EDITOR MODAL FOR FIELD TECHNICIAN -->
       @if (activeNoteStoreId()) {
         <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div class="absolute inset-0 bg-black/60 backdrop-blur-xs" (click)="closeNoteEditor()"></div>
+          <div class="absolute inset-0 bg-black/60 backdrop-blur-md animate-fade-in" (click)="closeNoteEditor()"></div>
           
-          <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl p-5 w-full max-w-sm relative z-10 space-y-4 border border-slate-200 dark:border-slate-800 transition-colors">
+          <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl p-5 w-full max-w-sm relative z-10 space-y-4 border border-slate-200 dark:border-slate-800 transition-colors animate-scale-in">
             <div class="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-2">
               <h3 class="font-bold text-slate-800 dark:text-white text-sm flex items-center gap-1.5">
                 <span>📝 Observação de Campo</span>
@@ -2710,7 +2737,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
       <!-- MODAL CHECKLIST DE AUDITORIA E FECHAMENTO MENSAL (PASSO 3: GESTÃO & CONTABILIDADE) -->
       @if (showClosingChecklistModal()) {
         <div class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
-          <div class="absolute inset-0 bg-black/75 backdrop-blur-xs animate-fade-in" (click)="closeClosingChecklist()"></div>
+          <div class="absolute inset-0 bg-black/75 backdrop-blur-md animate-fade-in" (click)="closeClosingChecklist()"></div>
 
           <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-2xl relative z-10 border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[92vh] animate-scale-in">
             
