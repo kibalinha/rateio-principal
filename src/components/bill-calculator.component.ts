@@ -481,20 +481,31 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
               </div>
 
               <!-- Summary Box -->
-              <div class="p-4 bg-slate-800 text-white rounded-lg shadow-sm">
-                <div class="flex justify-between text-sm mb-1">
-                  <span class="text-slate-300">Custo Total:</span>
-                  <span class="font-mono">{{ totalBillAmount() | currency:'BRL' }}</span>
+              <div class="p-4 bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-xl shadow-md border border-slate-700/80">
+                <div class="flex items-center justify-between text-xs text-slate-400 font-medium mb-1">
+                  <span>Fatura Concessionária</span>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] font-bold"
+                        [class]="utilityType() === 'luz' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : (utilityType() === 'gas' ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30' : 'bg-teal-500/20 text-teal-300 border border-teal-500/30')">
+                    {{ utilityType() | uppercase }}
+                  </span>
                 </div>
-                <div class="flex justify-between text-sm mb-3">
-                  <span class="text-slate-300">Consumo Total:</span>
-                  <span class="font-mono">{{ totalConsumption() | number:'1.0-4' }} {{ getUnit() }}</span>
+                <div class="flex justify-between items-baseline mb-2">
+                  <span class="text-xs text-slate-300">Custo Total:</span>
+                  <span class="font-mono text-base font-black text-white tabular-nums">{{ totalBillAmount() | currency:'BRL' }}</span>
                 </div>
-                <div class="pt-3 border-t border-slate-600">
-                  <div class="flex justify-between items-center">
-                    <span class="text-xs text-slate-300 font-medium uppercase tracking-wider">Preço Unit.</span>
-                    <span class="font-bold text-lg text-warning font-mono">{{ calculatedUnitPrice() | currency:'BRL':'symbol':'1.4-4' }}</span>
+                <div class="flex justify-between items-baseline mb-3 pb-3 border-b border-slate-700/80">
+                  <span class="text-xs text-slate-300">Consumo Total:</span>
+                  <span class="font-mono text-sm font-bold text-slate-200 tabular-nums">{{ totalConsumption() | number:'1.0-4' }} {{ getUnit() }}</span>
+                </div>
+                <div class="flex justify-between items-center bg-slate-950/60 p-2.5 rounded-lg border border-slate-800">
+                  <div class="flex flex-col">
+                    <span class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Tarifa Unitária Efetiva</span>
+                    <span class="text-[10px] text-slate-500 font-mono">R$ por {{ getUnit() }}</span>
                   </div>
+                  <span class="font-black text-lg font-mono tabular-nums"
+                        [class]="utilityType() === 'luz' ? 'text-amber-400' : (utilityType() === 'gas' ? 'text-orange-400' : 'text-teal-300')">
+                    {{ calculatedUnitPrice() | currency:'BRL':'symbol':'1.4-4' }}
+                  </span>
                 </div>
               </div>
 
@@ -700,45 +711,45 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
               </div>
 
               <!-- Search Bar, Status Filter Chips & Sort Selector -->
-              <div class="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2.5">
+              <div class="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
                 <!-- Search Box -->
-                <div class="relative flex-1">
-                  <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 text-xs">🔍</span>
+                <div class="relative flex-1 group">
+                  <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-teal-500 transition-colors text-xs">🔍</span>
                   <input type="text" 
                     [ngModel]="searchQuery()" 
                     (ngModelChange)="searchQuery.set($event)"
                     placeholder="Buscar loja por Nome, LUC ou Contrato..." 
-                    class="w-full pl-8 pr-8 py-2 text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 transition-colors">
+                    class="w-full pl-9 pr-8 py-2 text-xs bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 transition-all shadow-2xs font-medium">
                   @if (searchQuery()) {
-                    <button (click)="searchQuery.set('')" class="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs cursor-pointer">
+                    <button (click)="searchQuery.set('')" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs cursor-pointer transition-colors" title="Limpar busca">
                       ✕
                     </button>
                   }
                 </div>
 
-                <div class="flex items-center gap-2 flex-wrap shrink-0">
+                <div class="flex items-center gap-2.5 flex-wrap shrink-0">
                   <!-- Sort Selector -->
-                  <div class="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs">
-                    <span class="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 px-1.5 hidden sm:inline">Ordem:</span>
+                  <div class="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/90 p-1 rounded-xl border border-slate-200 dark:border-slate-700 text-xs shadow-2xs">
+                    <span class="text-[10px] uppercase font-black text-slate-400 dark:text-slate-500 px-1.5 hidden sm:inline tracking-wider">Ordem:</span>
                     <button type="button" (click)="setQuickSort('route')"
-                      [class]="sortBy() === 'route' ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 font-bold shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'"
-                      class="px-2 py-1 rounded text-xs transition-all cursor-pointer flex items-center gap-1" title="Ordem física da rota de leitura">
+                      [class]="sortBy() === 'route' ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 font-extrabold shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'"
+                      class="px-2.5 py-1 rounded-lg text-xs transition-all cursor-pointer flex items-center gap-1" title="Ordem física da rota de leitura">
                       <span>📍 Rota</span>
                       @if (sortBy() === 'route') {
                         <span class="text-[9px]">{{ sortDirection() === 'asc' ? '▲' : '▼' }}</span>
                       }
                     </button>
                     <button type="button" (click)="setQuickSort('luc')"
-                      [class]="sortBy() === 'luc' ? 'bg-white dark:bg-slate-700 text-teal-700 dark:text-teal-300 font-bold shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'"
-                      class="px-2 py-1 rounded text-xs transition-all cursor-pointer flex items-center gap-1" title="Ordem por número do LUC">
+                      [class]="sortBy() === 'luc' ? 'bg-white dark:bg-slate-700 text-teal-700 dark:text-teal-300 font-extrabold shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'"
+                      class="px-2.5 py-1 rounded-lg text-xs transition-all cursor-pointer flex items-center gap-1" title="Ordem por número do LUC">
                       <span>🏢 LUC</span>
                       @if (sortBy() === 'luc') {
                         <span class="text-[9px]">{{ sortDirection() === 'asc' ? '▲' : '▼' }}</span>
                       }
                     </button>
                     <button type="button" (click)="setQuickSort('name')"
-                      [class]="(sortBy() === 'name' || sortBy() === 'storeName') ? 'bg-white dark:bg-slate-700 text-teal-700 dark:text-teal-300 font-bold shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'"
-                      class="px-2 py-1 rounded text-xs transition-all cursor-pointer flex items-center gap-1" title="Ordem alfabética pelo nome da loja">
+                      [class]="(sortBy() === 'name' || sortBy() === 'storeName') ? 'bg-white dark:bg-slate-700 text-teal-700 dark:text-teal-300 font-extrabold shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'"
+                      class="px-2.5 py-1 rounded-lg text-xs transition-all cursor-pointer flex items-center gap-1" title="Ordem alfabética pelo nome da loja">
                       <span>🔤 Nome</span>
                       @if (sortBy() === 'name' || sortBy() === 'storeName') {
                         <span class="text-[9px]">{{ sortDirection() === 'asc' ? '▲' : '▼' }}</span>
@@ -750,17 +761,21 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                   <div class="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
                     <button type="button" 
                       (click)="statusFilter.set('all')"
-                      [class]="statusFilter() === 'all' ? 'bg-slate-800 dark:bg-slate-700 text-white font-bold shadow-xs' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'"
-                      class="px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap transition-all cursor-pointer">
-                      Todas ({{ fieldStats().total }})
+                      [class]="statusFilter() === 'all' ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-extrabold shadow-xs' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'"
+                      class="px-3 py-1.5 rounded-xl text-xs whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5">
+                      <span>Todas</span>
+                      <span class="px-1.5 py-0.2 rounded-full text-[10px] font-mono"
+                            [class]="statusFilter() === 'all' ? 'bg-white/20 dark:bg-slate-900/20' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400'">
+                        {{ fieldStats().total }}
+                      </span>
                     </button>
 
                     <button type="button" 
                       (click)="statusFilter.set('pending')"
-                      [class]="statusFilter() === 'pending' ? 'bg-amber-600 text-white font-bold shadow-xs' : 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-950/60 border border-amber-200 dark:border-amber-800'"
-                      class="px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap transition-all cursor-pointer font-medium flex items-center gap-1">
+                      [class]="statusFilter() === 'pending' ? 'bg-amber-600 text-white font-extrabold shadow-xs ring-2 ring-amber-400/50' : 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-950/60 border border-amber-200 dark:border-amber-800'"
+                      class="px-3 py-1.5 rounded-xl text-xs whitespace-nowrap transition-all cursor-pointer font-medium flex items-center gap-1.5">
                       <span>⚠️ Pendentes</span>
-                      <span class="px-1.5 py-0.2 rounded-full text-[10px]"
+                      <span class="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold"
                             [class]="statusFilter() === 'pending' ? 'bg-amber-700 text-white' : 'bg-amber-200/80 dark:bg-amber-900 text-amber-900 dark:text-amber-200'">
                         {{ fieldStats().pending }}
                       </span>
@@ -768,11 +783,11 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
 
                     <button type="button" 
                       (click)="statusFilter.set('completed')"
-                      [class]="statusFilter() === 'completed' ? 'bg-green-600 text-white font-bold shadow-xs' : 'bg-green-50 dark:bg-green-950/40 text-green-800 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-950/60 border border-green-200 dark:border-green-800'"
-                      class="px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap transition-all cursor-pointer font-medium flex items-center gap-1">
+                      [class]="statusFilter() === 'completed' ? 'bg-emerald-600 text-white font-extrabold shadow-xs ring-2 ring-emerald-400/50' : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800'"
+                      class="px-3 py-1.5 rounded-xl text-xs whitespace-nowrap transition-all cursor-pointer font-medium flex items-center gap-1.5">
                       <span>✅ Lidas</span>
-                      <span class="px-1.5 py-0.2 rounded-full text-[10px]"
-                            [class]="statusFilter() === 'completed' ? 'bg-green-700 text-white' : 'bg-green-200/80 dark:bg-green-900 text-green-900 dark:text-green-200'">
+                      <span class="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold"
+                            [class]="statusFilter() === 'completed' ? 'bg-emerald-700 text-white' : 'bg-emerald-200/80 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-200'">
                         {{ fieldStats().completed }}
                       </span>
                     </button>
@@ -780,11 +795,11 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                     @if (fieldStats().alerts > 0) {
                       <button type="button" 
                         (click)="statusFilter.set('alert')"
-                        [class]="statusFilter() === 'alert' ? 'bg-red-600 text-white font-bold shadow-xs' : 'bg-red-50 dark:bg-rose-950/50 text-red-700 dark:text-rose-300 hover:bg-red-100 dark:hover:bg-rose-950/70 border border-red-200 dark:border-rose-800'"
-                        class="px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap transition-all cursor-pointer font-medium flex items-center gap-1">
+                        [class]="statusFilter() === 'alert' ? 'bg-rose-600 text-white font-extrabold shadow-xs ring-2 ring-rose-400/50' : 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/70 border border-rose-200 dark:border-rose-800'"
+                        class="px-3 py-1.5 rounded-xl text-xs whitespace-nowrap transition-all cursor-pointer font-medium flex items-center gap-1.5">
                         <span>🚨 Alertas</span>
-                        <span class="px-1.5 py-0.2 rounded-full text-[10px]"
-                              [class]="statusFilter() === 'alert' ? 'bg-red-700 text-white' : 'bg-red-200/80 dark:bg-rose-900 text-red-900 dark:text-rose-200'">
+                        <span class="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold"
+                              [class]="statusFilter() === 'alert' ? 'bg-rose-700 text-white' : 'bg-rose-200/80 dark:bg-rose-900 text-rose-900 dark:text-rose-200'">
                           {{ fieldStats().alerts }}
                         </span>
                       </button>
@@ -838,9 +853,14 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
             @if (mobileViewMode() === 'cards') {
               <div class="hidden md:block overflow-x-auto">
                 <table class="w-full text-left border-collapse text-sm">
-                <thead class="bg-teal-700 text-white sticky top-0 z-10 shadow-sm">
+                <thead class="sticky top-0 z-20 shadow-md backdrop-blur-md transition-all border-b-2"
+                       [class]="utilityType() === 'luz' 
+                         ? 'bg-slate-900/95 text-white border-amber-400' 
+                         : (utilityType() === 'gas' 
+                           ? 'bg-slate-900/95 text-white border-orange-500' 
+                           : 'bg-slate-900/95 text-white border-teal-400')">
                   <tr>
-                    <th (click)="toggleSort('storeName')" class="p-3 font-semibold uppercase text-xs w-28 border-r border-teal-600 cursor-pointer select-none hover:bg-teal-600 transition-colors" title="Ordenar por Loja">
+                    <th (click)="toggleSort('storeName')" class="p-3 font-bold uppercase text-[11px] tracking-wider w-28 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Loja">
                       <div class="flex items-center justify-between gap-1">
                         <span>Loja</span>
                         <span class="text-[10px]" [class.opacity-100]="sortBy() === 'storeName' || sortBy() === 'name'" [class.opacity-40]="sortBy() !== 'storeName' && sortBy() !== 'name'">
@@ -848,7 +868,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                         </span>
                       </div>
                     </th>
-                    <th (click)="toggleSort('prevReading')" class="p-3 font-semibold uppercase text-xs text-center w-20 border-r border-teal-600 cursor-pointer select-none hover:bg-teal-600 transition-colors" title="Ordenar por Leitura Anterior">
+                    <th (click)="toggleSort('prevReading')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-center w-20 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Leitura Anterior">
                       <div class="flex items-center justify-center gap-1">
                         <span>Ant.</span>
                         <span class="text-[10px]" [class.opacity-100]="sortBy() === 'prevReading'" [class.opacity-40]="sortBy() !== 'prevReading'">
@@ -856,7 +876,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                         </span>
                       </div>
                     </th>
-                    <th (click)="toggleSort('currentReading')" class="p-3 font-semibold uppercase text-xs text-right w-24 border-r border-teal-600 cursor-pointer select-none hover:bg-teal-600 transition-colors" title="Ordenar por Leitura Atual">
+                    <th (click)="toggleSort('currentReading')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-right w-24 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Leitura Atual">
                       <div class="flex items-center justify-end gap-1">
                         <span>Leitura</span>
                         <span class="text-[10px]" [class.opacity-100]="sortBy() === 'currentReading'" [class.opacity-40]="sortBy() !== 'currentReading'">
@@ -865,7 +885,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                       </div>
                     </th>
                     @if (utilityType() === 'luz') {
-                      <th (click)="toggleSort('constant')" class="p-3 font-semibold uppercase text-xs text-center w-16 border-r border-teal-600 cursor-pointer select-none hover:bg-teal-600 transition-colors" title="Ordenar por Constante">
+                      <th (click)="toggleSort('constant')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-center w-16 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Constante">
                         <div class="flex items-center justify-center gap-1">
                           <span>Const.</span>
                           <span class="text-[10px]" [class.opacity-100]="sortBy() === 'constant'" [class.opacity-40]="sortBy() !== 'constant'">
@@ -874,7 +894,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                         </div>
                       </th>
                     }
-                    <th (click)="toggleSort('virtual')" class="p-3 font-semibold uppercase text-xs text-right w-20 border-r border-teal-600 cursor-pointer select-none hover:bg-teal-600 transition-colors" title="Ordenar por Virtual">
+                    <th (click)="toggleSort('virtual')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-right w-20 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Virtual">
                       <div class="flex items-center justify-end gap-1">
                         <span>Virtual</span>
                         <span class="text-[10px]" [class.opacity-100]="sortBy() === 'virtual'" [class.opacity-40]="sortBy() !== 'virtual'">
@@ -883,7 +903,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                       </div>
                     </th>
                     @if (utilityType() === 'gas') {
-                       <th (click)="toggleSort('adjustment')" class="p-3 font-semibold uppercase text-xs text-center w-16 border-r border-teal-600 cursor-pointer select-none hover:bg-teal-600 transition-colors" title="Ordenar por Ajuste Multiplicador">
+                       <th (click)="toggleSort('adjustment')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-center w-16 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Ajuste Multiplicador">
                          <div class="flex items-center justify-center gap-1">
                            <span>Aj(x)</span>
                            <span class="text-[10px]" [class.opacity-100]="sortBy() === 'adjustment'" [class.opacity-40]="sortBy() !== 'adjustment'">
@@ -891,7 +911,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                            </span>
                          </div>
                        </th>
-                       <th (click)="toggleSort('adjustmentAdd')" class="p-3 font-semibold uppercase text-xs text-center w-16 border-r border-teal-600 cursor-pointer select-none hover:bg-teal-600 transition-colors" title="Ordenar por Ajuste Aditivo">
+                       <th (click)="toggleSort('adjustmentAdd')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-center w-16 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Ajuste Aditivo">
                          <div class="flex items-center justify-center gap-1">
                            <span>Aj(+)</span>
                            <span class="text-[10px]" [class.opacity-100]="sortBy() === 'adjustmentAdd'" [class.opacity-40]="sortBy() !== 'adjustmentAdd'">
@@ -899,7 +919,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                            </span>
                          </div>
                        </th>
-                       <th (click)="toggleSort('fcm')" class="p-3 font-semibold uppercase text-xs text-center w-16 border-r border-teal-600 cursor-pointer select-none hover:bg-teal-600 transition-colors" title="Ordenar por FCM">
+                       <th (click)="toggleSort('fcm')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-center w-16 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por FCM">
                          <div class="flex items-center justify-center gap-1">
                            <span>FCM</span>
                            <span class="text-[10px]" [class.opacity-100]="sortBy() === 'fcm'" [class.opacity-40]="sortBy() !== 'fcm'">
@@ -908,7 +928,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                          </div>
                        </th>
                     } @else {
-                       <th (click)="toggleSort('adjustment')" class="p-3 font-semibold uppercase text-xs text-center w-16 border-r border-teal-600 cursor-pointer select-none hover:bg-teal-600 transition-colors" title="Ordenar por Ajuste">
+                       <th (click)="toggleSort('adjustment')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-center w-16 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Ajuste">
                          <div class="flex items-center justify-center gap-1">
                            <span>Ajuste</span>
                            <span class="text-[10px]" [class.opacity-100]="sortBy() === 'adjustment'" [class.opacity-40]="sortBy() !== 'adjustment'">
@@ -917,7 +937,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                          </div>
                        </th>
                     }
-                    <th (click)="toggleSort('consumption')" class="p-3 font-semibold uppercase text-xs text-right w-24 border-r border-teal-600 cursor-pointer select-none hover:bg-teal-600 transition-colors" title="Ordenar por Consumo">
+                    <th (click)="toggleSort('consumption')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-right w-24 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Consumo">
                       <div class="flex items-center justify-end gap-1">
                         <span>{{ utilityType() === 'gas' ? 'Cons. Rateado' : 'Consumo' }}</span>
                         <span class="text-[10px]" [class.opacity-100]="sortBy() === 'consumption'" [class.opacity-40]="sortBy() !== 'consumption'">
@@ -925,7 +945,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                         </span>
                       </div>
                     </th>
-                    <th (click)="toggleSort('variation')" class="p-3 font-semibold uppercase text-xs text-right w-16 border-r border-teal-600 cursor-pointer select-none hover:bg-teal-600 transition-colors" title="Ordenar por Variação">
+                    <th (click)="toggleSort('variation')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-right w-16 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Variação">
                       <div class="flex items-center justify-end gap-1">
                         <span>Var (%)</span>
                         <span class="text-[10px]" [class.opacity-100]="sortBy() === 'variation'" [class.opacity-40]="sortBy() !== 'variation'">
@@ -934,7 +954,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                       </div>
                     </th>
                     @if (utilityType() === 'gas') {
-                      <th (click)="toggleSort('fluxoCost')" class="p-3 font-semibold uppercase text-xs text-right w-24 border-r border-teal-600 cursor-pointer select-none hover:bg-teal-600 transition-colors" title="Ordenar por Fluxo">
+                      <th (click)="toggleSort('fluxoCost')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-right w-24 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Fluxo">
                         <div class="flex items-center justify-end gap-1">
                           <span>Fluxo</span>
                           <span class="text-[10px]" [class.opacity-100]="sortBy() === 'fluxoCost'" [class.opacity-40]="sortBy() !== 'fluxoCost'">
@@ -943,7 +963,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                         </div>
                       </th>
                     }
-                    <th (click)="toggleSort('note')" class="p-3 font-semibold uppercase text-xs text-right w-24 border-r border-teal-600 cursor-pointer select-none hover:bg-teal-600 transition-colors" title="Ordenar por Observações de Campo">
+                    <th (click)="toggleSort('note')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-right w-24 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Observações de Campo">
                       <div class="flex items-center justify-end gap-1">
                         <span>Obs. Campo</span>
                         <span class="text-[10px]" [class.opacity-100]="sortBy() === 'note'" [class.opacity-40]="sortBy() !== 'note'">
@@ -951,7 +971,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                         </span>
                       </div>
                     </th>
-                    <th (click)="toggleSort('hasPhoto')" class="p-3 font-semibold uppercase text-xs text-center w-24 border-r border-teal-600 cursor-pointer select-none hover:bg-teal-600 transition-colors" title="Ordenar por Foto do Medidor">
+                    <th (click)="toggleSort('hasPhoto')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-center w-24 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Foto do Medidor">
                       <div class="flex items-center justify-center gap-1">
                         <span>Foto Medidor</span>
                         <span class="text-[10px]" [class.opacity-100]="sortBy() === 'hasPhoto'" [class.opacity-40]="sortBy() !== 'hasPhoto'">
@@ -959,7 +979,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                         </span>
                       </div>
                     </th>
-                    <th (click)="toggleSort('cost')" class="p-3 font-semibold uppercase text-xs text-right w-28 bg-teal-800 cursor-pointer select-none hover:bg-teal-700 transition-colors" title="Ordenar por Custo Total">
+                    <th (click)="toggleSort('cost')" class="p-3 font-black uppercase text-[11px] tracking-wider text-right w-28 bg-slate-950 text-emerald-400 cursor-pointer select-none hover:bg-slate-900 transition-colors border-l border-slate-800" title="Ordenar por Custo Total">
                       <div class="flex items-center justify-end gap-1">
                         <span>Custo Total</span>
                         <span class="text-[10px]" [class.opacity-100]="sortBy() === 'cost'" [class.opacity-40]="sortBy() !== 'cost'">
@@ -969,13 +989,21 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                     </th>
                   </tr>
                 </thead>
-                <tbody class="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900 transition-colors">
+                <tbody class="divide-y divide-slate-100 dark:divide-slate-800/80 bg-white dark:bg-slate-900 transition-colors">
                   @for (item of filteredTableData(); track item.storeId) {
-                    <tr class="hover:bg-teal-50/50 dark:hover:bg-teal-950/40 transition-colors group text-xs"
-                        [class.bg-rose-50/90]="item.validationAlert.severity === 'critical'"
-                        [class.dark:bg-rose-950/40]="item.validationAlert.severity === 'critical'"
-                        [class.bg-amber-50/70]="item.validationAlert.severity === 'warning'"
-                        [class.dark:bg-amber-950/30]="item.validationAlert.severity === 'warning'">
+                    <tr class="transition-colors group text-xs border-b border-slate-100 dark:border-slate-800/60"
+                        [class.hover:bg-slate-50/90]="!item.validationAlert.hasAlert"
+                        [class.dark:hover:bg-slate-800/60]="!item.validationAlert.hasAlert"
+                        [class.border-l-4]="true"
+                        [class.border-l-rose-500]="item.validationAlert.severity === 'critical'"
+                        [class.border-l-amber-500]="item.validationAlert.severity === 'warning'"
+                        [class.border-l-emerald-500]="item.isRead && !item.validationAlert.hasAlert"
+                        [class.border-l-slate-200]="!item.isRead"
+                        [class.dark:border-l-slate-700]="!item.isRead"
+                        [class.bg-rose-50/30]="item.validationAlert.severity === 'critical'"
+                        [class.dark:bg-rose-950/20]="item.validationAlert.severity === 'critical'"
+                        [class.bg-amber-50/20]="item.validationAlert.severity === 'warning'"
+                        [class.dark:bg-amber-950/15]="item.validationAlert.severity === 'warning'">
                       <td class="p-3 font-medium text-slate-800 dark:text-slate-100 border-r border-slate-100 dark:border-slate-800">
                           <div class="truncate max-w-[140px] font-semibold flex items-center gap-1.5" [title]="item.storeName">
                             <span>{{ item.storeName }}</span>
@@ -1030,7 +1058,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                               (keyup.enter)="onReadingBlur(item.storeId)"
                               (paste)="onPasteCell($event, item.storeId, 'reading')" 
                               [disabled]="!canEdit()" 
-                              class="w-full text-right bg-white dark:bg-slate-950 dark:text-white border-2 rounded px-1.5 py-1 focus:ring-2 font-bold disabled:bg-transparent disabled:border-none disabled:text-slate-500 transition-colors"
+                              class="w-full text-right bg-white dark:bg-slate-950 dark:text-white border-2 rounded-lg px-2 py-1 focus:ring-2 font-mono font-black tabular-nums transition-all text-xs"
                               [class.border-rose-500]="item.validationAlert.severity === 'critical'"
                               [class.ring-2]="item.validationAlert.hasAlert && !item.anomalyConfirmed"
                               [class.ring-rose-400]="item.validationAlert.severity === 'critical' && !item.anomalyConfirmed"
@@ -1082,19 +1110,24 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                           </td>
                       }
                       <td class="p-3 text-right font-mono border-r border-slate-100 dark:border-slate-800">
-                        <div class="font-bold text-slate-800 dark:text-slate-100 text-sm">
+                        <div class="font-black text-slate-800 dark:text-slate-100 text-sm tabular-nums">
                           {{ item.consumption | number:'1.0-4' }}
                         </div>
                         @if (item.isGasDistributed) {
-                          <div class="text-[10px] text-red-600 dark:text-red-400 font-sans font-normal" [title]="'Medição bruta em campo: ' + (item.rawConsumption | number:'1.0-4') + ' m³ (ajustado pelo fator ' + (item.gasFactor | number:'1.4-4') + 'x)'">
-                            campo: {{ item.rawConsumption | number:'1.0-2' }}
+                          <div class="text-[10px] text-orange-600 dark:text-orange-400 font-sans font-bold" [title]="'Medição bruta em campo: ' + (item.rawConsumption | number:'1.0-4') + ' m³ (ajustado pelo fator ' + (item.gasFactor | number:'1.4-4') + 'x)'">
+                            bruto: {{ item.rawConsumption | number:'1.0-2' }}
                           </div>
                         }
                       </td>
-                      <td class="p-3 text-right font-mono text-[10px] border-r border-slate-100 dark:border-slate-800" 
-                          [class.text-red-500]="item.variation > 0" 
-                          [class.text-green-500]="item.variation < 0">
-                          {{ item.variation > 0 ? '+' : '' }}{{ item.variation | number:'1.1-1' }}%
+                      <td class="p-3 text-right font-mono text-[10px] border-r border-slate-100 dark:border-slate-800">
+                        @if (item.variation !== 0) {
+                          <span class="inline-flex items-center px-1.5 py-0.5 rounded-md font-bold tabular-nums shadow-2xs" 
+                                [class]="item.variation > 0 ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800/60' : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60'">
+                            {{ item.variation > 0 ? '+' : '' }}{{ item.variation | number:'1.1-1' }}%
+                          </span>
+                        } @else {
+                          <span class="text-slate-400 dark:text-slate-500 font-mono text-[10px]">0,0%</span>
+                        }
                       </td>
                       @if (utilityType() === 'gas') {
                           <td class="p-3 border-r border-slate-100 dark:border-slate-800">
@@ -1104,7 +1137,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                       <!-- Observação de Campo Desktop -->
                       <td class="p-3 border-r border-slate-100 dark:border-slate-800 text-right">
                         @if (item.note) {
-                          <span class="inline-block max-w-[100px] truncate bg-amber-50 dark:bg-amber-950/50 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-800 px-1.5 py-0.5 rounded text-[10px]" [title]="item.note">
+                          <span class="inline-block max-w-[100px] truncate bg-amber-50 dark:bg-amber-950/50 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-800 px-1.5 py-0.5 rounded text-[10px] shadow-2xs font-medium" [title]="item.note">
                             {{ item.note }}
                           </span>
                         } @else {
@@ -1124,7 +1157,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                           <div class="inline-flex items-center gap-1">
                             <button type="button" 
                               (click)="openPhotoViewer(item.storeId)" 
-                              class="inline-flex items-center gap-1 px-2 py-0.5 bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 text-teal-800 dark:text-teal-300 border border-teal-200 dark:border-teal-800 rounded text-[10px] font-bold transition-all cursor-pointer shadow-xs">
+                              class="inline-flex items-center gap-1 px-2 py-0.5 bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 text-teal-800 dark:text-teal-300 border border-teal-200 dark:border-teal-800 rounded text-[10px] font-bold transition-all cursor-pointer shadow-2xs">
                               <span>📷 Foto</span>
                               @if (meterPhotos()[item.storeId].synced) {
                                 <span class="text-[9px] text-teal-600 dark:text-teal-400" title="Foto sincronizada na nuvem com Supabase">☁️</span>
@@ -1133,9 +1166,9 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                               }
                             </button>
                             <button type="button" 
-                              (click)="runOcrOnPhoto(item.storeId)"
-                              class="inline-flex items-center px-1.5 py-0.5 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded text-[9px] font-bold transition-all cursor-pointer shadow-xs"
-                              title="Ler visor com Qwen 3.8 27B (Groq) ou Gemini">
+                              (click)="runOcrOnPhoto(item.storeId)" 
+                              class="inline-flex items-center px-1.5 py-0.5 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded text-[9px] font-bold transition-all cursor-pointer shadow-2xs"
+                              title="Ler visor com IA (Groq Qwen ou Gemini)">
                               <span>⚡</span>
                             </button>
                             <button type="button" 
@@ -1156,7 +1189,11 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                           </label>
                         }
                       </td>
-                      <td class="p-3 text-right font-mono font-bold text-teal-800 dark:text-teal-400 bg-teal-50/30 dark:bg-teal-950/20">
+                      <td class="p-3 text-right font-mono font-black tabular-nums text-sm bg-slate-50/70 dark:bg-slate-950/50 border-l border-slate-100 dark:border-slate-800"
+                          [class.text-amber-500]="utilityType() === 'luz'"
+                          [class.text-orange-500]="utilityType() === 'gas'"
+                          [class.text-teal-700]="utilityType() === 'agua'"
+                          [class.dark:text-teal-400]="utilityType() === 'agua'">
                         @if (item.excludedFromBill) {
                           <span class="text-amber-600 dark:text-amber-400 block line-through opacity-60 text-[10px]">
                             {{ item.originalCost | currency:'BRL' }}
@@ -1197,6 +1234,46 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                     </tr>
                   }
                 </tbody>
+                <!-- Rodapé Contábil da Tabela Desktop -->
+                <tfoot class="sticky bottom-0 z-10 bg-slate-900 text-white border-t-2 border-slate-700 font-mono text-xs shadow-lg">
+                  <tr>
+                    <td class="p-3 font-bold border-r border-slate-800" colspan="2">
+                      <div class="flex items-center justify-between">
+                        <span class="text-[11px] uppercase tracking-wider text-slate-400 font-sans">Totais:</span>
+                        <span class="text-xs text-slate-200 font-sans font-bold">
+                          {{ filteredTableData().length }} lojas ({{ fieldStats().completed }} lidas)
+                        </span>
+                      </div>
+                    </td>
+                    <td class="p-3 text-right border-r border-slate-800 text-slate-400 text-[11px]">—</td>
+                    @if (utilityType() === 'luz') {
+                      <td class="p-3 border-r border-slate-800 text-center text-slate-500 text-[10px]">—</td>
+                    }
+                    <td class="p-3 border-r border-slate-800 text-center text-slate-500 text-[10px]">—</td>
+                    @if (utilityType() === 'gas') {
+                      <td class="p-3 border-r border-slate-800 text-center text-slate-500 text-[10px]">—</td>
+                      <td class="p-3 border-r border-slate-800 text-center text-slate-500 text-[10px]">—</td>
+                      <td class="p-3 border-r border-slate-800 text-center text-slate-500 text-[10px]">—</td>
+                    } @else {
+                      <td class="p-3 border-r border-slate-800 text-center text-slate-500 text-[10px]">—</td>
+                    }
+                    <td class="p-3 text-right font-black border-r border-slate-800 text-slate-100 tabular-nums">
+                      {{ totalConsumption() | number:'1.0-4' }}
+                    </td>
+                    <td class="p-3 text-right border-r border-slate-800 text-slate-500 text-[10px]">—</td>
+                    @if (utilityType() === 'gas') {
+                      <td class="p-3 border-r border-slate-800 text-center text-slate-500 text-[10px]">—</td>
+                    }
+                    <td class="p-3 border-r border-slate-800 text-center text-slate-500 text-[10px]">—</td>
+                    <td class="p-3 border-r border-slate-800 text-center text-slate-500 text-[10px]">—</td>
+                    <td class="p-3 text-right font-black tabular-nums text-sm border-l border-slate-800"
+                        [class.text-amber-400]="utilityType() === 'luz'"
+                        [class.text-orange-400]="utilityType() === 'gas'"
+                        [class.text-teal-300]="utilityType() === 'agua'">
+                      {{ totalDistributedCost() | currency:'BRL' }}
+                    </td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           }
