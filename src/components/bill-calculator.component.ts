@@ -952,11 +952,11 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                         </span>
                       </div>
                     </th>
-                    <th (click)="toggleSort('prevReading')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-center w-20 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Leitura Anterior">
+                    <th (click)="toggleSort('prevReading')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-center w-28 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Leitura / Consumo Anterior">
                       <div class="flex items-center justify-center gap-1">
-                        <span>Ant.</span>
-                        <span class="text-[10px]" [class.opacity-100]="sortBy() === 'prevReading'" [class.opacity-40]="sortBy() !== 'prevReading'">
-                          {{ sortBy() === 'prevReading' ? (sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                        <span>Leit. / Cons. Ant.</span>
+                        <span class="text-[10px]" [class.opacity-100]="sortBy() === 'prevReading' || sortBy() === 'prevConsumption'" [class.opacity-40]="sortBy() !== 'prevReading' && sortBy() !== 'prevConsumption'">
+                          {{ (sortBy() === 'prevReading' || sortBy() === 'prevConsumption') ? (sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
                         </span>
                       </div>
                     </th>
@@ -995,9 +995,9 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                            </span>
                          </div>
                        </th>
-                       <th (click)="toggleSort('adjustmentAdd')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-center w-16 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Ajuste Aditivo">
+                       <th (click)="toggleSort('adjustmentAdd')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-center w-20 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ajuste Adicional em R$ (soma ao valor final a pagar)">
                          <div class="flex items-center justify-center gap-1">
-                           <span>Aj(+)</span>
+                           <span>Aj(+) R$</span>
                            <span class="text-[10px]" [class.opacity-100]="sortBy() === 'adjustmentAdd'" [class.opacity-40]="sortBy() !== 'adjustmentAdd'">
                              {{ sortBy() === 'adjustmentAdd' ? (sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
                            </span>
@@ -1123,11 +1123,16 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                             <button type="button" (click)="openStoreVoucher(item)" title="Gerar espelho do lojista" class="ml-auto text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer flex items-center gap-0.5"><span>📲</span><span>Espelho</span></button>
                           </div>
                       </td>
-                      <td class="p-3 text-center text-slate-400 dark:text-slate-400 font-mono border-r border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950">
-                        {{ item.prevReading | number:'1.0-0' }}
+                      <td class="p-2.5 text-center font-mono border-r border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950">
+                        <div class="font-bold text-slate-700 dark:text-slate-300 text-xs tabular-nums" [title]="'Leitura registrada no medidor no mês anterior (' + (item.prevReadingMonth || 'mês anterior') + ')'">
+                          {{ item.prevReading | number:'1.0-0' }}
+                        </div>
+                        <div class="text-[10px] font-sans font-semibold text-teal-700 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/60 px-1.5 py-0.5 rounded border border-teal-200 dark:border-teal-800/80 mt-1 inline-block" [title]="'Consumo faturado no mês anterior (' + (item.prevReadingMonth || 'mês anterior') + ')'">
+                          Ant: {{ item.prevConsumption | number:'1.0-2' }} {{ getUnit() }}
+                        </div>
                         @if (item.prevReadingMonth && item.prevReadingMonth !== getPreviousMonth(selectedMonth()) && item.prevReading > 0) {
-                          <span class="block text-[10px] text-teal-600 dark:text-teal-400 font-bold" [title]="'Última leitura válida no histórico (' + item.prevReadingMonth + ')'">
-                            ({{ item.prevReadingMonth }})
+                          <span class="block text-[9px] text-indigo-600 dark:text-indigo-400 font-bold font-sans mt-0.5" [title]="'Última leitura válida no histórico (' + item.prevReadingMonth + ')'">
+                            Ref: {{ item.prevReadingMonth }}
                           </span>
                         }
                       </td>
@@ -1183,7 +1188,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                               <input type="number" step="0.000001" [ngModel]="item.adjustment" (ngModelChange)="updateDetailedReading(item.storeId, 'adjustment', $event)" (paste)="onPasteCell($event, item.storeId, 'adjustment')" [disabled]="!canConfigure()" class="w-full text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 text-slate-500 dark:text-slate-400 disabled:opacity-50" placeholder="1.347">
                           </td>
                           <td class="p-3 border-r border-slate-100 dark:border-slate-800">
-                              <input type="number" step="0.000001" [ngModel]="item.adjustmentAdd" (ngModelChange)="updateDetailedReading(item.storeId, 'adjustmentAdd', $event)" (paste)="onPasteCell($event, item.storeId, 'adjustmentAdd')" [disabled]="!canConfigure()" class="w-full text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 text-slate-500 dark:text-slate-400 disabled:opacity-50" placeholder="0">
+                              <input type="number" step="0.01" [ngModel]="item.adjustmentAdd" (ngModelChange)="updateDetailedReading(item.storeId, 'adjustmentAdd', $event)" (paste)="onPasteCell($event, item.storeId, 'adjustmentAdd')" [disabled]="!canConfigure()" class="w-full text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 text-slate-600 dark:text-slate-300 disabled:opacity-50 font-mono" placeholder="0.00" title="Ajuste Adicional em R$ (soma ao valor final a pagar)">
                           </td>
                            <td class="p-3 border-r border-slate-100 dark:border-slate-800">
                               <input type="number" step="0.000001" [ngModel]="item.fcm" (ngModelChange)="updateDetailedReading(item.storeId, 'fcm', $event)" (paste)="onPasteCell($event, item.storeId, 'fcm')" [disabled]="!canConfigure()" class="w-full text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 text-slate-500 dark:text-slate-400 disabled:opacity-50" placeholder="1.0727">
@@ -1194,8 +1199,11 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                           </td>
                       }
                       <td class="p-3 text-right font-mono border-r border-slate-100 dark:border-slate-800">
-                        <div class="font-black text-slate-800 dark:text-slate-100 text-sm tabular-nums">
+                        <div class="font-black text-slate-800 dark:text-slate-100 text-sm tabular-nums" [title]="'Consumo atual faturado: ' + (item.consumption | number:'1.0-4') + ' ' + getUnit() + (item.prevConsumption ? ' (Mês anterior: ' + (item.prevConsumption | number:'1.0-2') + ' ' + getUnit() + ')' : '')">
                           {{ item.consumption | number:'1.0-4' }}
+                        </div>
+                        <div class="text-[10px] text-slate-400 dark:text-slate-500 font-sans font-medium mt-0.5" title="Consumo registrado no mês anterior">
+                          ant: {{ item.prevConsumption | number:'1.0-2' }}
                         </div>
                         @if (item.isGasDistributed) {
                           <div class="text-[10px] text-orange-600 dark:text-orange-400 font-sans font-bold" [title]="'Medição bruta em campo: ' + (item.rawConsumption | number:'1.0-4') + ' m³ (ajustado pelo fator ' + (item.gasFactor | number:'1.4-4') + 'x)'">
@@ -1927,6 +1935,9 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                                       <span class="text-[10px] text-teal-600 dark:text-teal-400 font-bold ml-1">({{ stepStore.prevReadingMonth }})</span>
                                     }
                                   </span>
+                                  <span class="text-[11px] text-teal-700 dark:text-teal-400 font-sans font-semibold">
+                                    Consumo Ant: <strong>{{ stepStore.prevConsumption | number:'1.0-2' }} {{ getUnit() }}</strong>
+                                  </span>
                                   <button type="button" 
                                     (click)="openPhotoViewer(stepStore.storeId, prevPhoto)"
                                     class="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline font-bold text-left cursor-pointer">
@@ -1941,6 +1952,9 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                                   @if (stepStore.prevReadingMonth && stepStore.prevReadingMonth !== getPreviousMonth(selectedMonth()) && stepStore.prevReading > 0) {
                                     <span class="text-[10px] text-teal-600 dark:text-teal-400 font-bold ml-1">({{ stepStore.prevReadingMonth }})</span>
                                   }
+                                </span>
+                                <span class="text-xs text-teal-700 dark:text-teal-400 font-sans font-semibold block mt-0.5">
+                                  Consumo Anterior: <strong>{{ stepStore.prevConsumption | number:'1.0-2' }} {{ getUnit() }}</strong>
                                 </span>
                                 @if (stepStore.validationAlert.avgConsumption > 0) {
                                   <span class="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">
@@ -4028,9 +4042,8 @@ export class BillCalculatorComponent implements OnDestroy {
             diff = 0;
           }
           const adj = d.adjustment !== undefined ? d.adjustment : 1.347;
-          const adjAdd = d.adjustmentAdd || 0;
           const mfcm = d.fcm || 1.0727;
-          totalRawGas += ((diff * adj) + adjAdd) * mfcm;
+          totalRawGas += (diff * adj) * mfcm;
         }
       });
     }
@@ -4062,6 +4075,7 @@ export class BillCalculatorComponent implements OnDestroy {
 
       currentReading = data.reading;
       prevReading = prevData.reading;
+      const prevConsumption = prevData.consumption || 0;
       const prevReadingMonth = (prevData as any).month || null;
       constant = data.constant || 1;
       if (data.virtual !== undefined && data.virtual !== null && !isNaN(Number(data.virtual))) {
@@ -4093,7 +4107,7 @@ export class BillCalculatorComponent implements OnDestroy {
         }
 
         if (type === 'gas') {
-          const initial = (diff * adjustment) + adjustmentAdd;
+          const initial = diff * adjustment;
           rawConsumption = initial * fcm;
         } else {
           rawConsumption = diff * constant * adjustment;
@@ -4114,7 +4128,7 @@ export class BillCalculatorComponent implements OnDestroy {
       let rawCost = consumption * price;
 
       if (type === 'gas') {
-        rawCost += fluxoCost;
+        rawCost += fluxoCost + adjustmentAdd;
       }
 
       const excludedFromBill = !!data.excludedFromBill;
@@ -4236,6 +4250,7 @@ export class BillCalculatorComponent implements OnDestroy {
         originalCost: rawCost,
         excludedFromBill,
         prevReading,
+        prevConsumption,
         prevReadingMonth,
         currentReading,
         constant,
@@ -4429,6 +4444,9 @@ export class BillCalculatorComponent implements OnDestroy {
         case 'prevReading':
           diff = (a.prevReading || 0) - (b.prevReading || 0);
           break;
+        case 'prevConsumption':
+          diff = (a.prevConsumption || 0) - (b.prevConsumption || 0);
+          break;
         case 'currentReading':
         case 'reading':
           diff = (a.currentReading || 0) - (b.currentReading || 0);
@@ -4497,8 +4515,8 @@ export class BillCalculatorComponent implements OnDestroy {
       this.sortBy.set(col);
       // Colunas numéricas e de custos começam em ordem decrescente (maior para o menor)
       const descFirstCols = [
-        'consumption', 'cost', 'currentReading', 'prevReading',
-        'variation', 'fluxoCost', 'virtual', 'hasPhoto'
+        'consumption', 'cost', 'currentReading', 'prevReading', 'prevConsumption',
+        'variation', 'fluxoCost', 'adjustmentAdd', 'virtual', 'hasPhoto'
       ];
       if (descFirstCols.includes(col)) {
         this.sortDirection.set('desc');
@@ -5842,10 +5860,13 @@ export class BillCalculatorComponent implements OnDestroy {
       month: month,
       monthLabel: this.selectedMonthLabel(),
       prevReading: item.prevReading || 0,
+      prevConsumption: item.prevConsumption || 0,
       currentReading: item.currentReading || 0,
       readingDiff: item.readingDiff !== undefined ? item.readingDiff : ((item.currentReading || 0) - (item.prevReading || 0)),
       constant: item.constant || 1,
       adjustment: item.adjustment || 1,
+      adjustmentAdd: item.adjustmentAdd,
+      fluxoCost: item.fluxoCost,
       consumption: item.consumption || 0,
       rawConsumption: item.rawConsumption,
       gasFactor: item.gasFactor,

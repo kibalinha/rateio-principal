@@ -97,6 +97,7 @@ export class ReportExportService {
         'Contrato': row.contrato || '—',
         'Nome da Loja': row.storeName,
         'Leitura Anterior': row.prevReading || 0,
+        [`Consumo Mês Anterior (${options.unit})`]: Number((row.prevConsumption || 0).toFixed(4)),
         'Leitura Atual': row.currentReading || 0,
         'Diferença': diff > 0 ? diff : 0,
       };
@@ -105,7 +106,7 @@ export class ReportExportService {
         item['Constante'] = row.constant || 1;
         item['Ajuste'] = row.adjustment !== undefined ? row.adjustment : 1;
       } else if (options.utilityType === 'gas') {
-        item['Ajuste Adic.'] = row.adjustmentAdd || 0;
+        item['Ajuste Adic. (R$)'] = Number((row.adjustmentAdd || 0).toFixed(2));
         item['FCM'] = row.fcm || 1;
         if (row.rawConsumption !== undefined && Math.abs((row.gasFactor || 1) - 1) > 0.0001) {
           item['Medição Campo (m³)'] = Number((row.rawConsumption || 0).toFixed(4));
@@ -141,6 +142,7 @@ export class ReportExportService {
       'Contrato': '—',
       'Nome da Loja': `${options.tableData.length} Lojas Rateadas`,
       'Leitura Anterior': '',
+      [`Consumo Mês Anterior (${options.unit})`]: Number(options.tableData.reduce((acc, r) => acc + (r.prevConsumption || 0), 0).toFixed(4)),
       'Leitura Atual': '',
       'Diferença': '',
     };
@@ -148,7 +150,7 @@ export class ReportExportService {
       totalsRow['Constante'] = '';
       totalsRow['Ajuste'] = '';
     } else if (options.utilityType === 'gas') {
-      totalsRow['Ajuste Adic.'] = '';
+      totalsRow['Ajuste Adic. (R$)'] = '';
       totalsRow['FCM'] = '';
       if (options.tableData.some(r => r.rawConsumption !== undefined && Math.abs((r.gasFactor || 1) - 1) > 0.0001)) {
         totalsRow['Medição Campo (m³)'] = Number(options.tableData.reduce((acc, r) => acc + (r.rawConsumption !== undefined ? r.rawConsumption : (r.consumption || 0)), 0).toFixed(4));

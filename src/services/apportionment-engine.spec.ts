@@ -138,6 +138,25 @@ describe('ApportionmentEngineService - Cálculos Matemáticos de Rateio', () => 
       // raw = 13.47 * 1.0727 = 14.449269
       expect(result.rawConsumption).toBeCloseTo(14.449, 2);
     });
+
+    it('não deve inflar o consumo de Gás com adjustmentAdd (AJ+ é em R$, não m³)', () => {
+      const result = calculateStoreConsumption({
+        utilityType: 'gas',
+        currentReading: 110,
+        prevReading: 100,
+        adjustment: 1.347,
+        adjustmentAdd: 50, // R$ 50,00 de ajuste financeiro
+        fcm: 1.0727
+      });
+      // O consumo medido em m³ não deve sofrer alteração pelo valor em R$
+      expect(result.rawConsumption).toBeCloseTo(14.449, 2);
+    });
+
+    it('deve somar acréscimos em R$ (como AJ+ ou Fluxo) no custo final da loja', () => {
+      // 10 m³ a R$ 5,00/m³ + R$ 25,00 de adicional (Aj+ ou Fluxo) = R$ 75,00
+      const cost = calculateStoreCost(10, 5, 25);
+      expect(cost).toBe(75);
+    });
   });
 
   describe('4. Rateio Proporcional de Gás (calculateGasFactor)', () => {
@@ -249,8 +268,74 @@ describe('ApportionmentEngineService - Cálculos Matemáticos de Rateio', () => 
       expect(summary.acCost).toBe(20000);
       expect(summary.commonAreaConsumption).toBe(10000);
       expect(summary.commonAreaCost).toBe(20000);
-      // Soma dos custos das lojas + AC + Área Comum deve fechar 100% com a concessionária
       expect(summary.tenantsCost + summary.acCost + summary.commonAreaCost).toBe(100000);
+    });
+
+    it('deve consolidar um rateio de Gás 100% proporcional e justo entre todas as lojas', () => {
+      const engine = new ApportionmentEngineService();
+      // Concessionária: Fatura R$ 12.000,00 e Leitura 1.500 m³ -> Tarifa R$ 8,00 / m³
+      const totalBill = 12000;
+      const totalConcessionariaM3 = 1500;
+      const unitPrice = engine.calculateUnitPrice(totalBill, totalConcessionariaM3);
+      expect(unitPrice).toBe(8.0);
+
+      // Três lojas com consumos diferentes medidos em campo:
+      // Loja A (Restaurante grande): 600 m³ brutos
+      // Loja B (Lanchonete média): 350 m³ brutos
+      // Loja C (Cafeteria pequena): 50 m³ brutos
+      // Loja D (Loja fechada): 0 m³ brutos
+      const rawStoreA = 600;
+      const rawStoreB = 350;
+      const rawStoreC = 50;
+      const rawStoreD = 0;
+      const totalRawField = rawStoreA + rawStoreB + rawStoreC + rawStoreD; // 1.000 m³
+
+      // Fator Proporcional da rede: Concessionária (1500) / Campo (1000) = 1.50x (+50%)
+      const gasFactor = engine.calculateGasFactor(totalConcessionariaM3, totalRawField, true);
+      expect(gasFactor).toBe(1.5);
+
+      // Consumo rateado de cada loja:
+      const consA = rawStoreA * gasFactor; // 600 * 1.5 = 900 m³ (60% do total)
+      const consB = rawStoreB * gasFactor; // 350 * 1.5 = 525 m³ (35% do total)
+      const consC = rawStoreC * gasFactor; // 50 * 1.5 = 75 m³ (5% do total)
+      const consD = rawStoreD * gasFactor; // 0 * 1.5 = 0 m³
+
+      // 1. O somatório de m³ rateados deve ser rigorosamente igual ao volume da concessionária
+      const totalRateadoM3 = consA + consB + consC + consD;
+      expect(totalRateadoM3).toBe(totalConcessionariaM3);
+
+      // 2. Custos calculados
+      const costA = engine.calculateStoreCost(consA, unitPrice); // 900 * 8 = R$ 7.200,00
+      const costB = engine.calculateStoreCost(consB, unitPrice); // 525 * 8 = R$ 4.200,00
+      const costC = engine.calculateStoreCost(consC, unitPrice); // 75 * 8 = R$ 600,00
+      const costD = engine.calculateStoreCost(consD, unitPrice); // 0 * 8 = R$ 0,00
+
+      // 3. O somatório dos custos deve fechar rigorosamente em 100% da fatura (R$ 12.000,00)
+      const totalDistributedCost = costA + costB + costC + costD;
+      expect(totalDistributedCost).toBe(totalBill);
+
+      // 4. Justiça e Equidade:
+      // - Cada loja pagou exatamente na proporção do que consumiu em relação ao grupo:
+      //   Loja A consumiu 60% do campo (600/1000) e pagou exatamente 60% da fatura (R$ 7.200 / R$ 12.000)
+      //   Loja B consumiu 35% do campo (350/1000) e pagou exatamente 35% da fatura (R$ 4.200 / R$ 12.000)
+      //   Loja C consumiu 5% do campo (50/1000) e pagou exatamente 5% da fatura (R$ 600 / R$ 12.000)
+      // - Loja D (fechada/sem consumo) pagou R$ 0,00, sem ser onerada pela diferença da rede
+      expect(costA / totalBill).toBe(rawStoreA / totalRawField);
+      expect(costB / totalBill).toBe(rawStoreB / totalRawField);
+      expect(costC / totalBill).toBe(rawStoreC / totalRawField);
+      expect(costD).toBe(0);
+
+      // 5. Área comum de gás em modo proporcional é 0 (sem resíduo para condomínio)
+      const summary = engine.calculateFullRateio(
+        totalBill,
+        totalConcessionariaM3,
+        totalRateadoM3,
+        0,
+        'gas',
+        true
+      );
+      expect(summary.commonAreaCost).toBe(0);
+      expect(summary.commonAreaConsumption).toBe(0);
     });
   });
 

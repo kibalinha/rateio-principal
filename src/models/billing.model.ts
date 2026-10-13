@@ -8,7 +8,7 @@ export type StoreReading = {
   adjustment: number;    // Fator de ajuste Multiplicador (Luz/Água/Gás - Ajuste X)
   
   // Campos opcionais para Gás
-  adjustmentAdd?: number; // Ajuste (+) Somatório
+  adjustmentAdd?: number; // Ajuste (+) Adicional em R$ (soma ao valor final da loja)
   fcm?: number;           // Fator de Correção do Medidor (FCM)
   fluxoCost?: number;     // Recuperação de Fluxo (R$)
 

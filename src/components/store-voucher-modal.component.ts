@@ -69,10 +69,14 @@ import { IndexedDbService } from '../services/indexed-db.service';
             <!-- Dados da Medição -->
             <div class="space-y-1.5">
               <div class="font-bold text-[11px] text-slate-500 uppercase tracking-wider">Detalhamento da Medição</div>
-              <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-center font-mono">
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center font-mono">
                 <div class="p-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-lg border border-slate-200 dark:border-slate-700">
                   <div class="text-[10px] text-slate-400 font-sans">Leitura Anterior</div>
                   <strong class="text-xs text-slate-700 dark:text-slate-300">{{ voucher.prevReading | number:'1.0-0' }}</strong>
+                </div>
+                <div class="p-2.5 bg-indigo-50/70 dark:bg-indigo-950/40 rounded-lg border border-indigo-200 dark:border-indigo-900/60">
+                  <div class="text-[10px] text-indigo-700 dark:text-indigo-300 font-sans font-bold">Consumo Mês Ant.</div>
+                  <strong class="text-xs text-indigo-800 dark:text-indigo-200">{{ (voucher.prevConsumption || 0) | number:'1.0-2' }} {{ voucher.unit }}</strong>
                 </div>
                 <div class="p-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-lg border border-slate-200 dark:border-slate-700">
                   <div class="text-[10px] text-slate-400 font-sans">Leitura Atual</div>
@@ -103,6 +107,16 @@ import { IndexedDbService } from '../services/indexed-db.service';
                 <div class="font-mono text-xs font-semibold text-slate-700 dark:text-slate-300">
                   {{ voucher.unitPrice | currency:'BRL':'symbol':'1.4-4' }} / {{ voucher.unit }}
                 </div>
+                @if (voucher.utilityType === 'gas' && ((voucher.adjustmentAdd && voucher.adjustmentAdd !== 0) || (voucher.fluxoCost && voucher.fluxoCost !== 0))) {
+                  <div class="text-[10px] text-slate-500 dark:text-slate-400 mt-1 flex flex-wrap gap-2">
+                    @if (voucher.adjustmentAdd) {
+                      <span>Aj. Adic.: <strong class="text-slate-700 dark:text-slate-200 font-mono">{{ voucher.adjustmentAdd | currency:'BRL' }}</strong></span>
+                    }
+                    @if (voucher.fluxoCost) {
+                      <span>Fluxo: <strong class="text-slate-700 dark:text-slate-200 font-mono">{{ voucher.fluxoCost | currency:'BRL' }}</strong></span>
+                    }
+                  </div>
+                }
               </div>
               <div class="text-right">
                 <div class="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase font-extrabold tracking-wider">Total a Pagar</div>

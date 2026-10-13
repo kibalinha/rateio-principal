@@ -390,7 +390,7 @@ export class ExcelImportModalComponent {
       if (virtual !== undefined) {
         consumptionPreview = virtual;
       } else if (type === 'gas') {
-        consumptionPreview = ((diff * adjustment) + adjustmentAdd) * fcm;
+        consumptionPreview = diff * adjustment * fcm;
       } else {
         consumptionPreview = diff * constant * adjustment;
       }

@@ -10,10 +10,13 @@ export interface StoreVoucherData {
   month: string;
   monthLabel: string;
   prevReading: number;
+  prevConsumption?: number;
   currentReading: number;
   readingDiff: number;
   constant: number;
   adjustment: number;
+  adjustmentAdd?: number;
+  fluxoCost?: number;
   consumption: number;
   rawConsumption?: number;
   gasFactor?: number;

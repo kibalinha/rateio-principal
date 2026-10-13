@@ -108,7 +108,7 @@ export function calculateStoreConsumption(params: StoreConsumptionParams): Store
     diff = calculateReadingDifference(currentReading, prevReading, isRollover);
 
     if (utilityType === 'gas') {
-      const initial = (diff * adjustment) + adjustmentAdd;
+      const initial = diff * adjustment;
       rawConsumption = initial * fcm;
     } else {
       rawConsumption = diff * constant * adjustment;
@@ -128,9 +128,9 @@ export function calculateStoreConsumption(params: StoreConsumptionParams): Store
   };
 }
 
-export function calculateStoreCost(consumption: number, unitPrice: number): number {
-  if (!consumption || consumption <= 0 || !unitPrice || unitPrice <= 0) return 0;
-  return consumption * unitPrice;
+export function calculateStoreCost(consumption: number, unitPrice: number, additionalCost: number = 0): number {
+  const base = (!consumption || consumption <= 0 || !unitPrice || unitPrice <= 0) ? 0 : consumption * unitPrice;
+  return base + (additionalCost || 0);
 }
 
 export function calculateAirConditioningCost(acConsumption: number, unitPrice: number): number {
