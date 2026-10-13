@@ -81,20 +81,25 @@ export function calculateStoreConsumption(params: StoreConsumptionParams): Store
     currentReading,
     prevReading,
     isRollover = false,
-    constant = 1,
     adjustmentAdd = 0,
     gasFactor = 1.0,
     isGasAuto = false
   } = params;
 
-  let adjustment = params.adjustment;
-  let fcm = params.fcm;
+  const constNum = Number(params.constant);
+  const constant = (!isNaN(constNum) && constNum > 0) ? constNum : 1.0;
+
+  const adjNum = Number(params.adjustment);
+  const fcmNum = Number(params.fcm);
+
+  let adjustment: number;
+  let fcm: number;
 
   if (utilityType === 'gas') {
-    adjustment = adjustment !== undefined ? adjustment : 1.347;
-    fcm = fcm || 1.0727;
+    adjustment = (!isNaN(adjNum) && adjNum > 0) ? adjNum : 1.347;
+    fcm = (!isNaN(fcmNum) && fcmNum > 0) ? fcmNum : 1.0727;
   } else {
-    adjustment = adjustment !== undefined ? adjustment : 1.0;
+    adjustment = (!isNaN(adjNum) && adjNum > 0) ? adjNum : 1.0;
     fcm = 1.0;
   }
 

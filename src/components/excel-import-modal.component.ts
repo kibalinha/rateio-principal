@@ -378,11 +378,14 @@ export class ExcelImportModalComponent {
       const prevReading = prevData ? prevData.reading : 0;
       const diff = reading > prevReading ? (reading - prevReading) : 0;
 
-      const constant = mappings.constant ? this.parseExcelNumber(rawRow[mappings.constant]) : 1;
-      const adjustment = mappings.adjustment ? this.parseExcelNumber(rawRow[mappings.adjustment]) : (type === 'gas' ? 1.347 : 1);
+      const rawConst = mappings.constant ? this.parseExcelNumber(rawRow[mappings.constant]) : 1;
+      const constant = rawConst > 0 ? rawConst : 1;
+      const rawAdj = mappings.adjustment ? this.parseExcelNumber(rawRow[mappings.adjustment]) : 0;
+      const adjustment = rawAdj > 0 ? rawAdj : (type === 'gas' ? 1.347 : 1);
       const virtual = mappings.virtual ? this.parseExcelOptionalNumber(rawRow[mappings.virtual]) : undefined;
       const adjustmentAdd = mappings.adjustmentAdd ? this.parseExcelNumber(rawRow[mappings.adjustmentAdd]) : 0;
-      const fcm = mappings.fcm ? this.parseExcelNumber(rawRow[mappings.fcm]) : 1.0727;
+      const rawFcm = mappings.fcm ? this.parseExcelNumber(rawRow[mappings.fcm]) : 0;
+      const fcm = rawFcm > 0 ? rawFcm : 1.0727;
       const fluxoCost = mappings.fluxoCost ? this.parseExcelNumber(rawRow[mappings.fluxoCost]) : 0;
       const note = mappings.note ? String(rawRow[mappings.note] || '').trim() : '';
 

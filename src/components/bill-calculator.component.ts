@@ -4057,8 +4057,10 @@ export class BillCalculatorComponent implements OnDestroy {
           } else if (diff < 0) {
             diff = 0;
           }
-          const adj = d.adjustment !== undefined ? d.adjustment : 1.347;
-          const mfcm = d.fcm || 1.0727;
+          const adjNum = Number(d.adjustment);
+          const adj = (!isNaN(adjNum) && adjNum > 0) ? adjNum : 1.347;
+          const fcmNum = Number(d.fcm);
+          const mfcm = (!isNaN(fcmNum) && fcmNum > 0) ? fcmNum : 1.0727;
           totalRawGas += (diff * adj) * mfcm;
         }
       });
@@ -4094,7 +4096,8 @@ export class BillCalculatorComponent implements OnDestroy {
       const prevConsumption = prevData.consumption || 0;
       const prevCost = (prevData as any).cost || 0;
       const prevReadingMonth = (prevData as any).month || null;
-      constant = data.constant || 1;
+      const constNum = Number(data.constant);
+      constant = (!isNaN(constNum) && constNum > 0) ? constNum : 1;
       if (data.virtual !== undefined && data.virtual !== null && !isNaN(Number(data.virtual))) {
         virtual = Number(data.virtual);
       }
@@ -4102,12 +4105,15 @@ export class BillCalculatorComponent implements OnDestroy {
       const isRollover = !!data.isRollover;
 
       if (type === 'gas') {
-        adjustment = data.adjustment !== undefined ? data.adjustment : 1.347;
-        adjustmentAdd = data.adjustmentAdd || 0;
-        fcm = data.fcm || 1.0727;
-        fluxoCost = data.fluxoCost || 0;
+        const adjNum = Number(data.adjustment);
+        adjustment = (!isNaN(adjNum) && adjNum > 0) ? adjNum : 1.347;
+        adjustmentAdd = Number(data.adjustmentAdd) || 0;
+        const fcmNum = Number(data.fcm);
+        fcm = (!isNaN(fcmNum) && fcmNum > 0) ? fcmNum : 1.0727;
+        fluxoCost = Number(data.fluxoCost) || 0;
       } else {
-        adjustment = data.adjustment || 1;
+        const adjNum = Number(data.adjustment);
+        adjustment = (!isNaN(adjNum) && adjNum > 0) ? adjNum : 1;
       }
 
       // CALCULATION LOGIC: Medição bruta de campo (com suporte a virada de relógio)
@@ -4745,6 +4751,41 @@ export class BillCalculatorComponent implements OnDestroy {
           const parsed = typeof value === 'number' ? value : parseFloat(str.replace(',', '.'));
           cleanValue = isNaN(parsed) ? undefined : parsed;
         }
+      }
+    }
+
+    if (field === 'adjustment') {
+      if (value === null || value === undefined || value === '' || isNaN(Number(value))) {
+        cleanValue = this.utilityType() === 'gas' ? 1.347 : 1;
+      } else {
+        const num = Number(value);
+        cleanValue = num <= 0 ? (this.utilityType() === 'gas' ? 1.347 : 1) : num;
+      }
+    }
+
+    if (field === 'fcm') {
+      if (value === null || value === undefined || value === '' || isNaN(Number(value))) {
+        cleanValue = 1.0727;
+      } else {
+        const num = Number(value);
+        cleanValue = num <= 0 ? 1.0727 : num;
+      }
+    }
+
+    if (field === 'constant') {
+      if (value === null || value === undefined || value === '' || isNaN(Number(value))) {
+        cleanValue = 1;
+      } else {
+        const num = Number(value);
+        cleanValue = num <= 0 ? 1 : num;
+      }
+    }
+
+    if (field === 'adjustmentAdd' || field === 'fluxoCost') {
+      if (value === null || value === undefined || value === '' || isNaN(Number(value))) {
+        cleanValue = 0;
+      } else {
+        cleanValue = Number(value);
       }
     }
 

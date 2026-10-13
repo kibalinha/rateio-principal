@@ -139,6 +139,44 @@ describe('ApportionmentEngineService - Cálculos Matemáticos de Rateio', () => 
       expect(result.rawConsumption).toBeCloseTo(14.449, 2);
     });
 
+    it('deve usar o fator padrão de Gás (1.347) se adjustment for retirado (null, undefined ou 0) e NÃO zerar o consumo', () => {
+      const resultNull = calculateStoreConsumption({
+        utilityType: 'gas',
+        currentReading: 110,
+        prevReading: 100,
+        adjustment: null as any
+      });
+      expect(resultNull.consumption).toBeGreaterThan(0);
+      expect(resultNull.rawConsumption).toBeCloseTo(14.449, 2);
+
+      const resultZero = calculateStoreConsumption({
+        utilityType: 'gas',
+        currentReading: 110,
+        prevReading: 100,
+        adjustment: 0
+      });
+      expect(resultZero.consumption).toBeGreaterThan(0);
+      expect(resultZero.rawConsumption).toBeCloseTo(14.449, 2);
+    });
+
+    it('deve usar o fator padrão de Água/Luz (1.0) se adjustment for retirado (null, undefined ou 0) e NÃO zerar o consumo', () => {
+      const resultNull = calculateStoreConsumption({
+        utilityType: 'luz',
+        currentReading: 1200,
+        prevReading: 1000,
+        adjustment: null as any
+      });
+      expect(resultNull.consumption).toBe(200);
+
+      const resultZero = calculateStoreConsumption({
+        utilityType: 'luz',
+        currentReading: 1200,
+        prevReading: 1000,
+        adjustment: 0
+      });
+      expect(resultZero.consumption).toBe(200);
+    });
+
     it('não deve inflar o consumo de Gás com adjustmentAdd (AJ+ é em R$, não m³)', () => {
       const result = calculateStoreConsumption({
         utilityType: 'gas',
