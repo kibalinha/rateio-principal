@@ -15,6 +15,7 @@ export type StoreReading = {
   rawConsumption?: number;// Consumo medido bruto antes do rateio proporcional (Gás)
   gasFactor?: number;     // Fator de rateio proporcional aplicado (Gás)
   calculatedConsumption: number; // Consumo Final calculado/salvo
+  cost?: number;          // Custo / Valor final faturado em R$
   note?: string;          // Observação de campo (ex: 'Relógio embaçado', 'Loja em reforma')
   hasPhoto?: boolean;     // Comprovante / Foto de Evidência gravada no IndexedDB
   photoTimestamp?: string;// Data/hora da captura da foto

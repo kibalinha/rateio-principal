@@ -200,9 +200,9 @@ export class HistoryService {
    * Se uma loja esteve desativada ou sem medição por um ou mais meses, faz a busca retroativa no histórico
    * para encontrar a última medição real gravada no relógio, evitando que ela seja cobrada com valor absoluto.
    */
-  getLastValidReadings(type: string, currentMonth: string): Map<string, { reading: number; consumption: number; month: string }> {
+  getLastValidReadings(type: string, currentMonth: string): Map<string, { reading: number; consumption: number; cost?: number; month: string }> {
     const allData = this.billsSignal();
-    const result = new Map<string, { reading: number; consumption: number; month: string }>();
+    const result = new Map<string, { reading: number; consumption: number; cost?: number; month: string }>();
 
     // 1. Identifica todos os meses passados que possuem faturas salvas desta utilidade e que sejam anteriores a currentMonth
     const pastMonths: string[] = [];
@@ -234,6 +234,17 @@ export class HistoryService {
       const bill = allData[`${prefix}${m}`];
       if (!bill || !bill.readings) continue;
 
+      // Tarifa unitária do mês histórico para cálculo do custo caso não esteja gravado diretamente
+      const totalBill = (bill.costItems || []).reduce((acc: number, item: any) => acc + (item.value || 0), 0);
+      let totalConsumption = 0;
+      if (type === 'luz') {
+        const c = bill.consumptionInput || {};
+        totalConsumption = (c.bss1 || 0) + (c.bss2 || 0) + (c.bss3 || 0) + (c.bss4 || 0);
+      } else {
+        totalConsumption = Number(bill.consumptionInput) || 0;
+      }
+      const unitPrice = totalConsumption > 0 ? (totalBill / totalConsumption) : 0;
+
       for (const [storeId, r] of Object.entries(bill.readings)) {
         // Se já encontramos uma leitura válida (> 0) em um mês mais recente para esta loja, mantém ela
         const existing = result.get(storeId);
@@ -243,19 +254,28 @@ export class HistoryService {
 
         let reading = 0;
         let consumption = 0;
+        let cost = 0;
         if (typeof r === 'object' && r !== null) {
           reading = Number((r as any).reading) || 0;
           consumption = Number((r as any).calculatedConsumption ?? (r as any).consumption) || 0;
+          if ((r as any).cost !== undefined && (r as any).cost !== null && !isNaN(Number((r as any).cost))) {
+            cost = Number((r as any).cost);
+          } else {
+            const fluxo = Number((r as any).fluxoCost) || 0;
+            const adjAdd = Number((r as any).adjustmentAdd) || 0;
+            cost = (consumption * unitPrice) + fluxo + adjAdd;
+          }
         } else if (typeof r === 'number') {
           reading = Number(r) || 0;
           consumption = Number(r) || 0;
+          cost = consumption * unitPrice;
         }
 
         if (reading > 0) {
-          result.set(storeId, { reading, consumption, month: m });
+          result.set(storeId, { reading, consumption, cost, month: m });
         } else if (!existing) {
           // Registra provisoriamente 0 com o mês mais recente caso nenhum mês anterior tenha leitura
-          result.set(storeId, { reading: 0, consumption: 0, month: m });
+          result.set(storeId, { reading: 0, consumption: 0, cost: 0, month: m });
         }
       }
     }

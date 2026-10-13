@@ -11,6 +11,7 @@ export interface StoreVoucherData {
   monthLabel: string;
   prevReading: number;
   prevConsumption?: number;
+  prevCost?: number;
   currentReading: number;
   readingDiff: number;
   constant: number;

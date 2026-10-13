@@ -121,6 +121,11 @@ import { IndexedDbService } from '../services/indexed-db.service';
               <div class="text-right">
                 <div class="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase font-extrabold tracking-wider">Total a Pagar</div>
                 <strong class="text-xl font-mono font-black text-emerald-700 dark:text-emerald-300">{{ voucher.totalCost | currency:'BRL' }}</strong>
+                @if (voucher.prevCost) {
+                  <div class="text-[10px] text-slate-400 font-sans mt-0.5" title="Valor faturado no mês anterior">
+                    Mês anterior: <strong class="font-mono text-slate-600 dark:text-slate-300">{{ voucher.prevCost | currency:'BRL' }}</strong>
+                  </div>
+                }
               </div>
             </div>
 

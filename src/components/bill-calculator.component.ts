@@ -1299,6 +1299,11 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                         } @else {
                           {{ item.cost | currency:'BRL' }}
                         }
+                        @if (item.prevCost) {
+                          <div class="text-[10px] text-slate-400 dark:text-slate-500 font-sans font-medium mt-0.5 tracking-tight" [title]="'Valor faturado no mês anterior (' + (item.prevReadingMonth || 'mês anterior') + ')'">
+                            ant: {{ item.prevCost | currency:'BRL' }}
+                          </div>
+                        }
                       </td>
                     </tr>
                   }
@@ -1938,6 +1943,11 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                                   <span class="text-[11px] text-teal-700 dark:text-teal-400 font-sans font-semibold">
                                     Consumo Ant: <strong>{{ stepStore.prevConsumption | number:'1.0-2' }} {{ getUnit() }}</strong>
                                   </span>
+                                  @if (stepStore.prevCost) {
+                                    <span class="text-[11px] text-slate-600 dark:text-slate-300 font-sans font-semibold">
+                                      Valor Pago Ant: <strong>{{ stepStore.prevCost | currency:'BRL' }}</strong>
+                                    </span>
+                                  }
                                   <button type="button" 
                                     (click)="openPhotoViewer(stepStore.storeId, prevPhoto)"
                                     class="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline font-bold text-left cursor-pointer">
@@ -1956,6 +1966,11 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                                 <span class="text-xs text-teal-700 dark:text-teal-400 font-sans font-semibold block mt-0.5">
                                   Consumo Anterior: <strong>{{ stepStore.prevConsumption | number:'1.0-2' }} {{ getUnit() }}</strong>
                                 </span>
+                                @if (stepStore.prevCost) {
+                                  <span class="text-xs text-slate-600 dark:text-slate-300 font-sans font-semibold block mt-0.5">
+                                    Valor Pago Anterior: <strong>{{ stepStore.prevCost | currency:'BRL' }}</strong>
+                                  </span>
+                                }
                                 @if (stepStore.validationAlert.avgConsumption > 0) {
                                   <span class="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">
                                     Média Histórica: {{ stepStore.validationAlert.avgConsumption | number:'1.0-1' }} {{ getUnit() }}
@@ -3301,7 +3316,7 @@ export class BillCalculatorComponent implements OnDestroy {
   });
 
   // Stores Previous Month Data for Calculations
-  previousReadings = signal<Map<string, { reading: number, consumption: number, month?: string }>>(new Map());
+  previousReadings = signal<Map<string, { reading: number, consumption: number, cost?: number, month?: string }>>(new Map());
 
   // Excel Import State
   showExcelImportModal = signal<boolean>(false);
@@ -3597,7 +3612,8 @@ export class BillCalculatorComponent implements OnDestroy {
         ...original,
         rawConsumption: row.rawConsumption,
         gasFactor: row.gasFactor,
-        calculatedConsumption: row.consumption
+        calculatedConsumption: row.consumption,
+        cost: row.cost
       };
     });
 
@@ -3805,7 +3821,7 @@ export class BillCalculatorComponent implements OnDestroy {
     });
 
     // 2. Carrega Leituras Anteriores com busca retroativa inteligente pelo último valor válido caso a loja estivesse desativada
-    const prevMap: Map<string, { reading: number; consumption: number; month: string }> = this.historyService.getLastValidReadings(type, month);
+    const prevMap: Map<string, { reading: number; consumption: number; cost?: number; month: string }> = this.historyService.getLastValidReadings(type, month);
     this.previousReadings.set(prevMap);
 
     // Carrega fotos do mês anterior (e fotos dos meses retroativos das lojas desativadas) para comparação visual
@@ -4076,6 +4092,7 @@ export class BillCalculatorComponent implements OnDestroy {
       currentReading = data.reading;
       prevReading = prevData.reading;
       const prevConsumption = prevData.consumption || 0;
+      const prevCost = (prevData as any).cost || 0;
       const prevReadingMonth = (prevData as any).month || null;
       constant = data.constant || 1;
       if (data.virtual !== undefined && data.virtual !== null && !isNaN(Number(data.virtual))) {
@@ -4251,6 +4268,7 @@ export class BillCalculatorComponent implements OnDestroy {
         excludedFromBill,
         prevReading,
         prevConsumption,
+        prevCost,
         prevReadingMonth,
         currentReading,
         constant,
@@ -4447,6 +4465,9 @@ export class BillCalculatorComponent implements OnDestroy {
         case 'prevConsumption':
           diff = (a.prevConsumption || 0) - (b.prevConsumption || 0);
           break;
+        case 'prevCost':
+          diff = (a.prevCost || 0) - (b.prevCost || 0);
+          break;
         case 'currentReading':
         case 'reading':
           diff = (a.currentReading || 0) - (b.currentReading || 0);
@@ -4515,7 +4536,7 @@ export class BillCalculatorComponent implements OnDestroy {
       this.sortBy.set(col);
       // Colunas numéricas e de custos começam em ordem decrescente (maior para o menor)
       const descFirstCols = [
-        'consumption', 'cost', 'currentReading', 'prevReading', 'prevConsumption',
+        'consumption', 'cost', 'prevCost', 'currentReading', 'prevReading', 'prevConsumption',
         'variation', 'fluxoCost', 'adjustmentAdd', 'virtual', 'hasPhoto'
       ];
       if (descFirstCols.includes(col)) {
@@ -5861,6 +5882,7 @@ export class BillCalculatorComponent implements OnDestroy {
       monthLabel: this.selectedMonthLabel(),
       prevReading: item.prevReading || 0,
       prevConsumption: item.prevConsumption || 0,
+      prevCost: item.prevCost || 0,
       currentReading: item.currentReading || 0,
       readingDiff: item.readingDiff !== undefined ? item.readingDiff : ((item.currentReading || 0) - (item.prevReading || 0)),
       constant: item.constant || 1,

@@ -126,6 +126,7 @@ export class ReportExportService {
         item['Custo Fluxo (R$)'] = Number(row.fluxoCost.toFixed(2));
       }
 
+      item['Valor Mês Anterior (R$)'] = Number((row.prevCost || 0).toFixed(2));
       item['Valor a Pagar (R$)'] = Number((row.cost || 0).toFixed(2));
       item['% no Rateio'] = options.totalDistributedCost > 0 
         ? Number(((row.cost / options.totalDistributedCost) * 100).toFixed(2)) 
@@ -163,6 +164,7 @@ export class ReportExportService {
     if (options.utilityType === 'gas') {
       totalsRow['Custo Fluxo (R$)'] = '';
     }
+    totalsRow['Valor Mês Anterior (R$)'] = Number(options.tableData.reduce((acc, r) => acc + (r.prevCost || 0), 0).toFixed(2));
     totalsRow['Valor a Pagar (R$)'] = Number(options.totalDistributedCost.toFixed(2));
     totalsRow['% no Rateio'] = 100;
     totalsRow['Status da Leitura'] = '—';

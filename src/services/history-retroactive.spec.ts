@@ -142,4 +142,38 @@ describe('HistoryService - Busca Retroativa da Última Leitura Válida', () => {
     const luzReadings = service.getLastValidReadings('luz', '2026-04');
     expect(luzReadings.get('loja-mista')?.reading).toBe(9999);
   });
+
+  it('deve retornar o custo salvo ou calcular retroativamente o valor pago anterior (cost)', () => {
+    // Fatura de 2026-01 com duas lojas:
+    // 1. Loja com cost explicitamente gravado na leitura (ex: 250.75)
+    // 2. Loja legada sem campo cost gravado (mas com totalBill = 1000 e totalConsumption = 100 => tarifa 10; consumo 15 => cost 150)
+    service.saveBill('gas', '2026-01', {
+      costItems: [{ description: 'Fatura Gás', value: 1000 }],
+      consumptionInput: 100,
+      acInput: 0,
+      lastUpdated: '2026-01-31T20:00:00.000Z',
+      readings: {
+        'loja-com-cost': {
+          reading: 200,
+          calculatedConsumption: 20,
+          cost: 250.75
+        },
+        'loja-legada': {
+          reading: 150,
+          calculatedConsumption: 15
+        }
+      }
+    });
+
+    const validReadings = service.getLastValidReadings('gas', '2026-02');
+    
+    const lojaComCost = validReadings.get('loja-com-cost');
+    expect(lojaComCost).toBeDefined();
+    expect(lojaComCost!.cost).toBe(250.75);
+
+    const lojaLegada = validReadings.get('loja-legada');
+    expect(lojaLegada).toBeDefined();
+    expect(lojaLegada!.cost).toBe(150);
+  });
 });
+
