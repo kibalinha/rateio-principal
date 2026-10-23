@@ -33,6 +33,11 @@ import { MeterPhotoModalComponent } from './meter-photo-modal.component';
 import { OcrQualityPanelComponent } from './ocr-quality-panel.component';
 import { ExcelImportModalComponent, ExcelImportSuccessEvent } from './excel-import-modal.component';
 import { StoreVoucherModalComponent } from './store-voucher-modal.component';
+import { QuickJustifyModalComponent } from './quick-justify-modal.component';
+import { PrevMonthAuditModalComponent } from './prev-month-audit-modal.component';
+import { ClosingChecklistModalComponent } from './closing-checklist-modal.component';
+import { AiKeyConfigModalComponent } from './ai-key-config-modal.component';
+import { BatchOcrModalComponent } from './batch-ocr-modal.component';
 
 export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent };
 
@@ -48,7 +53,12 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
     MeterPhotoModalComponent,
     OcrQualityPanelComponent,
     ExcelImportModalComponent,
-    StoreVoucherModalComponent
+    StoreVoucherModalComponent,
+    QuickJustifyModalComponent,
+    PrevMonthAuditModalComponent,
+    ClosingChecklistModalComponent,
+    AiKeyConfigModalComponent,
+    BatchOcrModalComponent
   ],
   template: `
     <div class="space-y-6 pb-20 md:pb-0">
@@ -2702,203 +2712,25 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
       <app-ocr-quality-panel [isOpen]="showOcrQuality()" (close)="showOcrQuality.set(false)" />
 
       <!-- Modal de Configuração de Chaves de IA (Groq & Gemini) -->
-      @if (showAiKeyModal()) {
-        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-          <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
-            <div class="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <div class="flex items-center gap-2">
-                <span class="text-2xl">🤖</span>
-                <div>
-                  <h3 class="text-base font-bold text-slate-900 dark:text-white">Chaves de IA para Leitura de Medidores</h3>
-                  <p class="text-xs text-slate-500 dark:text-slate-400">Configure para leitura automática de relógios por foto (OCR)</p>
-                </div>
-              </div>
-              <button (click)="closeAiKeyModal()" class="text-slate-400 hover:text-slate-600 text-lg p-1">✕</button>
-            </div>
-
-            <div class="space-y-4 text-xs">
-              <!-- Campo Groq -->
-              <div class="space-y-1.5">
-                <div class="flex justify-between items-center">
-                  <label class="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
-                    <span>⚡ Groq API Key</span>
-                    <span class="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 px-1.5 py-0.2 rounded font-bold">Recomendado • Ultra Rápido</span>
-                  </label>
-                  <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" class="text-[11px] text-teal-600 dark:text-teal-400 hover:underline">
-                    Obter chave gratuita ↗
-                  </a>
-                </div>
-                <input 
-                  type="password" 
-                  [ngModel]="groqInputKey()" 
-                  (ngModelChange)="groqInputKey.set($event)"
-                  placeholder="gsk_..."
-                  class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono text-xs focus:ring-2 focus:ring-teal-500 outline-none">
-                <p class="text-[11px] text-slate-500 dark:text-slate-400">Utiliza o modelo Vision Qwen 2.5 da Groq (tempo de resposta: ~0.8s).</p>
-              </div>
-
-              <!-- Campo Gemini -->
-              <div class="space-y-1.5">
-                <div class="flex justify-between items-center">
-                  <label class="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
-                    <span>🤖 Google Gemini API Key</span>
-                    <span class="text-[10px] bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 px-1.5 py-0.2 rounded font-bold">Fallback Oficial</span>
-                  </label>
-                  <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" class="text-[11px] text-teal-600 dark:text-teal-400 hover:underline">
-                    Obter chave gratuita ↗
-                  </a>
-                </div>
-                <input 
-                  type="password" 
-                  [ngModel]="geminiInputKey()" 
-                  (ngModelChange)="geminiInputKey.set($event)"
-                  placeholder="AIzaSy..."
-                  class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono text-xs focus:ring-2 focus:ring-teal-500 outline-none">
-                <p class="text-[11px] text-slate-500 dark:text-slate-400">Utiliza Gemini 2.5 Flash como motor de verificação e contingência.</p>
-              </div>
-
-              <div class="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 text-[11px] text-slate-600 dark:text-slate-300 space-y-1">
-                <p class="font-bold text-slate-800 dark:text-slate-200">🔒 Armazenamento Seguro:</p>
-                <p>As chaves são salvas com segurança no LocalStorage do seu navegador e utilizadas diretamente pelo seu dispositivo para se comunicar com as APIs de OCR.</p>
-              </div>
-            </div>
-
-            <div class="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-              <button 
-                type="button" 
-                (click)="closeAiKeyModal()" 
-                class="px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold text-xs hover:bg-slate-200 cursor-pointer">
-                Cancelar
-              </button>
-              <button 
-                type="button" 
-                (click)="saveAiKeysAndProceed()" 
-                class="px-5 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-sm cursor-pointer">
-                Salvar Chaves
-              </button>
-            </div>
-          </div>
-        </div>
-      }
+      <app-ai-key-config-modal
+        [isOpen]="showAiKeyModal()"
+        [groqKey]="groqInputKey()"
+        [geminiKey]="geminiInputKey()"
+        (closed)="closeAiKeyModal()"
+        (saved)="onAiKeysSaved($event)"
+      />
 
       <!-- Modal de Processamento em Lote com IA (Batch OCR) -->
-      @if (showBatchOcrModal() || isBatchOcrRunning()) {
-        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-          <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
-            
-            <div class="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <div class="flex items-center gap-2.5">
-                <span class="text-2xl">⚡</span>
-                <div>
-                  <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                    <span>Processamento de Fotos em Lote</span>
-                    @if (isBatchOcrRunning()) {
-                      <span class="animate-pulse bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-[10px] px-2 py-0.5 rounded-full font-bold">
-                        Em execução
-                      </span>
-                    }
-                  </h3>
-                  <p class="text-xs text-slate-500 dark:text-slate-400">Extração automática de leituras por IA (Qwen 3.8 / Gemini)</p>
-                </div>
-              </div>
-              @if (!isBatchOcrRunning()) {
-                <button (click)="closeBatchOcrModal()" class="text-slate-400 hover:text-slate-600 text-lg p-1">✕</button>
-              }
-            </div>
+      <app-batch-ocr-modal
+        [isOpen]="showBatchOcrModal()"
+        [isRunning]="isBatchOcrRunning()"
+        [progress]="batchOcrProgress()"
+        [pendingCount]="pendingOcrCount()"
+        (closed)="closeBatchOcrModal()"
+        (cancel)="cancelBatchOcr()"
+        (execute)="executeBatchOcr($event)"
+      />
 
-            <!-- Progresso Geral -->
-            <div class="space-y-3">
-              <div class="flex justify-between items-center text-xs">
-                <span class="font-bold text-slate-700 dark:text-slate-300">
-                  Progresso: {{ batchOcrProgress().current }} de {{ batchOcrProgress().total }} fotos
-                </span>
-                <span class="font-mono font-bold text-indigo-600 dark:text-indigo-400">
-                  {{ batchOcrProgress().progressPct }}%
-                </span>
-              </div>
-
-              <!-- Barra de Progresso -->
-              <div class="w-full bg-slate-100 dark:bg-slate-800 h-3 rounded-full overflow-hidden shadow-inner border border-slate-200 dark:border-slate-700">
-                <div class="h-full bg-gradient-to-r from-indigo-500 via-teal-500 to-emerald-500 rounded-full transition-all duration-300"
-                     [style.width.%]="batchOcrProgress().progressPct"></div>
-              </div>
-
-              <!-- Loja Atual em Processamento -->
-              @if (isBatchOcrRunning() && batchOcrProgress().currentStoreName) {
-                <div class="p-3 bg-indigo-50/70 dark:bg-indigo-950/40 rounded-xl border border-indigo-200 dark:border-indigo-800 flex items-center justify-between gap-3 text-xs animate-pulse">
-                  <div class="flex items-center gap-2">
-                    <span class="animate-spin text-base">⏳</span>
-                    <div>
-                      <div class="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                        <span class="font-mono bg-white dark:bg-slate-800 px-1.5 py-0.2 rounded border border-indigo-200 dark:border-indigo-800 font-bold text-indigo-700 dark:text-indigo-300">{{ batchOcrProgress().currentLuc }}</span>
-                        <span>{{ batchOcrProgress().currentStoreName }}</span>
-                      </div>
-                      <span class="text-[11px] text-slate-500 dark:text-slate-400">Consultando {{ batchOcrProgress().currentModel }}...</span>
-                    </div>
-                  </div>
-                </div>
-              }
-
-              <!-- Contadores de Resultados em Tempo Real -->
-              <div class="grid grid-cols-2 gap-3 pt-1">
-                <div class="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center gap-2.5">
-                  <span class="text-xl">✅</span>
-                  <div>
-                    <span class="text-[10px] uppercase font-bold text-emerald-800 dark:text-emerald-300 block">Identificadas</span>
-                    <strong class="text-base font-mono font-bold text-emerald-700 dark:text-emerald-300">{{ batchOcrProgress().successCount }}</strong>
-                  </div>
-                </div>
-
-                <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center gap-2.5">
-                  <span class="text-xl">⚠️</span>
-                  <div>
-                    <span class="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-400 block">Falhas / Ilegíveis</span>
-                    <strong class="text-base font-mono font-bold text-slate-700 dark:text-slate-300">{{ batchOcrProgress().failCount }}</strong>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Rodapé / Ações -->
-            <div class="flex justify-between items-center pt-3 border-t border-slate-100 dark:border-slate-800">
-              @if (isBatchOcrRunning()) {
-                <span class="text-[11px] text-slate-400 italic">Processando em segundo plano...</span>
-                <button 
-                  type="button" 
-                  (click)="cancelBatchOcr()" 
-                  class="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition-colors cursor-pointer shadow-xs">
-                  ⏹️ Cancelar Fila
-                </button>
-              } @else {
-                <button 
-                  type="button" 
-                  (click)="closeBatchOcrModal()" 
-                  class="px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer">
-                  Fechar
-                </button>
-                <div class="flex gap-2">
-                  <button 
-                    type="button" 
-                    (click)="executeBatchOcr(true)" 
-                    class="px-3.5 py-2 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs hover:bg-slate-300 dark:hover:bg-slate-600 cursor-pointer"
-                    title="Reprocessar todas as fotos deste mês mesmo as que já possuem leitura">
-                    🔄 Reprocessar Todas
-                  </button>
-                  <button 
-                    type="button" 
-                    (click)="executeBatchOcr(false)" 
-                    class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition-all cursor-pointer">
-                    ⚡ Processar Pendentes ({{ pendingOcrCount() }})
-                  </button>
-                </div>
-              }
-            </div>
-
-          </div>
-        </div>
-      }
-
-      
       <!-- Modal: Espelho Individual do Lojista (Comprovante com Foto / WhatsApp / PDF) -->
       <app-store-voucher-modal
         [isOpen]="showVoucherModal()"
@@ -2928,337 +2760,27 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
       />
 
       <!-- MODAL CHECKLIST DE AUDITORIA E FECHAMENTO MENSAL (PASSO 3: GESTÃO & CONTABILIDADE) -->
-      @if (showClosingChecklistModal()) {
-        <div class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
-          <div class="absolute inset-0 bg-black/75 backdrop-blur-md animate-fade-in" (click)="closeClosingChecklist()"></div>
-
-          <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-2xl relative z-10 border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[92vh] animate-scale-in">
-            
-            <!-- Header do Modal -->
-            <div class="p-4 sm:p-5 bg-gradient-to-r from-slate-900 to-slate-800 text-white flex items-center justify-between border-b border-slate-700">
-              <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-2xl bg-teal-500/20 border border-teal-500/30 flex items-center justify-center text-xl shrink-0">
-                  🛡️
-                </div>
-                <div>
-                  <h3 class="font-extrabold text-base sm:text-lg leading-tight flex items-center gap-2">
-                    <span>Auditoria e Fechamento do Mês</span>
-                    @if (isLocked()) {
-                      <span class="text-[10px] bg-amber-500 text-slate-950 px-2 py-0.5 rounded-full font-black uppercase font-mono tracking-wider">
-                        🔒 Mês Congelado
-                      </span>
-                    }
-                  </h3>
-                  <p class="text-xs text-slate-300 mt-0.5 font-medium flex items-center gap-2">
-                    <span>Insumo: <strong class="text-teal-300 uppercase">{{ utilityType() }}</strong></span>
-                    <span>•</span>
-                    <span>Mês: <strong class="text-white font-mono">{{ selectedMonth() }}</strong></span>
-                  </p>
-                </div>
-              </div>
-              <button (click)="closeClosingChecklist()" class="text-slate-400 hover:text-white text-xl font-bold p-1 cursor-pointer">✕</button>
-            </div>
-
-            <!-- Corpo com os 4 Pilares de Segurança -->
-            <div class="p-4 sm:p-6 overflow-y-auto space-y-4 text-xs sm:text-sm">
-              
-              <!-- Resumo Executivo Superior -->
-              <div class="p-3.5 rounded-2xl border flex items-center justify-between gap-3 flex-wrap"
-                   [class]="closingChecklist().canFreeze 
-                     ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-950 dark:text-emerald-200' 
-                     : 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800 text-amber-950 dark:text-amber-200'">
-                <div class="flex items-center gap-2.5">
-                  <span class="text-2xl">{{ closingChecklist().canFreeze ? '✅' : '⚠️' }}</span>
-                  <div>
-                    <h4 class="font-bold text-sm">
-                      {{ closingChecklist().canFreeze ? 'Rateio Pronto para Fechamento!' : 'Atenção: Existem pendências de conferência' }}
-                    </h4>
-                    <p class="text-xs opacity-85">
-                      {{ closingChecklist().canFreeze 
-                        ? 'Todas as lojas foram lidas e as medições estão auditadas sem inconformidades críticas.' 
-                        : 'Resolva as pendências abaixo antes de emitir os relatórios definitivos aos lojistas.' }}
-                    </p>
-                  </div>
-                </div>
-                <div class="font-mono text-xs font-bold px-2.5 py-1 rounded-lg bg-white/70 dark:bg-slate-900/70 border border-black/10 dark:border-white/10 shrink-0">
-                  {{ closingChecklist().readings.readStores }}/{{ closingChecklist().readings.totalStores }} Lojas Lidas
-                </div>
-              </div>
-
-              <!-- PILAR 1: 100% DAS LOJAS ATIVAS LIDAS -->
-              <div class="p-4 rounded-2xl border transition-all"
-                   [class]="closingChecklist().readings.passed 
-                     ? 'bg-white dark:bg-slate-900 border-emerald-300 dark:border-emerald-800/70' 
-                     : 'bg-white dark:bg-slate-900 border-amber-300 dark:border-amber-800/70'">
-                <div class="flex items-center justify-between gap-2 mb-2">
-                  <div class="flex items-center gap-2">
-                    <span class="text-lg">{{ closingChecklist().readings.passed ? '✅' : '⏳' }}</span>
-                    <div>
-                      <strong class="text-sm font-bold text-slate-900 dark:text-white">1. Medição das Lojas (100% Lidas)</strong>
-                      <p class="text-xs text-slate-500 dark:text-slate-400">Nenhuma loja ativa pode ficar sem leitura no fechamento.</p>
-                    </div>
-                  </div>
-                  <span class="px-2.5 py-1 rounded-full text-xs font-black uppercase font-mono"
-                        [class]="closingChecklist().readings.passed 
-                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' 
-                          : 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300'">
-                    {{ closingChecklist().readings.passed ? '✓ 100% Concluído' : closingChecklist().readings.pendingStores + ' Pendente(s)' }}
-                  </span>
-                </div>
-
-                @if (!closingChecklist().readings.passed) {
-                  <div class="mt-3 p-3 bg-amber-50/80 dark:bg-amber-950/40 rounded-xl border border-amber-200 dark:border-amber-800/60 space-y-2">
-                    <span class="text-[11px] font-bold text-amber-900 dark:text-amber-200 block uppercase">
-                      Lojas que ainda faltam ser lidas:
-                    </span>
-                    <div class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
-                      @for (p of closingChecklist().readings.pendingList; track p.id) {
-                        <button type="button" 
-                          (click)="statusFilter.set('pending'); mobileViewMode.set('cards'); closeClosingChecklist()"
-                          class="px-2 py-0.5 bg-white dark:bg-slate-800 hover:bg-amber-100 text-slate-800 dark:text-slate-200 border border-amber-300 dark:border-amber-700 rounded-md text-[11px] font-medium flex items-center gap-1 cursor-pointer">
-                          <span class="font-mono font-bold">{{ p.luc }}</span>
-                          <span class="truncate max-w-[120px]">{{ p.name }}</span>
-                        </button>
-                      }
-                    </div>
-                  </div>
-                }
-              </div>
-
-              <!-- PILAR 2: ZERO INCONSISTÊNCIAS / AUDITORIA DE ANOMALIAS -->
-              <div class="p-4 rounded-2xl border transition-all"
-                   [class]="closingChecklist().anomalies.passed 
-                     ? 'bg-white dark:bg-slate-900 border-emerald-300 dark:border-emerald-800/70' 
-                     : 'bg-white dark:bg-slate-900 border-rose-300 dark:border-rose-800/70'">
-                <div class="flex items-center justify-between gap-2 mb-2">
-                  <div class="flex items-center gap-2">
-                    <span class="text-lg">{{ closingChecklist().anomalies.passed ? '✅' : '🚨' }}</span>
-                    <div>
-                      <strong class="text-sm font-bold text-slate-900 dark:text-white">2. Inconsistências & Alertas Auditados</strong>
-                      <p class="text-xs text-slate-500 dark:text-slate-400">Suspeitas de vazamento, leitura menor ou zero a mais devem ser auditadas.</p>
-                    </div>
-                  </div>
-                  <span class="px-2.5 py-1 rounded-full text-xs font-black uppercase font-mono"
-                        [class]="closingChecklist().anomalies.passed 
-                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' 
-                          : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'">
-                    {{ closingChecklist().anomalies.passed ? '✓ Zero Pendências' : closingChecklist().anomalies.uninspectedCount + ' Alerta(s)' }}
-                  </span>
-                </div>
-
-                @if (!closingChecklist().anomalies.passed) {
-                  <div class="mt-3 p-3 bg-rose-50/80 dark:bg-rose-950/40 rounded-xl border border-rose-200 dark:border-rose-800/60 space-y-2">
-                    <span class="text-[11px] font-bold text-rose-900 dark:text-rose-200 block uppercase">
-                      Lojas com anomalia sem confirmação em campo:
-                    </span>
-                    <div class="space-y-1.5 max-h-32 overflow-y-auto">
-                      @for (a of closingChecklist().anomalies.uninspectedList; track a.id) {
-                        <div class="p-2 bg-white dark:bg-slate-800 rounded-lg border border-rose-200 dark:border-rose-800 flex items-center justify-between gap-2 text-xs">
-                          <div>
-                            <span class="font-mono font-bold">{{ a.luc }}</span> • <strong>{{ a.name }}</strong>: 
-                            <span class="text-rose-700 dark:text-rose-300 font-semibold ml-1">{{ a.badge }}</span>
-                          </div>
-                          <button type="button" 
-                            (click)="confirmAnomaly(a.id)"
-                            class="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[11px] font-bold cursor-pointer shrink-0">
-                            ✓ Confirmar
-                          </button>
-                        </div>
-                      }
-                    </div>
-                  </div>
-                }
-              </div>
-
-              <!-- PILAR 3: AUDITORIA DE CONTINUIDADE VS MÊS ANTERIOR (LOJAS ESQUECIDAS) -->
-              <div class="p-4 rounded-2xl border transition-all"
-                   [class]="closingChecklist().continuity.passed 
-                     ? 'bg-white dark:bg-slate-900 border-emerald-300 dark:border-emerald-800/70' 
-                     : 'bg-white dark:bg-slate-900 border-amber-300 dark:border-amber-800/70'">
-                <div class="flex items-center justify-between gap-2 mb-2">
-                  <div class="flex items-center gap-2">
-                    <span class="text-lg">{{ closingChecklist().continuity.passed ? '✅' : '⚠️' }}</span>
-                    <div>
-                      <strong class="text-sm font-bold text-slate-900 dark:text-white">3. Continuidade vs Mês Anterior</strong>
-                      <p class="text-xs text-slate-500 dark:text-slate-400">Garante que nenhuma loja medida no mês anterior seja esquecida sem leitura ou justificativa.</p>
-                    </div>
-                  </div>
-                  <span class="px-2.5 py-1 rounded-full text-xs font-black uppercase font-mono"
-                        [class]="closingChecklist().continuity.passed 
-                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' 
-                          : 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300'">
-                    {{ closingChecklist().continuity.passed ? '✓ 100% Conferido' : closingChecklist().continuity.pendingCount + ' Pendente(s)' }}
-                  </span>
-                </div>
-
-                @if (!closingChecklist().continuity.passed) {
-                  <div class="mt-3 p-3 bg-amber-50/80 dark:bg-amber-950/40 rounded-xl border border-amber-200 dark:border-amber-800/60 space-y-2">
-                    <div class="flex items-center justify-between gap-2">
-                      <span class="text-[11px] font-bold text-amber-900 dark:text-amber-200 block uppercase">
-                        Lojas medidas no mês anterior sem leitura nem justificativa:
-                      </span>
-                      <button type="button" 
-                        (click)="closeClosingChecklist(); showPrevMonthAuditModal.set(true)"
-                        class="text-xs font-bold text-amber-700 dark:text-amber-300 underline cursor-pointer">
-                        Abrir Painel de Continuidade
-                      </button>
-                    </div>
-                    <div class="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto">
-                      @for (p of closingChecklist().continuity.pendingStores; track p.storeId) {
-                        <div class="p-2 bg-white dark:bg-slate-800 rounded-lg border border-amber-200 dark:border-amber-800 flex items-center justify-between gap-2 text-xs w-full sm:w-auto">
-                          <div>
-                            <span class="font-mono font-bold">{{ p.luc }}</span> • <strong>{{ p.storeName }}</strong>
-                            <span class="text-[10px] text-slate-500 dark:text-slate-400 ml-1">
-                              (Ant: {{ p.prevReading | number:'1.0-2' }})
-                            </span>
-                          </div>
-                          <div class="flex items-center gap-1 shrink-0">
-                            <button type="button" 
-                              (click)="quickJustifyStore(p.storeId, p.learnedReason || 'Loja Fechada / Vaga', true)"
-                              class="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-[11px] font-bold cursor-pointer"
-                              title="Justificar rapidamente com consumo zero">
-                              ⚡ Fechada
-                            </button>
-                            <button type="button" 
-                              (click)="closeClosingChecklist(); jumpToStoreFromAudit(p.storeId)"
-                              class="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-[11px] font-bold cursor-pointer">
-                              ✏️ Ler
-                            </button>
-                          </div>
-                        </div>
-                      }
-                    </div>
-                  </div>
-                }
-              </div>
-
-              <!-- PILAR 4: CONCILIAÇÃO DA CONCESSIONÁRIA & SAP -->
-              <div class="p-4 rounded-2xl border transition-all"
-                   [class]="closingChecklist().reconciliation.passed 
-                     ? 'bg-white dark:bg-slate-900 border-emerald-300 dark:border-emerald-800/70' 
-                     : 'bg-white dark:bg-slate-900 border-blue-300 dark:border-blue-800/70'">
-                <div class="flex items-center justify-between gap-2 mb-2">
-                  <div class="flex items-center gap-2">
-                    <span class="text-lg">⚖️</span>
-                    <div>
-                      <strong class="text-sm font-bold text-slate-900 dark:text-white">4. Conciliação com Concessionária & SAP</strong>
-                      <p class="text-xs text-slate-500 dark:text-slate-400">Verifica se o rateio fecha sem furos nem sobras financeiras.</p>
-                    </div>
-                  </div>
-                  <span class="px-2.5 py-1 rounded-full text-xs font-black uppercase font-mono"
-                        [class]="closingChecklist().reconciliation.passed 
-                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' 
-                          : 'bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-300'">
-                    {{ closingChecklist().reconciliation.passed ? '✓ 100% Conciliado' : 'Conferir Balanço' }}
-                  </span>
-                </div>
-
-                <div class="mt-2.5 p-3 bg-slate-50 dark:bg-slate-800/70 rounded-xl border border-slate-200 dark:border-slate-700 grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
-                  <div>
-                    <span class="text-[10px] uppercase font-bold text-slate-400 block">Fatura Concessionária</span>
-                    <strong class="font-mono text-sm text-slate-900 dark:text-white">
-                      {{ closingChecklist().reconciliation.billAmount | currency:'BRL' }}
-                    </strong>
-                  </div>
-                  <div>
-                    <span class="text-[10px] uppercase font-bold text-slate-400 block">Total Rateado (Lojas + AC + Comum)</span>
-                    <strong class="font-mono text-sm text-teal-700 dark:text-teal-300">
-                      {{ closingChecklist().reconciliation.totalReconciled | currency:'BRL' }}
-                    </strong>
-                  </div>
-                  <div>
-                    <span class="text-[10px] uppercase font-bold text-slate-400 block">Diferença de Balanço</span>
-                    <strong class="font-mono text-sm"
-                            [class.text-emerald-600]="closingChecklist().reconciliation.diffFinancial <= 0.50"
-                            [class.text-rose-600]="closingChecklist().reconciliation.diffFinancial > 0.50">
-                      {{ closingChecklist().reconciliation.diffFinancial | currency:'BRL' }}
-                    </strong>
-                  </div>
-                </div>
-
-                @if (utilityType() === 'gas') {
-                  <div class="mt-2 text-[11px] text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 p-2 rounded-lg">
-                    🔥 <strong>Gás 100% Rateável:</strong> 
-                    Fatura: {{ closingChecklist().reconciliation.gasConcessionaria }} m³ • 
-                    Medição Bruta Campo: {{ closingChecklist().reconciliation.totalRawGas | number:'1.0-1' }} m³ • 
-                    Distribuição automática: {{ closingChecklist().reconciliation.isGasAuto ? 'Ativa (100% rateado)' : 'Manual' }}.
-                  </div>
-                }
-              </div>
-
-              <!-- PILAR 4: CONGELAMENTO & SNAPSHOT DE AUDITORIA -->
-              <div class="p-4 rounded-2xl border transition-all"
-                   [class]="isLocked() 
-                     ? 'bg-amber-50/50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800' 
-                     : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'">
-                <div class="flex items-center justify-between gap-2 mb-2">
-                  <div class="flex items-center gap-2">
-                    <span class="text-lg">{{ isLocked() ? '🔒' : '🔓' }}</span>
-                    <div>
-                      <strong class="text-sm font-bold text-slate-900 dark:text-white">5. Congelamento Contábil (Snapshot)</strong>
-                      <p class="text-xs text-slate-500 dark:text-slate-400">Trava todas as medições e custos contra alterações posteriores.</p>
-                    </div>
-                  </div>
-                  <span class="px-2.5 py-1 rounded-full text-xs font-black uppercase font-mono"
-                        [class]="isLocked() 
-                          ? 'bg-amber-200 text-amber-950 dark:bg-amber-900 dark:text-amber-200' 
-                          : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'">
-                    {{ isLocked() ? '🔒 Travado' : 'Aberto para Edição' }}
-                  </span>
-                </div>
-
-                @if (isLocked()) {
-                  <div class="mt-2 text-xs text-amber-900 dark:text-amber-200 bg-amber-100/70 dark:bg-amber-950/50 p-3 rounded-xl border border-amber-200 dark:border-amber-800/80">
-                    <div>✓ Congelado em: <strong>{{ lockedAt() | date:'dd/MM/yyyy HH:mm' }}</strong></div>
-                    <div>✓ Responsável: <strong>{{ lockedBy() || 'Administrador' }}</strong></div>
-                    <div class="mt-1 text-[11px] opacity-80">Os relatórios e comprovantes deste mês foram carimbados e selados com garantia de integridade.</div>
-                  </div>
-                }
-              </div>
-
-            </div>
-
-            <!-- Rodapé com Botões de Ação Executiva -->
-            <div class="p-4 sm:p-5 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
-              <div class="flex items-center gap-2 w-full sm:w-auto">
-                <button type="button" 
-                  (click)="exportToExcel()" 
-                  [disabled]="isExportingExcel()"
-                  class="flex-1 sm:flex-none px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-bold rounded-xl text-xs transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer">
-                  <span>📊</span>
-                  <span>Baixar Excel</span>
-                </button>
-                <button type="button" 
-                  (click)="exportPackageZip()" 
-                  [disabled]="isExportingZip()"
-                  class="flex-1 sm:flex-none px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white font-bold rounded-xl text-xs transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer">
-                  <span>📦</span>
-                  <span>Pacote ZIP</span>
-                </button>
-              </div>
-
-              <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
-                @if (!isLocked()) {
-                  <button type="button" 
-                    (click)="freezeMonthWithChecklist()"
-                    class="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 active:scale-98 text-white font-black rounded-xl text-xs shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer">
-                    <span>🔒</span>
-                    <span>Fechar e Congelar Mês (1 Clique)</span>
-                  </button>
-                } @else {
-                  <button type="button" 
-                    (click)="unfreezeMonth()"
-                    class="w-full sm:w-auto px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs">
-                    <span>🔓</span>
-                    <span>Reabrir Mês para Alterações</span>
-                  </button>
-                }
-              </div>
-            </div>
-
-          </div>
-        </div>
-      }
+      <app-closing-checklist-modal
+        [isOpen]="showClosingChecklistModal()"
+        [checklist]="closingChecklist()"
+        [isLocked]="isLocked()"
+        [lockedAt]="lockedAt()"
+        [lockedBy]="lockedBy()"
+        [utilityType]="utilityType()"
+        [selectedMonth]="selectedMonth()"
+        [isExportingExcel]="isExportingExcel()"
+        [isExportingZip]="isExportingZip()"
+        (closed)="closeClosingChecklist()"
+        (filterPendingStores)="statusFilter.set('pending'); mobileViewMode.set('cards'); closeClosingChecklist()"
+        (confirmAnomaly)="confirmAnomaly($event)"
+        (openPrevAudit)="closeClosingChecklist(); showPrevMonthAuditModal.set(true)"
+        (quickJustify)="quickJustifyStore($event.storeId, $event.reason, $event.replicateReading)"
+        (jumpToStore)="closeClosingChecklist(); jumpToStoreFromAudit($event)"
+        (exportExcel)="exportToExcel()"
+        (exportZip)="exportPackageZip()"
+        (freezeMonth)="freezeMonthWithChecklist()"
+        (unfreezeMonth)="unfreezeMonth()"
+      />
 
       <!-- Mobile Floating Quick Route Bar -->
       <div class="md:hidden fixed bottom-16 left-3 right-3 z-30 pointer-events-none flex justify-center">
@@ -3302,338 +2824,29 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
       </div>
 
       <!-- PREV MONTH CONTINUITY AUDIT MODAL -->
-      @if (showPrevMonthAuditModal()) {
-        <div class="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fade-in"
-             (click)="showPrevMonthAuditModal.set(false)">
-          <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden"
-               (click)="$event.stopPropagation()">
-            
-            <!-- Modal Header -->
-            <div class="p-5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-850 flex items-center justify-between gap-3">
-              <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 text-white flex items-center justify-center text-xl shadow-md shrink-0">
-                  ⏮️
-                </div>
-                <div>
-                  <h3 class="font-black text-slate-900 dark:text-white text-base flex items-center gap-2">
-                    <span>Conferência vs Mês Anterior</span>
-                    <span class="text-xs px-2 py-0.5 rounded-full font-mono font-bold"
-                          [class]="prevMonthAudit().pendingCount > 0 ? 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200 border border-amber-300 dark:border-amber-700' : 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700'">
-                      {{ selectedMonth() }} vs {{ getPreviousMonth(selectedMonth()) }}
-                    </span>
-                  </h3>
-                  <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Lojas de <strong>{{ utilityType() === 'luz' ? 'Energia/Luz' : (utilityType() === 'agua' ? 'Água' : 'Gás') }}</strong> que tiveram consumo/leitura em {{ getPreviousMonth(selectedMonth()) }}.
-                  </p>
-                </div>
-              </div>
-              <button (click)="showPrevMonthAuditModal.set(false)" 
-                class="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors text-base font-bold cursor-pointer">
-                ✕
-              </button>
-            </div>
-
-            <!-- Stats Bar -->
-            <div class="grid grid-cols-3 divide-x divide-slate-200 dark:divide-slate-800 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900 text-center py-3 text-xs">
-              <div>
-                <div class="text-[10px] uppercase font-bold text-slate-400">Medidas Mês Anterior</div>
-                <div class="text-lg font-black font-mono text-slate-800 dark:text-slate-100 mt-0.5">{{ prevMonthAudit().totalCount }}</div>
-              </div>
-              <div>
-                <div class="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400">Já Lidas Neste Mês</div>
-                <div class="text-lg font-black font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">{{ prevMonthAudit().completedCount }}</div>
-              </div>
-              <div>
-                <div class="text-[10px] uppercase font-bold text-amber-600 dark:text-amber-400">Faltam Ler</div>
-                <div class="text-lg font-black font-mono text-amber-600 dark:text-amber-400 mt-0.5">{{ prevMonthAudit().pendingCount }}</div>
-              </div>
-            </div>
-
-            <!-- Tabs: Pendentes vs Já Lidas -->
-            <div class="px-5 pt-3 pb-2 flex items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-              <div class="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
-                <button type="button"
-                  (click)="prevMonthAuditModalTab.set('pending')"
-                  [class]="prevMonthAuditModalTab() === 'pending' ? 'bg-amber-600 text-white font-extrabold shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'"
-                  class="px-3 py-1.5 rounded-lg text-xs transition-all cursor-pointer flex items-center gap-1.5">
-                  <span>⚠️ Faltam Ler</span>
-                  <span class="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold"
-                        [class]="prevMonthAuditModalTab() === 'pending' ? 'bg-white/20' : 'bg-slate-200 dark:bg-slate-700'">
-                    {{ prevMonthAudit().pendingCount }}
-                  </span>
-                </button>
-                <button type="button"
-                  (click)="prevMonthAuditModalTab.set('completed')"
-                  [class]="prevMonthAuditModalTab() === 'completed' ? 'bg-emerald-600 text-white font-extrabold shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'"
-                  class="px-3 py-1.5 rounded-lg text-xs transition-all cursor-pointer flex items-center gap-1.5">
-                  <span>✅ Já Lidas</span>
-                  <span class="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold"
-                        [class]="prevMonthAuditModalTab() === 'completed' ? 'bg-white/20' : 'bg-slate-200 dark:bg-slate-700'">
-                    {{ prevMonthAudit().completedCount }}
-                  </span>
-                </button>
-              </div>
-
-              @if (prevMonthAudit().pendingCount > 0) {
-                <button type="button"
-                  (click)="filterByPrevMissingAndClose()"
-                  class="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/70 dark:hover:bg-amber-900 text-amber-950 dark:text-amber-100 border border-amber-300 dark:border-amber-700 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs">
-                  <span>🔍 Filtrar na Tabela</span>
-                </button>
-              }
-            </div>
-
-            <!-- List Content -->
-            <div class="overflow-y-auto p-4 sm:p-5 flex-1 divide-y divide-slate-100 dark:divide-slate-800 space-y-2">
-              @if (prevMonthAuditModalTab() === 'pending') {
-                @if (prevMonthAudit().pendingCount === 0) {
-                  <div class="py-12 text-center">
-                    <div class="text-5xl mb-3">🎉</div>
-                    <h4 class="font-black text-slate-800 dark:text-white text-base">Nenhuma loja esquecida!</h4>
-                    <p class="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto mt-1">
-                      Todas as lojas que foram medidas em <strong>{{ getPreviousMonth(selectedMonth()) }}</strong> já possuem leitura registrada ou justificativa neste mês.
-                    </p>
-                  </div>
-                } @else {
-                  <!-- Card Inteligente de Aprendizado de Consumo Zero em Lote -->
-                  @if (prevMonthAudit().frequentZeroPending.length > 0) {
-                    <div class="mb-3 p-3.5 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 rounded-2xl border border-amber-300 dark:border-amber-700/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
-                      <div class="flex items-start gap-2.5">
-                        <span class="text-2xl shrink-0">💡</span>
-                        <div>
-                          <strong class="text-xs font-bold text-amber-950 dark:text-amber-100 block">
-                            Aprendizado de Consumo Zero: {{ prevMonthAudit().frequentZeroPending.length }} lojas com histórico recorrente sem consumo
-                          </strong>
-                          <p class="text-[11px] text-amber-800 dark:text-amber-300 mt-0.5 leading-snug">
-                            Lojas fechadas, desocupadas ou sem medição frequente nos meses anteriores. Deseja justificar e preencher todas com 1 clique?
-                          </p>
-                        </div>
-                      </div>
-                      <button type="button"
-                        (click)="batchJustifyFrequentZero()"
-                        class="px-3.5 py-2 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white text-xs font-black rounded-xl shadow-xs cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 transition-transform active:scale-95">
-                        <span>⚡ Preencher {{ prevMonthAudit().frequentZeroPending.length }} Lojas em 1 Toque</span>
-                      </button>
-                    </div>
-                  }
-
-                  @for (store of prevMonthAudit().pendingStores; track store.storeId) {
-                    <div class="pt-2 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/80 dark:hover:bg-slate-850/50 p-2.5 rounded-2xl transition-colors">
-                      <div class="flex items-start gap-3">
-                        <div class="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 flex items-center justify-center font-mono font-black text-xs shrink-0 border border-amber-300 dark:border-amber-800">
-                          {{ store.luc }}
-                        </div>
-                        <div>
-                          <div class="font-bold text-slate-800 dark:text-slate-100 text-xs flex items-center gap-1.5 flex-wrap">
-                            @if (store.routeOrder) {
-                              <span class="text-[10px] font-mono font-extrabold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/80 px-1.5 py-0.2 rounded border border-indigo-200 dark:border-indigo-800" title="Ordem física de caminhada no shopping">
-                                #{{ store.routeOrder }}
-                              </span>
-                            }
-                            <span>{{ store.storeName }}</span>
-                            @if (store.isFrequentZero) {
-                              <span class="text-[10px] font-bold text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/80 px-1.5 py-0.2 rounded border border-amber-300 dark:border-amber-700 flex items-center gap-0.5">
-                                <span>💡 Consumo 0 Recorrente ({{ store.consecutiveZeroMonths }}m)</span>
-                              </span>
-                            }
-                            @if (store.contrato) {
-                              <span class="text-[10px] font-mono text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.2 rounded border border-slate-200 dark:border-slate-700">
-                                Ctr: {{ store.contrato }}
-                              </span>
-                            }
-                            @if (store.meterNumber) {
-                              <span class="text-[10px] font-mono text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.2 rounded border border-slate-200 dark:border-slate-700">
-                                Med: {{ store.meterNumber }}
-                              </span>
-                            }
-                          </div>
-                          <div class="text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-1 flex items-center gap-2">
-                            <span>Leitura Anterior: <strong class="text-slate-700 dark:text-slate-200">{{ store.prevReading | number:'1.0-2' }}</strong></span>
-                            <span>•</span>
-                            <span>Consumo Anterior: <strong class="text-teal-700 dark:text-teal-400">{{ store.prevConsumption | number:'1.0-2' }} {{ getUnit() }}</strong></span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div class="flex items-center gap-1.5 self-end sm:self-auto shrink-0 flex-wrap">
-                        @if (store.isFrequentZero) {
-                          <button type="button"
-                            (click)="quickJustifyStore(store.storeId, store.learnedReason, true)"
-                            class="px-2.5 py-1.5 bg-amber-50 dark:bg-amber-950/70 hover:bg-amber-100 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 text-xs font-bold rounded-xl cursor-pointer flex items-center gap-1 shadow-2xs whitespace-nowrap"
-                            title="Histórico de consumo zero: preencher rapidamente com 0 m³">
-                            <span>⚡ 0 {{ getUnit() }}</span>
-                          </button>
-                        }
-                        <button type="button"
-                          (click)="openQuickJustifyModal(store)"
-                          class="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 text-xs font-bold rounded-xl cursor-pointer flex items-center gap-1 shadow-2xs whitespace-nowrap"
-                          title="Justificar loja (fechada, vaga, reforma)">
-                          <span>⚖️ Justificar</span>
-                        </button>
-                        <button type="button"
-                          (click)="jumpToStoreFromAudit(store.storeId)"
-                          class="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-bold rounded-xl shadow-xs cursor-pointer flex items-center justify-center gap-1 whitespace-nowrap transition-transform active:scale-95">
-                          <span>✏️ Preencher</span>
-                        </button>
-                      </div>
-                    </div>
-                  }
-                }
-              } @else {
-                <!-- Tab: Lojas Já Lidas -->
-                @for (store of prevMonthAudit().completedStores; track store.storeId) {
-                  <div class="pt-2 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/80 dark:hover:bg-slate-850/50 p-2.5 rounded-2xl transition-colors">
-                    <div class="flex items-start gap-3">
-                      <div class="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 flex items-center justify-center font-mono font-black text-xs shrink-0 border border-emerald-300 dark:border-emerald-800">
-                        {{ store.luc }}
-                      </div>
-                      <div>
-                        <div class="font-bold text-slate-800 dark:text-slate-100 text-xs flex items-center gap-1.5 flex-wrap">
-                          <span>{{ store.storeName }}</span>
-                          @if (store.isJustified) {
-                            <span class="text-[10px] font-bold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-200 dark:border-amber-800">
-                              ⚖️ Justificada: {{ store.justificationReason || store.note }}
-                            </span>
-                          } @else {
-                            <span class="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.2 rounded border border-emerald-200 dark:border-emerald-800">
-                              ✓ Lida
-                            </span>
-                          }
-                        </div>
-                        <div class="text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-1 flex items-center gap-2">
-                          <span>Ant: <strong>{{ store.prevReading | number:'1.0-2' }}</strong></span>
-                          <span>➜</span>
-                          <span>Atual: <strong class="text-emerald-700 dark:text-emerald-300">{{ store.currentReading | number:'1.0-2' }}</strong></span>
-                          <span>•</span>
-                          <span>Consumo: <strong class="text-slate-700 dark:text-slate-200">{{ store.consumption | number:'1.0-2' }} {{ getUnit() }}</strong></span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <button type="button"
-                      (click)="jumpToStoreFromAudit(store.storeId)"
-                      class="px-3 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-lg cursor-pointer flex items-center justify-center gap-1 whitespace-nowrap shrink-0 transition-colors">
-                      <span>Ver na tabela</span>
-                    </button>
-                  </div>
-                }
-              }
-            </div>
-
-            <!-- Modal Footer -->
-            <div class="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-850 flex items-center justify-between gap-3">
-              <span class="text-xs text-slate-500 dark:text-slate-400">
-                @if (prevMonthAudit().pendingCount > 0) {
-                  Ainda restam <strong class="text-amber-600 dark:text-amber-400">{{ prevMonthAudit().pendingCount }} lojas</strong> para completar a conferência.
-                } @else {
-                  <span class="text-emerald-600 dark:text-emerald-400 font-bold">✓ Conferência concluída com sucesso!</span>
-                }
-              </span>
-              <div class="flex items-center gap-2">
-                @if (prevMonthAudit().pendingCount > 0) {
-                  <button type="button"
-                    (click)="filterByPrevMissingAndClose()"
-                    class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-black shadow-xs cursor-pointer transition-all">
-                    Filtrar as {{ prevMonthAudit().pendingCount }} na Tela
-                  </button>
-                }
-                <button type="button"
-                  (click)="showPrevMonthAuditModal.set(false)"
-                  class="px-4 py-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold cursor-pointer transition-colors">
-                  Fechar
-                </button>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      }
+      <app-prev-month-audit-modal
+        [isOpen]="showPrevMonthAuditModal()"
+        [audit]="prevMonthAudit()"
+        [selectedMonth]="selectedMonth()"
+        [previousMonth]="getPreviousMonth(selectedMonth())"
+        [utilityType]="utilityType()"
+        [unit]="getUnit()"
+        (filterAndClose)="filterByPrevMissingAndClose()"
+        (batchJustifyZero)="batchJustifyFrequentZero()"
+        (quickJustify)="quickJustifyStore($event.storeId, $event.reason, $event.replicateReading)"
+        (openJustifyStore)="openQuickJustifyModal($event)"
+        (jumpToStore)="jumpToStoreFromAudit($event)"
+        (closed)="showPrevMonthAuditModal.set(false)"
+      />
 
       <!-- MODAL DE JUSTIFICATIVA RÁPIDA DE MEDIÇÃO EM CAMPO -->
-      @if (showQuickJustifyModal() && activeJustifyStore()) {
-        <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
-          <div class="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4">
-            <div class="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
-              <div>
-                <div class="flex items-center gap-2">
-                  <span class="text-xs font-mono font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/80 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-800">
-                    LUC {{ activeJustifyStore().luc }}
-                  </span>
-                  @if (activeJustifyStore().routeOrder) {
-                    <span class="text-xs font-mono font-extrabold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/80 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800">
-                      #{{ activeJustifyStore().routeOrder }}
-                    </span>
-                  }
-                </div>
-                <h3 class="font-bold text-slate-900 dark:text-white text-base mt-1.5">{{ activeJustifyStore().storeName }}</h3>
-                <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Selecione o motivo da justificativa para registro em campo e no Excel:</p>
-              </div>
-              <button (click)="closeQuickJustifyModal()" class="text-slate-400 hover:text-slate-700 dark:hover:text-white text-lg font-bold cursor-pointer">✕</button>
-            </div>
-
-            <!-- Opções de Justificativa em 1 Toque -->
-            <div class="grid grid-cols-1 gap-2.5">
-              <button type="button"
-                (click)="quickJustifyStore(activeJustifyStore().storeId, 'Loja Fechada / Vaga', true)"
-                class="p-3 text-left rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-amber-50 dark:hover:bg-amber-950/40 hover:border-amber-300 transition-all cursor-pointer flex items-center gap-3 group">
-                <span class="text-2xl shrink-0 group-hover:scale-110 transition-transform">🏢</span>
-                <div>
-                  <strong class="text-xs font-bold text-slate-900 dark:text-white block">Loja Fechada / Vaga</strong>
-                  <span class="text-[11px] text-slate-500 dark:text-slate-400">Replicar leitura anterior (0 {{ getUnit() }}). Exporta no Excel com observação.</span>
-                </div>
-              </button>
-
-              <button type="button"
-                (click)="quickJustifyStore(activeJustifyStore().storeId, 'Em Reforma / Obra', true)"
-                class="p-3 text-left rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-amber-50 dark:hover:bg-amber-950/40 hover:border-amber-300 transition-all cursor-pointer flex items-center gap-3 group">
-                <span class="text-2xl shrink-0 group-hover:scale-110 transition-transform">🔨</span>
-                <div>
-                  <strong class="text-xs font-bold text-slate-900 dark:text-white block">Em Reforma / Obra</strong>
-                  <span class="text-[11px] text-slate-500 dark:text-slate-400">Loja em obras sem consumo de hidrômetro/medidor ativo no período.</span>
-                </div>
-              </button>
-
-              <button type="button"
-                (click)="quickJustifyStore(activeJustifyStore().storeId, 'Sem Consumo no Mês', true)"
-                class="p-3 text-left rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-amber-50 dark:hover:bg-amber-950/40 hover:border-amber-300 transition-all cursor-pointer flex items-center gap-3 group">
-                <span class="text-2xl shrink-0 group-hover:scale-110 transition-transform">⏸️</span>
-                <div>
-                  <strong class="text-xs font-bold text-slate-900 dark:text-white block">Sem Consumo no Mês (0 {{ getUnit() }})</strong>
-                  <span class="text-[11px] text-slate-500 dark:text-slate-400">Medidor verificado em campo: ponteiro inalterado, consumo zero confirmado.</span>
-                </div>
-              </button>
-
-              <button type="button"
-                (click)="quickJustifyStore(activeJustifyStore().storeId, 'Medidor Inacessível / Trancado', true)"
-                class="p-3 text-left rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-amber-50 dark:hover:bg-amber-950/40 hover:border-amber-300 transition-all cursor-pointer flex items-center gap-3 group">
-                <span class="text-2xl shrink-0 group-hover:scale-110 transition-transform">🔒</span>
-                <div>
-                  <strong class="text-xs font-bold text-slate-900 dark:text-white block">Medidor Inacessível / Trancado</strong>
-                  <span class="text-[11px] text-slate-500 dark:text-slate-400">Porta trancada sem acesso pelo técnico. Justificativa registrada para fechamento.</span>
-                </div>
-              </button>
-
-              <button type="button"
-                (click)="quickJustifyStore(activeJustifyStore().storeId, 'Sem Ponto / Inativo', true)"
-                class="p-3 text-left rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-amber-50 dark:hover:bg-amber-950/40 hover:border-amber-300 transition-all cursor-pointer flex items-center gap-3 group">
-                <span class="text-2xl shrink-0 group-hover:scale-110 transition-transform">❌</span>
-                <div>
-                  <strong class="text-xs font-bold text-slate-900 dark:text-white block">Sem Ponto / Inativo</strong>
-                  <span class="text-[11px] text-slate-500 dark:text-slate-400">Ponto não conectado a esta utilidade neste ciclo de rateio.</span>
-                </div>
-              </button>
-            </div>
-
-            <div class="flex justify-end pt-2 border-t border-slate-100 dark:border-slate-800">
-              <button type="button" 
-                (click)="closeQuickJustifyModal()" 
-                class="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold cursor-pointer transition-colors">
-                Cancelar
-              </button>
-            </div>
-          </div>
-        </div>
-      }
+      <app-quick-justify-modal
+        [isOpen]="showQuickJustifyModal() && !!activeJustifyStore()"
+        [store]="activeJustifyStore()"
+        [unit]="getUnit()"
+        (justify)="quickJustifyStore($event.storeId, $event.reason, $event.replicateReading)"
+        (closed)="closeQuickJustifyModal()"
+      />
     </div>
   `
 })
@@ -3721,7 +2934,6 @@ export class BillCalculatorComponent implements OnDestroy {
 
   // --- PREVIOUS MONTH CONTINUITY AUDIT STATE ---
   showPrevMonthAuditModal = signal<boolean>(false);
-  prevMonthAuditModalTab = signal<'pending' | 'completed'>('pending');
   showQuickJustifyModal = signal<boolean>(false);
   activeJustifyStore = signal<any | null>(null);
 
@@ -6106,6 +5318,12 @@ export class BillCalculatorComponent implements OnDestroy {
     this.groqInputKey.set(groq);
     this.geminiInputKey.set(gemini);
     this.showAiKeyModal.set(true);
+  }
+
+  onAiKeysSaved(keys: { groqKey: string; geminiKey: string }) {
+    this.groqInputKey.set(keys.groqKey);
+    this.geminiInputKey.set(keys.geminiKey);
+    this.saveAiKeysAndProceed();
   }
 
   closeAiKeyModal() {
