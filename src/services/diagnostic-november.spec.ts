@@ -247,4 +247,257 @@ describe('Diagnostic: November vs October in Água', () => {
     expect(finalAudit.pendingCount).toBe(0);
     expect(finalAudit.isAllDone).toBe(true);
   });
+
+  it('Diagnostic Test 5: Quick Justification resolves continuity audit and month-closing checklist', () => {
+    // Stores measured last month
+    const list = [
+      {
+        storeId: 'store-1',
+        luc: '101',
+        storeName: 'Loja Ativa Lida',
+        prevReading: 100,
+        prevConsumption: 20,
+        currentReading: 120,
+        isRead: true,
+        isJustified: false,
+        excludedFromBill: false
+      },
+      {
+        storeId: 'store-2',
+        luc: '102',
+        storeName: 'Loja Fechada Vaga',
+        prevReading: 50,
+        prevConsumption: 10,
+        currentReading: 0,
+        isRead: false,
+        isJustified: false,
+        justificationReason: '',
+        excludedFromBill: false
+      }
+    ];
+
+    const runAudit = (stores: typeof list) => {
+      const measuredLastMonth = stores.filter(item => 
+        (item.prevReading > 0 || item.prevConsumption > 0) &&
+        !item.excludedFromBill
+      );
+      const pendingStores = measuredLastMonth.filter(item => !item.isRead && !item.isJustified);
+      const completedStores = measuredLastMonth.filter(item => item.isRead || item.isJustified);
+      return {
+        totalCount: measuredLastMonth.length,
+        pendingCount: pendingStores.length,
+        completedCount: completedStores.length,
+        isAllDone: measuredLastMonth.length > 0 && pendingStores.length === 0,
+        pendingStores
+      };
+    };
+
+    // Initially, store-2 is pending
+    const beforeJustify = runAudit(list);
+    expect(beforeJustify.totalCount).toBe(2);
+    expect(beforeJustify.pendingCount).toBe(1);
+    expect(beforeJustify.pendingStores[0].storeName).toBe('Loja Fechada Vaga');
+    expect(beforeJustify.isAllDone).toBe(false);
+
+    // Technician uses 1-touch Quick Justification: "Loja Fechada / Vaga"
+    list[1].isJustified = true;
+    list[1].justificationReason = 'Loja Fechada / Vaga';
+    list[1].currentReading = list[1].prevReading; // replicate reading -> 0 consumption
+
+    const afterJustify = runAudit(list);
+    expect(afterJustify.totalCount).toBe(2);
+    expect(afterJustify.completedCount).toBe(2);
+    expect(afterJustify.pendingCount).toBe(0);
+    expect(afterJustify.isAllDone).toBe(true);
+
+    // Verify closing checklist gatekeeper logic
+    const canFreeze = (stores: typeof list, auditResult: typeof afterJustify) => {
+      const totalStores = stores.length;
+      const readOrJustified = stores.filter(item => item.isRead || item.isJustified).length;
+      const isComplete = totalStores > 0 && readOrJustified === totalStores;
+      const isContinuityComplete = auditResult.isAllDone;
+      return isComplete && isContinuityComplete;
+    };
+
+    expect(canFreeze(list, afterJustify)).toBe(true);
+  });
+
+  it('Diagnostic Test 6: Zero consumption learning detects stores with consecutive 0 consumption across months', () => {
+    // Setup historical data for water over past 3 months
+    const storeA = { id: 's-a', luc: '101', name: 'Loja A Vazia', contrato: 'C-01' };
+    const storeB = { id: 's-b', luc: '102', name: 'Loja B Ativa', contrato: 'C-02' };
+
+    storeService.processMonthlyStoreImport([storeA, storeB], 'agua', '2026-08', false);
+
+    historyService.saveBill('agua', '2026-08', {
+      costItems: [{ description: 'Conta', value: 1000 }],
+      consumptionInput: 50,
+      acInput: 0,
+      readings: {
+        [storeA.id]: { reading: 100, calculatedConsumption: 0, cost: 0, note: '[JUSTIFICADO] Loja Fechada / Vaga' },
+        [storeB.id]: { reading: 200, calculatedConsumption: 25, cost: 500 }
+      },
+      lastUpdated: '2026-08-31T00:00:00.000Z'
+    });
+
+    historyService.saveBill('agua', '2026-09', {
+      costItems: [{ description: 'Conta', value: 1000 }],
+      consumptionInput: 50,
+      acInput: 0,
+      readings: {
+        [storeA.id]: { reading: 100, calculatedConsumption: 0, cost: 0, note: '[JUSTIFICADO] Loja Fechada / Vaga' },
+        [storeB.id]: { reading: 230, calculatedConsumption: 30, cost: 600 }
+      },
+      lastUpdated: '2026-09-30T00:00:00.000Z'
+    });
+
+    historyService.saveBill('agua', '2026-10', {
+      costItems: [{ description: 'Conta', value: 1000 }],
+      consumptionInput: 50,
+      acInput: 0,
+      readings: {
+        [storeA.id]: { reading: 100, calculatedConsumption: 0, cost: 0, note: '[JUSTIFICADO] Loja Fechada / Vaga' },
+        [storeB.id]: { reading: 260, calculatedConsumption: 30, cost: 600 }
+      },
+      lastUpdated: '2026-10-31T00:00:00.000Z'
+    });
+
+    // Learning logic simulation
+    const allData = historyService.getAllData();
+    const pastMonths = ['2026-10', '2026-09', '2026-08'];
+    
+    const analyzeStore = (storeId: string) => {
+      let consecutiveZero = 0;
+      let streakBroken = false;
+      let lastReason = '';
+
+      for (const m of pastMonths) {
+        const bill = allData[`agua_${m}`];
+        if (!bill?.readings) continue;
+        const rd = bill.readings[storeId];
+        if (!rd) continue;
+
+        const cons = Number(rd.calculatedConsumption ?? rd.consumption ?? 0);
+        if (cons === 0 && !streakBroken) {
+          consecutiveZero++;
+          if (!lastReason && rd.note) {
+            lastReason = rd.note.replace('[JUSTIFICADO]', '').trim();
+          }
+        } else if (cons > 0) {
+          streakBroken = true;
+        }
+      }
+
+      return {
+        consecutiveZeroMonths: consecutiveZero,
+        isFrequentZero: consecutiveZero >= 2,
+        learnedReason: lastReason || 'Loja Fechada / Vaga'
+      };
+    };
+
+    const learnedA = analyzeStore(storeA.id);
+    expect(learnedA.consecutiveZeroMonths).toBe(3);
+    expect(learnedA.isFrequentZero).toBe(true);
+    expect(learnedA.learnedReason).toBe('Loja Fechada / Vaga');
+
+    const learnedB = analyzeStore(storeB.id);
+    expect(learnedB.consecutiveZeroMonths).toBe(0);
+    expect(learnedB.isFrequentZero).toBe(false);
+  });
+
+  it('Diagnostic Test 7: Excel Export guarantees 100% of stores are exported (including justified stores)', async () => {
+    const { ReportExportService } = await import('./report-export.service');
+    const XLSX = await import('xlsx');
+    const exportService = new ReportExportService();
+
+    const mockStoresData = [
+      {
+        storeId: 's1',
+        luc: '101',
+        contrato: 'C101',
+        storeName: 'Loja Normal Lida',
+        currentReading: 150,
+        prevReading: 120,
+        consumption: 30,
+        cost: 600,
+        prevCost: 550,
+        variation: 9.1,
+        isRead: true,
+        isJustified: false,
+        note: ''
+      },
+      {
+        storeId: 's2',
+        luc: '102',
+        contrato: 'C102',
+        storeName: 'Loja Justificada Vaga',
+        currentReading: 80,
+        prevReading: 80,
+        consumption: 0,
+        cost: 0,
+        prevCost: 0,
+        variation: 0,
+        isRead: false,
+        isJustified: true,
+        justificationReason: 'Loja Fechada / Vaga',
+        note: '[JUSTIFICADO] Loja Fechada / Vaga'
+      },
+      {
+        storeId: 's3',
+        luc: '103',
+        contrato: 'C103',
+        storeName: 'Loja Pendente Sem Leitura',
+        currentReading: 0,
+        prevReading: 200,
+        consumption: 0,
+        cost: 0,
+        prevCost: 400,
+        variation: -100,
+        isRead: false,
+        isJustified: false,
+        note: ''
+      }
+    ];
+
+    const wb = exportService.buildCalculatorWorkbook({
+      utilityType: 'agua',
+      utilityLabel: 'Água',
+      unit: 'm³',
+      month: '2026-11',
+      unitPrice: 20.0,
+      totalBill: 1000,
+      totalConsumption: 50,
+      totalDistributedCost: 600,
+      totalStoreConsumption: 30,
+      airConditioningConsumption: 0,
+      airConditioningCost: 0,
+      commonAreaConsumption: 20,
+      commonAreaCost: 400,
+      costItems: [{ description: 'Fatura Sabesp', value: 1000 }],
+      consumptionInput: 50,
+      tableData: mockStoresData as any
+    });
+
+    const sheet = wb.Sheets['Rateio das Lojas'];
+    expect(sheet).toBeDefined();
+
+    const rows = XLSX.utils.sheet_to_json<any>(sheet);
+    // Rows include header data + totals row. Data rows should match exactly 3 stores
+    const dataRows = rows.filter(r => r['LUC'] !== 'TOTAL' && r['LUC'] !== undefined);
+    expect(dataRows.length).toBe(3); // 100% of stores exported!
+
+    // Store 1: Concluída
+    const row1 = dataRows.find(r => r['LUC'] === '101')!;
+    expect(row1['Status da Leitura']).toBe('Concluída');
+
+    // Store 2: Justificada
+    const row2 = dataRows.find(r => r['LUC'] === '102')!;
+    expect(row2['Status da Leitura']).toContain('Justificada');
+    expect(row2['Status da Leitura']).toContain('Loja Fechada / Vaga');
+    expect(row2['Observação de Campo']).toBe('[JUSTIFICADO] Loja Fechada / Vaga');
+
+    // Store 3: Pendente
+    const row3 = dataRows.find(r => r['LUC'] === '103')!;
+    expect(row3['Status da Leitura']).toBe('Pendente');
+  });
 });

@@ -23,6 +23,8 @@ export type StoreReading = {
   // Auditoria Inteligente e Anti-Erro em Campo
   anomalyConfirmed?: boolean; // Confirmado intencionalmente pelo técnico
   isRollover?: boolean;       // Marcado como virada física de medidor (9999 -> 0000)
+  isJustified?: boolean;      // Loja justificada pelo técnico (ex: fechada/em reforma/consumo zero)
+  justificationReason?: string; // Motivo da justificativa
   meterNumber?: string;       // Número de identificação/série do relógio
   excludedFromBill?: boolean; // Se marcado, a loja é desconsiderada do rateio / valor final
 

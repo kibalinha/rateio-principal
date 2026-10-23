@@ -257,7 +257,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
               } @else if (closingChecklist().canFreeze) {
                 <span class="text-[10px] bg-emerald-800 text-white px-1.5 py-0.2 rounded font-mono font-bold">Pronto</span>
               } @else {
-                <span class="text-[10px] bg-amber-400 text-slate-950 px-1.5 py-0.2 rounded font-mono font-bold">{{ closingChecklist().readings.pendingStores + closingChecklist().anomalies.uninspectedCount }} pend.</span>
+                <span class="text-[10px] bg-amber-400 text-slate-950 px-1.5 py-0.2 rounded font-mono font-bold">{{ closingChecklist().readings.pendingStores + closingChecklist().anomalies.uninspectedCount + closingChecklist().continuity.pendingCount }} pend.</span>
               }
             </button>
           }
@@ -784,13 +784,21 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                             <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
                             <span class="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
                           </span>
-                          <span class="text-amber-900 dark:text-amber-200 font-bold">
-                            ⚠️ Mês Anterior: <span class="underline decoration-amber-500 underline-offset-2">{{ prevMonthAudit().pendingCount }} lojas</span> que tinham valor em {{ getPreviousMonth(selectedMonth()) }} ainda não foram lidas!
+                          <span class="text-amber-900 dark:text-amber-200 font-bold flex items-center gap-1.5 flex-wrap">
+                            <span>⚠️ Mês Anterior: <span class="underline decoration-amber-500 underline-offset-2">{{ prevMonthAudit().pendingCount }} lojas</span> que tinham valor em {{ getPreviousMonth(selectedMonth()) }} ainda não foram lidas ou justificadas!</span>
+                            @if (prevMonthAudit().frequentZeroPending.length > 0) {
+                              <button type="button"
+                                (click)="batchJustifyFrequentZero()"
+                                class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-200 hover:bg-amber-300 dark:bg-amber-900 dark:hover:bg-amber-800 text-amber-950 dark:text-amber-100 border border-amber-400 dark:border-amber-700 cursor-pointer shadow-2xs inline-flex items-center gap-1"
+                                title="Preencher em lote lojas que têm histórico de consumo zero nos meses anteriores">
+                                <span>⚡ Preencher {{ prevMonthAudit().frequentZeroPending.length }} com Histórico Zero</span>
+                              </button>
+                            }
                           </span>
                         } @else {
                           <span class="text-emerald-700 dark:text-emerald-400 font-bold flex items-center gap-1.5">
                             <span class="text-sm">✨</span>
-                            <span>100% conferido! Todas as {{ prevMonthAudit().totalCount }} lojas medidas no mês anterior já foram lidas.</span>
+                            <span>100% conferido! Todas as {{ prevMonthAudit().totalCount }} lojas medidas no mês anterior já foram lidas ou justificadas.</span>
                           </span>
                         }
                       </div>
@@ -1234,6 +1242,37 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                                 <span>{{ item.validationAlert.badgeLabel }}</span>
                               </button>
                             }
+
+                            @if (item.isJustified) {
+                              <div class="flex items-center justify-between gap-1 mt-0.5">
+                                <span class="text-[9px] font-bold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/70 px-1.5 py-0.2 rounded border border-amber-300 dark:border-amber-800 truncate" [title]="'Justificada: ' + (item.justificationReason || '')">
+                                  ⚖️ {{ item.justificationReason || 'Justificada' }}
+                                </span>
+                                @if (canEdit()) {
+                                  <button type="button" 
+                                    (click)="openQuickJustifyModal(item)"
+                                    class="text-[9px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                                    title="Alterar justificativa">✏️</button>
+                                }
+                              </div>
+                            } @else if (canEdit() && !item.isRead) {
+                              <div class="flex items-center gap-1 justify-end mt-0.5">
+                                @if (item.isFrequentZero) {
+                                  <button type="button" 
+                                    (click)="quickJustifyStore(item.storeId, item.learnedReason || 'Loja Fechada / Vaga', true)"
+                                    class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/80 dark:hover:bg-amber-900 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 cursor-pointer shadow-2xs flex items-center gap-0.5"
+                                    [title]="'Preenchimento rápido: ' + item.consecutiveZeroMonths + ' meses com consumo zero (' + item.learnedReason + ')'">
+                                    <span>⚡ 0</span>
+                                  </button>
+                                }
+                                <button type="button"
+                                  (click)="openQuickJustifyModal(item)"
+                                  class="text-[9px] font-medium px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-600 cursor-pointer"
+                                  title="Justificar loja não lida (ex: fechada/em reforma)">
+                                  <span>⚖️ Justificar</span>
+                                </button>
+                              </div>
+                            }
                          </div>
                       </td>
                       
@@ -1512,6 +1551,10 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                                   [class.dark:border-amber-800]="item.validationAlert.severity === 'warning'">
                                   {{ item.validationAlert.badgeLabel }}
                                 </span>
+                              } @else if (item.isJustified) {
+                                <span class="bg-amber-100 dark:bg-amber-950/80 text-amber-900 dark:text-amber-200 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-300 dark:border-amber-700 block" [title]="item.justificationReason">
+                                  ⚖️ {{ item.justificationReason || 'Justificada' }}
+                                </span>
                               } @else if (item.isRead) {
                                 <span class="bg-green-100 dark:bg-green-950/60 text-green-700 dark:text-green-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-green-200 dark:border-green-800 block">
                                   ✓ Lida
@@ -1646,6 +1689,41 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                               </div>
                            </div>
                         </div>
+
+                        @if (item.isJustified) {
+                          <div class="mb-3 p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 flex items-center justify-between text-xs">
+                            <div class="flex items-center gap-2">
+                              <span class="text-base">⚖️</span>
+                              <div>
+                                <span class="font-bold text-amber-900 dark:text-amber-200 block">Loja Justificada (Sem Consumo)</span>
+                                <span class="text-[11px] text-amber-700 dark:text-amber-300 font-medium">{{ item.justificationReason || 'Sem consumo no mês' }}</span>
+                              </div>
+                            </div>
+                            @if (canEdit()) {
+                              <button type="button" 
+                                (click)="openQuickJustifyModal(item)"
+                                class="px-2.5 py-1 bg-amber-200 hover:bg-amber-300 dark:bg-amber-900 dark:hover:bg-amber-800 text-amber-950 dark:text-amber-100 rounded-lg text-xs font-bold cursor-pointer transition-colors shadow-2xs">
+                                Alterar
+                              </button>
+                            }
+                          </div>
+                        } @else if (canEdit() && !item.isRead) {
+                          <div class="mb-3 flex items-center gap-2 flex-wrap">
+                            @if (item.isFrequentZero) {
+                              <button type="button"
+                                (click)="quickJustifyStore(item.storeId, item.learnedReason || 'Loja Fechada / Vaga', true)"
+                                class="flex-1 py-2 px-3 bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/80 dark:hover:bg-amber-900 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
+                                [title]="item.consecutiveZeroMonths + ' meses com consumo zero'">
+                                <span>⚡ 0 {{ getUnit() }} (Histórico Zero: {{ item.consecutiveZeroMonths }}m)</span>
+                              </button>
+                            }
+                            <button type="button"
+                              (click)="openQuickJustifyModal(item)"
+                              class="py-2 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-600 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer transition-colors">
+                              <span>⚖️ Justificar Loja</span>
+                            </button>
+                          </div>
+                        }
 
                         <!-- ALERTA INSTANTÂNEO DE LEITURA SUSPEITA / ERRO DE DIGITAÇÃO -->
                         @if (item.validationAlert.hasAlert) {
@@ -2992,7 +3070,69 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                 }
               </div>
 
-              <!-- PILAR 3: CONCILIAÇÃO DA CONCESSIONÁRIA & SAP -->
+              <!-- PILAR 3: AUDITORIA DE CONTINUIDADE VS MÊS ANTERIOR (LOJAS ESQUECIDAS) -->
+              <div class="p-4 rounded-2xl border transition-all"
+                   [class]="closingChecklist().continuity.passed 
+                     ? 'bg-white dark:bg-slate-900 border-emerald-300 dark:border-emerald-800/70' 
+                     : 'bg-white dark:bg-slate-900 border-amber-300 dark:border-amber-800/70'">
+                <div class="flex items-center justify-between gap-2 mb-2">
+                  <div class="flex items-center gap-2">
+                    <span class="text-lg">{{ closingChecklist().continuity.passed ? '✅' : '⚠️' }}</span>
+                    <div>
+                      <strong class="text-sm font-bold text-slate-900 dark:text-white">3. Continuidade vs Mês Anterior</strong>
+                      <p class="text-xs text-slate-500 dark:text-slate-400">Garante que nenhuma loja medida no mês anterior seja esquecida sem leitura ou justificativa.</p>
+                    </div>
+                  </div>
+                  <span class="px-2.5 py-1 rounded-full text-xs font-black uppercase font-mono"
+                        [class]="closingChecklist().continuity.passed 
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' 
+                          : 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300'">
+                    {{ closingChecklist().continuity.passed ? '✓ 100% Conferido' : closingChecklist().continuity.pendingCount + ' Pendente(s)' }}
+                  </span>
+                </div>
+
+                @if (!closingChecklist().continuity.passed) {
+                  <div class="mt-3 p-3 bg-amber-50/80 dark:bg-amber-950/40 rounded-xl border border-amber-200 dark:border-amber-800/60 space-y-2">
+                    <div class="flex items-center justify-between gap-2">
+                      <span class="text-[11px] font-bold text-amber-900 dark:text-amber-200 block uppercase">
+                        Lojas medidas no mês anterior sem leitura nem justificativa:
+                      </span>
+                      <button type="button" 
+                        (click)="closeClosingChecklist(); showPrevMonthAuditModal.set(true)"
+                        class="text-xs font-bold text-amber-700 dark:text-amber-300 underline cursor-pointer">
+                        Abrir Painel de Continuidade
+                      </button>
+                    </div>
+                    <div class="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto">
+                      @for (p of closingChecklist().continuity.pendingStores; track p.storeId) {
+                        <div class="p-2 bg-white dark:bg-slate-800 rounded-lg border border-amber-200 dark:border-amber-800 flex items-center justify-between gap-2 text-xs w-full sm:w-auto">
+                          <div>
+                            <span class="font-mono font-bold">{{ p.luc }}</span> • <strong>{{ p.storeName }}</strong>
+                            <span class="text-[10px] text-slate-500 dark:text-slate-400 ml-1">
+                              (Ant: {{ p.prevReading | number:'1.0-2' }})
+                            </span>
+                          </div>
+                          <div class="flex items-center gap-1 shrink-0">
+                            <button type="button" 
+                              (click)="quickJustifyStore(p.storeId, p.learnedReason || 'Loja Fechada / Vaga', true)"
+                              class="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-[11px] font-bold cursor-pointer"
+                              title="Justificar rapidamente com consumo zero">
+                              ⚡ Fechada
+                            </button>
+                            <button type="button" 
+                              (click)="closeClosingChecklist(); jumpToStoreFromAudit(p.storeId)"
+                              class="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-[11px] font-bold cursor-pointer">
+                              ✏️ Ler
+                            </button>
+                          </div>
+                        </div>
+                      }
+                    </div>
+                  </div>
+                }
+              </div>
+
+              <!-- PILAR 4: CONCILIAÇÃO DA CONCESSIONÁRIA & SAP -->
               <div class="p-4 rounded-2xl border transition-all"
                    [class]="closingChecklist().reconciliation.passed 
                      ? 'bg-white dark:bg-slate-900 border-emerald-300 dark:border-emerald-800/70' 
@@ -3001,7 +3141,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                   <div class="flex items-center gap-2">
                     <span class="text-lg">⚖️</span>
                     <div>
-                      <strong class="text-sm font-bold text-slate-900 dark:text-white">3. Conciliação com Concessionária & SAP</strong>
+                      <strong class="text-sm font-bold text-slate-900 dark:text-white">4. Conciliação com Concessionária & SAP</strong>
                       <p class="text-xs text-slate-500 dark:text-slate-400">Verifica se o rateio fecha sem furos nem sobras financeiras.</p>
                     </div>
                   </div>
@@ -3055,7 +3195,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                   <div class="flex items-center gap-2">
                     <span class="text-lg">{{ isLocked() ? '🔒' : '🔓' }}</span>
                     <div>
-                      <strong class="text-sm font-bold text-slate-900 dark:text-white">4. Congelamento Contábil (Snapshot)</strong>
+                      <strong class="text-sm font-bold text-slate-900 dark:text-white">5. Congelamento Contábil (Snapshot)</strong>
                       <p class="text-xs text-slate-500 dark:text-slate-400">Trava todas as medições e custos contra alterações posteriores.</p>
                     </div>
                   </div>
@@ -3251,10 +3391,32 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                     <div class="text-5xl mb-3">🎉</div>
                     <h4 class="font-black text-slate-800 dark:text-white text-base">Nenhuma loja esquecida!</h4>
                     <p class="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto mt-1">
-                      Todas as lojas que foram medidas em <strong>{{ getPreviousMonth(selectedMonth()) }}</strong> já possuem leitura registrada neste mês.
+                      Todas as lojas que foram medidas em <strong>{{ getPreviousMonth(selectedMonth()) }}</strong> já possuem leitura registrada ou justificativa neste mês.
                     </p>
                   </div>
                 } @else {
+                  <!-- Card Inteligente de Aprendizado de Consumo Zero em Lote -->
+                  @if (prevMonthAudit().frequentZeroPending.length > 0) {
+                    <div class="mb-3 p-3.5 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 rounded-2xl border border-amber-300 dark:border-amber-700/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                      <div class="flex items-start gap-2.5">
+                        <span class="text-2xl shrink-0">💡</span>
+                        <div>
+                          <strong class="text-xs font-bold text-amber-950 dark:text-amber-100 block">
+                            Aprendizado de Consumo Zero: {{ prevMonthAudit().frequentZeroPending.length }} lojas com histórico recorrente sem consumo
+                          </strong>
+                          <p class="text-[11px] text-amber-800 dark:text-amber-300 mt-0.5 leading-snug">
+                            Lojas fechadas, desocupadas ou sem medição frequente nos meses anteriores. Deseja justificar e preencher todas com 1 clique?
+                          </p>
+                        </div>
+                      </div>
+                      <button type="button"
+                        (click)="batchJustifyFrequentZero()"
+                        class="px-3.5 py-2 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white text-xs font-black rounded-xl shadow-xs cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 transition-transform active:scale-95">
+                        <span>⚡ Preencher {{ prevMonthAudit().frequentZeroPending.length }} Lojas em 1 Toque</span>
+                      </button>
+                    </div>
+                  }
+
                   @for (store of prevMonthAudit().pendingStores; track store.storeId) {
                     <div class="pt-2 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/80 dark:hover:bg-slate-850/50 p-2.5 rounded-2xl transition-colors">
                       <div class="flex items-start gap-3">
@@ -3263,7 +3425,17 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                         </div>
                         <div>
                           <div class="font-bold text-slate-800 dark:text-slate-100 text-xs flex items-center gap-1.5 flex-wrap">
+                            @if (store.routeOrder) {
+                              <span class="text-[10px] font-mono font-extrabold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/80 px-1.5 py-0.2 rounded border border-indigo-200 dark:border-indigo-800" title="Ordem física de caminhada no shopping">
+                                #{{ store.routeOrder }}
+                              </span>
+                            }
                             <span>{{ store.storeName }}</span>
+                            @if (store.isFrequentZero) {
+                              <span class="text-[10px] font-bold text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/80 px-1.5 py-0.2 rounded border border-amber-300 dark:border-amber-700 flex items-center gap-0.5">
+                                <span>💡 Consumo 0 Recorrente ({{ store.consecutiveZeroMonths }}m)</span>
+                              </span>
+                            }
                             @if (store.contrato) {
                               <span class="text-[10px] font-mono text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.2 rounded border border-slate-200 dark:border-slate-700">
                                 Ctr: {{ store.contrato }}
@@ -3283,12 +3455,27 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                         </div>
                       </div>
 
-                      <button type="button"
-                        (click)="jumpToStoreFromAudit(store.storeId)"
-                        class="px-3.5 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-bold rounded-xl shadow-xs cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 transition-transform active:scale-95">
-                        <span>✏️</span>
-                        <span>Preencher Agora</span>
-                      </button>
+                      <div class="flex items-center gap-1.5 self-end sm:self-auto shrink-0 flex-wrap">
+                        @if (store.isFrequentZero) {
+                          <button type="button"
+                            (click)="quickJustifyStore(store.storeId, store.learnedReason, true)"
+                            class="px-2.5 py-1.5 bg-amber-50 dark:bg-amber-950/70 hover:bg-amber-100 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 text-xs font-bold rounded-xl cursor-pointer flex items-center gap-1 shadow-2xs whitespace-nowrap"
+                            title="Histórico de consumo zero: preencher rapidamente com 0 m³">
+                            <span>⚡ 0 {{ getUnit() }}</span>
+                          </button>
+                        }
+                        <button type="button"
+                          (click)="openQuickJustifyModal(store)"
+                          class="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 text-xs font-bold rounded-xl cursor-pointer flex items-center gap-1 shadow-2xs whitespace-nowrap"
+                          title="Justificar loja (fechada, vaga, reforma)">
+                          <span>⚖️ Justificar</span>
+                        </button>
+                        <button type="button"
+                          (click)="jumpToStoreFromAudit(store.storeId)"
+                          class="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-bold rounded-xl shadow-xs cursor-pointer flex items-center justify-center gap-1 whitespace-nowrap transition-transform active:scale-95">
+                          <span>✏️ Preencher</span>
+                        </button>
+                      </div>
                     </div>
                   }
                 }
@@ -3303,9 +3490,15 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                       <div>
                         <div class="font-bold text-slate-800 dark:text-slate-100 text-xs flex items-center gap-1.5 flex-wrap">
                           <span>{{ store.storeName }}</span>
-                          <span class="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.2 rounded border border-emerald-200 dark:border-emerald-800">
-                            ✓ Lida
-                          </span>
+                          @if (store.isJustified) {
+                            <span class="text-[10px] font-bold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-200 dark:border-amber-800">
+                              ⚖️ Justificada: {{ store.justificationReason || store.note }}
+                            </span>
+                          } @else {
+                            <span class="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.2 rounded border border-emerald-200 dark:border-emerald-800">
+                              ✓ Lida
+                            </span>
+                          }
                         </div>
                         <div class="text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-1 flex items-center gap-2">
                           <span>Ant: <strong>{{ store.prevReading | number:'1.0-2' }}</strong></span>
@@ -3352,6 +3545,92 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
               </div>
             </div>
 
+          </div>
+        </div>
+      }
+
+      <!-- MODAL DE JUSTIFICATIVA RÁPIDA DE MEDIÇÃO EM CAMPO -->
+      @if (showQuickJustifyModal() && activeJustifyStore()) {
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
+          <div class="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+            <div class="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-mono font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/80 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-800">
+                    LUC {{ activeJustifyStore().luc }}
+                  </span>
+                  @if (activeJustifyStore().routeOrder) {
+                    <span class="text-xs font-mono font-extrabold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/80 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800">
+                      #{{ activeJustifyStore().routeOrder }}
+                    </span>
+                  }
+                </div>
+                <h3 class="font-bold text-slate-900 dark:text-white text-base mt-1.5">{{ activeJustifyStore().storeName }}</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Selecione o motivo da justificativa para registro em campo e no Excel:</p>
+              </div>
+              <button (click)="closeQuickJustifyModal()" class="text-slate-400 hover:text-slate-700 dark:hover:text-white text-lg font-bold cursor-pointer">✕</button>
+            </div>
+
+            <!-- Opções de Justificativa em 1 Toque -->
+            <div class="grid grid-cols-1 gap-2.5">
+              <button type="button"
+                (click)="quickJustifyStore(activeJustifyStore().storeId, 'Loja Fechada / Vaga', true)"
+                class="p-3 text-left rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-amber-50 dark:hover:bg-amber-950/40 hover:border-amber-300 transition-all cursor-pointer flex items-center gap-3 group">
+                <span class="text-2xl shrink-0 group-hover:scale-110 transition-transform">🏢</span>
+                <div>
+                  <strong class="text-xs font-bold text-slate-900 dark:text-white block">Loja Fechada / Vaga</strong>
+                  <span class="text-[11px] text-slate-500 dark:text-slate-400">Replicar leitura anterior (0 {{ getUnit() }}). Exporta no Excel com observação.</span>
+                </div>
+              </button>
+
+              <button type="button"
+                (click)="quickJustifyStore(activeJustifyStore().storeId, 'Em Reforma / Obra', true)"
+                class="p-3 text-left rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-amber-50 dark:hover:bg-amber-950/40 hover:border-amber-300 transition-all cursor-pointer flex items-center gap-3 group">
+                <span class="text-2xl shrink-0 group-hover:scale-110 transition-transform">🔨</span>
+                <div>
+                  <strong class="text-xs font-bold text-slate-900 dark:text-white block">Em Reforma / Obra</strong>
+                  <span class="text-[11px] text-slate-500 dark:text-slate-400">Loja em obras sem consumo de hidrômetro/medidor ativo no período.</span>
+                </div>
+              </button>
+
+              <button type="button"
+                (click)="quickJustifyStore(activeJustifyStore().storeId, 'Sem Consumo no Mês', true)"
+                class="p-3 text-left rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-amber-50 dark:hover:bg-amber-950/40 hover:border-amber-300 transition-all cursor-pointer flex items-center gap-3 group">
+                <span class="text-2xl shrink-0 group-hover:scale-110 transition-transform">⏸️</span>
+                <div>
+                  <strong class="text-xs font-bold text-slate-900 dark:text-white block">Sem Consumo no Mês (0 {{ getUnit() }})</strong>
+                  <span class="text-[11px] text-slate-500 dark:text-slate-400">Medidor verificado em campo: ponteiro inalterado, consumo zero confirmado.</span>
+                </div>
+              </button>
+
+              <button type="button"
+                (click)="quickJustifyStore(activeJustifyStore().storeId, 'Medidor Inacessível / Trancado', true)"
+                class="p-3 text-left rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-amber-50 dark:hover:bg-amber-950/40 hover:border-amber-300 transition-all cursor-pointer flex items-center gap-3 group">
+                <span class="text-2xl shrink-0 group-hover:scale-110 transition-transform">🔒</span>
+                <div>
+                  <strong class="text-xs font-bold text-slate-900 dark:text-white block">Medidor Inacessível / Trancado</strong>
+                  <span class="text-[11px] text-slate-500 dark:text-slate-400">Porta trancada sem acesso pelo técnico. Justificativa registrada para fechamento.</span>
+                </div>
+              </button>
+
+              <button type="button"
+                (click)="quickJustifyStore(activeJustifyStore().storeId, 'Sem Ponto / Inativo', true)"
+                class="p-3 text-left rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-amber-50 dark:hover:bg-amber-950/40 hover:border-amber-300 transition-all cursor-pointer flex items-center gap-3 group">
+                <span class="text-2xl shrink-0 group-hover:scale-110 transition-transform">❌</span>
+                <div>
+                  <strong class="text-xs font-bold text-slate-900 dark:text-white block">Sem Ponto / Inativo</strong>
+                  <span class="text-[11px] text-slate-500 dark:text-slate-400">Ponto não conectado a esta utilidade neste ciclo de rateio.</span>
+                </div>
+              </button>
+            </div>
+
+            <div class="flex justify-end pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button type="button" 
+                (click)="closeQuickJustifyModal()" 
+                class="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold cursor-pointer transition-colors">
+                Cancelar
+              </button>
+            </div>
           </div>
         </div>
       }
@@ -3443,6 +3722,8 @@ export class BillCalculatorComponent implements OnDestroy {
   // --- PREVIOUS MONTH CONTINUITY AUDIT STATE ---
   showPrevMonthAuditModal = signal<boolean>(false);
   prevMonthAuditModalTab = signal<'pending' | 'completed'>('pending');
+  showQuickJustifyModal = signal<boolean>(false);
+  activeJustifyStore = signal<any | null>(null);
 
   // --- METER PHOTO EVIDENCE (EVIDÊNCIA FOTOGRÁFICA DO MEDIDOR) ---
   meterPhotos = signal<Record<string, MeterPhotoRecord>>({});
@@ -4348,6 +4629,134 @@ export class BillCalculatorComponent implements OnDestroy {
 
   historicalAverages = computed(() => this.historicalStats());
 
+  // --- MOTOR DE APRENDIZADO DE CONSUMO ZERO RECORRENTE (FACILITADOR DO TÉCNICO) ---
+  zeroConsumptionLearning = computed(() => {
+    const allData = this.historyService.getAllData();
+    const type = this.utilityType();
+    const currentMonth = this.selectedMonth();
+    
+    // Identifica todos os meses passados que possuem faturas salvas desta utilidade e que sejam anteriores a currentMonth
+    const pastMonths: string[] = [];
+    const prefix = `${type}_`;
+    for (const key of Object.keys(allData)) {
+      if (key.startsWith(prefix)) {
+        const m = key.substring(prefix.length);
+        if (m && /^\d{4}-\d{2}$/.test(m) && m < currentMonth) {
+          pastMonths.push(m);
+        }
+      }
+    }
+    // Garante que o mês imediatamente anterior cronológico esteja incluído se possível
+    const prevMonth = this.getPreviousMonth(currentMonth);
+    if (!pastMonths.includes(prevMonth)) {
+      pastMonths.push(prevMonth);
+    }
+    // Ordena do mais recente para o mais antigo: ex: ['2026-10', '2026-09', '2026-08', ...]
+    pastMonths.sort().reverse();
+
+    const allStores = this.storeService.stores();
+    const map = new Map<string, {
+      isFrequentZero: boolean;
+      consecutiveZeroMonths: number;
+      totalZeroMonths: number;
+      lastNote: string;
+      learnedReason: string;
+      pastZeroMonthsList: string[];
+    }>();
+
+    for (const store of this.activeStores()) {
+      const normLuc = store.luc ? normalizeLuc(store.luc) : '';
+      const normContrato = store.contrato ? normalizeContract(store.contrato) : '';
+      const normName = store.name ? normalizeStoreName(store.name) : '';
+
+      let consecutiveZero = 0;
+      let totalZero = 0;
+      let streakBroken = false;
+      let lastNote = '';
+      const pastZeroMonthsList: string[] = [];
+
+      for (const m of pastMonths) {
+        const bill = allData[`${prefix}${m}`];
+        if (!bill || !bill.readings) continue;
+
+        // Procura leitura da loja pelo storeId ou fallback por LUC / Contrato / Nome
+        let r: any = bill.readings[store.id];
+        if (r === undefined && (normLuc || normContrato || normName)) {
+          const matchStore = allStores.find(s => s.id !== store.id && (
+            (normLuc && s.luc && normalizeLuc(s.luc) === normLuc) ||
+            (normContrato && s.contrato && normalizeContract(s.contrato) === normContrato) ||
+            (normName && s.name && normalizeStoreName(s.name) === normName)
+          ));
+          if (matchStore && bill.readings[matchStore.id] !== undefined) {
+            r = bill.readings[matchStore.id];
+          }
+        }
+
+        if (r !== undefined) {
+          let cons = 0;
+          let note = '';
+          if (typeof r === 'object' && r !== null) {
+            cons = (r as any).calculatedConsumption ?? (r as any).consumption ?? 0;
+            note = (r as any).note || '';
+          } else if (typeof r === 'number') {
+            cons = r;
+          }
+
+          const hasZeroConsumption = (cons === 0);
+          const hasZeroKeyword = !!note && (
+            note.toLowerCase().includes('fechad') ||
+            note.toLowerCase().includes('vaga') ||
+            note.toLowerCase().includes('reforma') ||
+            note.toLowerCase().includes('sem consumo') ||
+            note.toLowerCase().includes('inativ') ||
+            note.toLowerCase().includes('desocupad')
+          );
+
+          if (hasZeroConsumption || hasZeroKeyword) {
+            totalZero++;
+            pastZeroMonthsList.push(m);
+            if (!streakBroken) {
+              consecutiveZero++;
+            }
+            if (!lastNote && note) {
+              lastNote = note;
+            }
+          } else {
+            streakBroken = true;
+          }
+        }
+      }
+
+      // Determina motivo sugerido com base no histórico aprendido
+      let learnedReason = 'Loja Fechada / Vaga';
+      const lowerNote = lastNote.toLowerCase();
+      if (lowerNote.includes('reforma') || lowerNote.includes('obra')) {
+        learnedReason = 'Em Reforma / Obra';
+      } else if (lowerNote.includes('inacess') || lowerNote.includes('trancad')) {
+        learnedReason = 'Medidor Inacessível';
+      } else if (lowerNote.includes('sem hidr') || lowerNote.includes('sem ponto') || lowerNote.includes('inativ')) {
+        learnedReason = 'Sem Ponto / Inativo';
+      } else if (consecutiveZero >= 2) {
+        learnedReason = 'Loja Fechada / Vaga';
+      } else {
+        learnedReason = 'Sem Consumo no Mês';
+      }
+
+      const isFrequentZero = (consecutiveZero >= 2) || (totalZero >= 2 && consecutiveZero >= 1);
+
+      map.set(store.id, {
+        isFrequentZero,
+        consecutiveZeroMonths: consecutiveZero,
+        totalZeroMonths: totalZero,
+        lastNote,
+        learnedReason,
+        pastZeroMonthsList
+      });
+    }
+
+    return map;
+  });
+
   // --- TABLE DATA CALCULATION ---
   tableData = computed(() => {
     const stores = this.activeStores();
@@ -4358,6 +4767,7 @@ export class BillCalculatorComponent implements OnDestroy {
     const readingsStore = this.readings();
     const prevReadings = this.previousReadings();
     const histAvgMap = this.historicalStats();
+    const zeroLearningMap = this.zeroConsumptionLearning();
 
     // Se for Gás, pré-calculamos a soma bruta do consumo medido em campo para todas as lojas
     let totalRawGas = 0;
@@ -4493,6 +4903,13 @@ export class BillCalculatorComponent implements OnDestroy {
       const isRead = currentReading > 0;
       const readingDiff = isRead ? (currentReading - prevReading) : 0;
 
+      const isJustified = !!data.isJustified || (!!note && note.includes('[JUSTIFICADO]'));
+      const justificationReason = data.justificationReason || (note && note.includes('[JUSTIFICADO]') ? note.replace('[JUSTIFICADO]', '').trim() : '');
+      const learnedZero = zeroLearningMap.get(store.id);
+      const isFrequentZero = !!learnedZero?.isFrequentZero;
+      const consecutiveZeroMonths = learnedZero?.consecutiveZeroMonths || 0;
+      const learnedReason = learnedZero?.learnedReason || 'Loja Fechada / Vaga';
+
       // --- MOTOR DE AUDITORIA INTELIGENTE & ANTI-ERRO (ETAPA 1) ---
       const histData = histAvgMap.get(store.id);
       const avgCons = histData && histData.avgConsumption > 0 ? histData.avgConsumption : (prevData.consumption > 0 ? prevData.consumption : 0);
@@ -4617,6 +5034,11 @@ export class BillCalculatorComponent implements OnDestroy {
         hasPhoto,
         photoTimestamp,
         isRead,
+        isJustified,
+        justificationReason,
+        isFrequentZero,
+        consecutiveZeroMonths,
+        learnedReason,
         isNegative,
         isZeroActive: isZeroThisMonth || is2MonthsZero,
         isHugeTypoJump: isExtremeJump,
@@ -4686,8 +5108,23 @@ export class BillCalculatorComponent implements OnDestroy {
       !item.excludedFromBill
     );
     
-    const pendingStores = measuredLastMonth.filter(item => !item.isRead);
-    const completedStores = measuredLastMonth.filter(item => item.isRead);
+    // Uma loja é considerada pendente se não foi lida e NÃO foi justificada pelo técnico
+    const pendingStores = measuredLastMonth.filter(item => !item.isRead && !item.isJustified);
+    const completedStores = measuredLastMonth.filter(item => item.isRead || item.isJustified);
+
+    // Ordenação estrita pela rota física de caminhada do shopping (routeOrder)
+    const sortByRoute = (a: any, b: any) => {
+      const orderA = a.routeOrder !== undefined && a.routeOrder !== null ? a.routeOrder : 9999;
+      const orderB = b.routeOrder !== undefined && b.routeOrder !== null ? b.routeOrder : 9999;
+      if (orderA !== orderB) return orderA - orderB;
+      return (a.luc || '').localeCompare(b.luc || '', undefined, { numeric: true });
+    };
+    pendingStores.sort(sortByRoute);
+    completedStores.sort(sortByRoute);
+
+    // Lojas pendentes que têm histórico de consumo zero aprendido
+    const frequentZeroPending = pendingStores.filter(item => item.isFrequentZero);
+
     const totalCount = measuredLastMonth.length;
     const pendingCount = pendingStores.length;
     const completedCount = completedStores.length;
@@ -4699,6 +5136,7 @@ export class BillCalculatorComponent implements OnDestroy {
       completedCount,
       pendingStores,
       completedStores,
+      frequentZeroPending,
       isAllDone,
       hasPreviousData: totalCount > 0
     };
@@ -4708,7 +5146,7 @@ export class BillCalculatorComponent implements OnDestroy {
   closingChecklist = computed(() => {
     const list = this.tableData();
     const totalStores = list.length;
-    const readStores = list.filter(item => item.isRead).length;
+    const readStores = list.filter(item => item.isRead || item.isJustified).length;
     const pendingStores = totalStores - readStores;
     const isComplete = totalStores > 0 && pendingStores === 0;
 
@@ -4716,7 +5154,12 @@ export class BillCalculatorComponent implements OnDestroy {
     const uninspectedAnomalies = list.filter(item => item.validationAlert.hasAlert && !item.anomalyConfirmed && item.isRead);
     const hasZeroAnomalies = uninspectedAnomalies.length === 0;
 
-    // 3. Conciliação com Concessionária & Balanço Financeiro
+    // 3. Auditoria de Continuidade vs Mês Anterior (Conferência de Lojas Esquecidas)
+    const prevAudit = this.prevMonthAudit();
+    const prevMonthPending = prevAudit.pendingCount;
+    const isContinuityComplete = prevAudit.hasPreviousData ? (prevMonthPending === 0) : true;
+
+    // 4. Conciliação com Concessionária & Balanço Financeiro
     const type = this.utilityType();
     const billAmount = this.totalBillAmount() || 0;
     const distributed = this.totalDistributedCost() || 0;
@@ -4735,8 +5178,8 @@ export class BillCalculatorComponent implements OnDestroy {
     const gasDiff = Math.abs(gasConcessionaria - totalRawGas);
 
     const isLocked = this.isLocked();
-    const canFreeze = isComplete && hasZeroAnomalies;
-    const allPassed = isComplete && hasZeroAnomalies && isReconciled && isLocked;
+    const canFreeze = isComplete && hasZeroAnomalies && isContinuityComplete;
+    const allPassed = isComplete && hasZeroAnomalies && isContinuityComplete && isReconciled && isLocked;
 
     return {
       readings: {
@@ -4744,7 +5187,16 @@ export class BillCalculatorComponent implements OnDestroy {
         totalStores,
         readStores,
         pendingStores,
-        pendingList: list.filter(i => !i.isRead).map(i => ({ id: i.storeId, luc: i.luc, name: i.storeName, routeOrder: i.routeOrder }))
+        pendingList: list.filter(i => !i.isRead && !i.isJustified).map(i => ({ id: i.storeId, luc: i.luc, name: i.storeName, routeOrder: i.routeOrder }))
+      },
+      continuity: {
+        passed: isContinuityComplete,
+        totalCount: prevAudit.totalCount,
+        completedCount: prevAudit.completedCount,
+        pendingCount: prevMonthPending,
+        hasPreviousData: prevAudit.hasPreviousData,
+        pendingStores: prevAudit.pendingStores,
+        frequentZeroPending: prevAudit.frequentZeroPending
       },
       anomalies: {
         passed: hasZeroAnomalies,
@@ -4789,15 +5241,16 @@ export class BillCalculatorComponent implements OnDestroy {
     const sortDir = this.sortDirection();
 
     if (filter === 'pending') {
-      list = list.filter(item => !item.isRead);
+      list = list.filter(item => !item.isRead && !item.isJustified);
     } else if (filter === 'completed') {
-      list = list.filter(item => item.isRead);
+      list = list.filter(item => item.isRead || item.isJustified);
     } else if (filter === 'alert') {
       list = list.filter(item => item.hasSuspiciousAlert);
     } else if (filter === 'prev_missing') {
       list = list.filter(item => 
         (item.prevReading > 0 || item.prevConsumption > 0 || (item.prevCost && item.prevCost > 0)) &&
         !item.isRead &&
+        !item.isJustified &&
         !item.excludedFromBill
       );
     }
@@ -5036,12 +5489,16 @@ export class BillCalculatorComponent implements OnDestroy {
       this.statusFilter.set('all');
     } else {
       this.statusFilter.set('prev_missing');
+      this.sortBy.set('route');
+      this.sortDirection.set('asc');
       this.mobileViewMode.set('cards');
     }
   }
 
   filterByPrevMissingAndClose() {
     this.statusFilter.set('prev_missing');
+    this.sortBy.set('route');
+    this.sortDirection.set('asc');
     this.mobileViewMode.set('cards');
     this.showPrevMonthAuditModal.set(false);
   }
@@ -5065,6 +5522,88 @@ export class BillCalculatorComponent implements OnDestroy {
         }
       }
     }, 150);
+  }
+
+  // --- QUICK JUSTIFICATION & ZERO-CONSUMPTION LEARNING METHODS ---
+  openQuickJustifyModal(store: any) {
+    this.activeJustifyStore.set(store);
+    this.showQuickJustifyModal.set(true);
+  }
+
+  closeQuickJustifyModal() {
+    this.showQuickJustifyModal.set(false);
+    this.activeJustifyStore.set(null);
+  }
+
+  quickJustifyStore(storeId: string, reason: string, replicatePrevReading: boolean = true) {
+    if (!this.authService.canEditReadings()) return;
+    const item = this.tableData().find(t => t.storeId === storeId);
+    const type = this.utilityType();
+    const prevReading = item?.prevReading || 0;
+    const newReading = replicatePrevReading ? prevReading : (item?.currentReading || 0);
+
+    this.readings.update(curr => {
+      const map = new Map(curr[type] as Map<string, StoreReading>);
+      const currentData = map.get(storeId) || this.createDefaultReading();
+      
+      const updated: StoreReading = {
+        ...currentData,
+        reading: newReading,
+        anomalyConfirmed: true, // confirmação automática de anomalia pois foi justificado intencionalmente
+        isJustified: true,
+        justificationReason: reason,
+        note: `[JUSTIFICADO] ${reason}`
+      };
+      
+      map.set(storeId, updated);
+      return { ...curr, [type]: map };
+    });
+
+    this.dataLoaded.set(true);
+    this.triggerQuickAutoSave();
+    this.closeQuickJustifyModal();
+  }
+
+  batchJustifyFrequentZero() {
+    if (!this.authService.canEditReadings()) return;
+    const pendingFrequent = this.prevMonthAudit().frequentZeroPending;
+    if (pendingFrequent.length === 0) return;
+
+    const type = this.utilityType();
+    this.readings.update(curr => {
+      const map = new Map(curr[type] as Map<string, StoreReading>);
+      
+      for (const item of pendingFrequent) {
+        const currentData = map.get(item.storeId) || this.createDefaultReading();
+        const reason = item.learnedReason || 'Loja Fechada / Sem Consumo Recorrente';
+        const updated: StoreReading = {
+          ...currentData,
+          reading: item.prevReading || 0,
+          anomalyConfirmed: true,
+          isJustified: true,
+          justificationReason: reason,
+          note: `[JUSTIFICADO] ${reason}`
+        };
+        map.set(item.storeId, updated);
+      }
+
+      return { ...curr, [type]: map };
+    });
+
+    this.dataLoaded.set(true);
+    this.triggerQuickAutoSave();
+  }
+
+  triggerQuickAutoSave() {
+    if (this.autoSaveTimer) {
+      clearTimeout(this.autoSaveTimer);
+    }
+    this.autoSaveTimer = setTimeout(() => {
+      this.autoSaveTimer = null;
+      if (!this.isProgrammaticLoading) {
+        this.internalSave();
+      }
+    }, 200);
   }
 
   // Field Notes Helpers
@@ -5109,14 +5648,16 @@ export class BillCalculatorComponent implements OnDestroy {
 
   updateDetailedReading(storeId: string, field: keyof StoreReading, value: any) {
     if (!this.authService.canEditReadings()) return;
-    // Tech can edit 'reading', 'note', 'hasPhoto', 'photoTimestamp', 'anomalyConfirmed', 'isRollover'
+    // Tech can edit 'reading', 'note', 'hasPhoto', 'photoTimestamp', 'anomalyConfirmed', 'isRollover', 'isJustified', 'justificationReason'
     if (this.authService.isTech() &&
       field !== 'reading' &&
       field !== 'note' &&
       field !== 'hasPhoto' &&
       field !== 'photoTimestamp' &&
       field !== 'anomalyConfirmed' &&
-      field !== 'isRollover') return;
+      field !== 'isRollover' &&
+      field !== 'isJustified' &&
+      field !== 'justificationReason') return;
 
     this.dataLoaded.set(true);
 

@@ -131,7 +131,9 @@ export class ReportExportService {
       item['% no Rateio'] = options.totalDistributedCost > 0 
         ? Number(((row.cost / options.totalDistributedCost) * 100).toFixed(2)) 
         : 0;
-      item['Status da Leitura'] = (row.currentReading || 0) > 0 ? 'Concluída' : 'Pendente';
+      item['Status da Leitura'] = row.isJustified 
+        ? `Justificada (${row.justificationReason || 'Sem consumo'})` 
+        : ((row.currentReading || 0) > 0 ? 'Concluída' : 'Pendente');
       item['Observação de Campo'] = row.note || '';
 
       return item;
