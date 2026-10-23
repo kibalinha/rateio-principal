@@ -774,6 +774,54 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                     <div class="h-full bg-gradient-to-r from-teal-500 to-emerald-500 rounded-full transition-all duration-300"
                          [style.width.%]="fieldStats().progressPct"></div>
                   </div>
+
+                  <!-- Auditoria de Continuidade vs Mês Anterior -->
+                  @if (prevMonthAudit().hasPreviousData) {
+                    <div class="mt-2.5 pt-2 border-t border-slate-200/60 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                      <div class="flex items-center gap-2">
+                        @if (prevMonthAudit().pendingCount > 0) {
+                          <span class="flex h-2 w-2 relative shrink-0">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                          </span>
+                          <span class="text-amber-900 dark:text-amber-200 font-bold">
+                            ⚠️ Mês Anterior: <span class="underline decoration-amber-500 underline-offset-2">{{ prevMonthAudit().pendingCount }} lojas</span> que tinham valor em {{ getPreviousMonth(selectedMonth()) }} ainda não foram lidas!
+                          </span>
+                        } @else {
+                          <span class="text-emerald-700 dark:text-emerald-400 font-bold flex items-center gap-1.5">
+                            <span class="text-sm">✨</span>
+                            <span>100% conferido! Todas as {{ prevMonthAudit().totalCount }} lojas medidas no mês anterior já foram lidas.</span>
+                          </span>
+                        }
+                      </div>
+
+                      <div class="flex items-center gap-1.5 self-start sm:self-auto shrink-0">
+                        @if (prevMonthAudit().pendingCount > 0) {
+                          <button type="button" 
+                            (click)="togglePrevMissingFilter()"
+                            [class]="statusFilter() === 'prev_missing' ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-xs ring-2 ring-amber-400/50' : 'bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/70 dark:hover:bg-amber-900 text-amber-950 dark:text-amber-100 border border-amber-300 dark:border-amber-700'"
+                            class="px-2.5 py-1 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs whitespace-nowrap">
+                            <span>🔍</span>
+                            <span>{{ statusFilter() === 'prev_missing' ? 'Mostrando as ' + prevMonthAudit().pendingCount + ' que faltam' : 'Filtrar as ' + prevMonthAudit().pendingCount + ' que faltam' }}</span>
+                          </button>
+                        } @else if (statusFilter() === 'prev_missing') {
+                          <button type="button" 
+                            (click)="statusFilter.set('all')"
+                            class="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-300 transition-all cursor-pointer flex items-center gap-1 shadow-2xs whitespace-nowrap">
+                            <span>✕</span>
+                            <span>Voltar para todas</span>
+                          </button>
+                        }
+                        <button type="button" 
+                          (click)="showPrevMonthAuditModal.set(true)"
+                          class="px-2.5 py-1 rounded-lg text-xs font-bold bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 transition-all cursor-pointer flex items-center gap-1 shadow-2xs whitespace-nowrap"
+                          title="Ver relatório detalhado de conferência com o mês anterior">
+                          <span>📋</span>
+                          <span>Ver Lista</span>
+                        </button>
+                      </div>
+                    </div>
+                  }
                 </div>
 
                 <!-- Mobile View Mode Toggle (Cards vs Step Rota) -->
@@ -885,6 +933,20 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                         <span class="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold"
                               [class]="statusFilter() === 'alert' ? 'bg-rose-700 text-white' : 'bg-rose-200/80 dark:bg-rose-900 text-rose-900 dark:text-rose-200'">
                           {{ fieldStats().alerts }}
+                        </span>
+                      </button>
+                    }
+
+                    @if (prevMonthAudit().hasPreviousData) {
+                      <button type="button" 
+                        (click)="togglePrevMissingFilter()"
+                        [class]="statusFilter() === 'prev_missing' ? 'bg-amber-600 text-white font-extrabold shadow-xs ring-2 ring-amber-400/50' : (prevMonthAudit().pendingCount > 0 ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-950/60 border border-amber-300 dark:border-amber-700' : 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 border border-emerald-200 dark:border-emerald-800')"
+                        class="px-3 py-1.5 rounded-xl text-xs whitespace-nowrap transition-all cursor-pointer font-medium flex items-center gap-1.5"
+                        [title]="prevMonthAudit().pendingCount > 0 ? 'Exibir apenas as ' + prevMonthAudit().pendingCount + ' lojas que tinham valor no mês anterior e ainda não foram lidas' : 'Todas as lojas que tinham valor no mês anterior já foram lidas neste mês'">
+                        <span>⏮️ Do Mês Anterior</span>
+                        <span class="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold"
+                              [class]="statusFilter() === 'prev_missing' ? 'bg-amber-700 text-white' : (prevMonthAudit().pendingCount > 0 ? 'bg-amber-400 text-slate-950 font-black' : 'bg-emerald-200/80 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-200')">
+                          {{ prevMonthAudit().pendingCount > 0 ? prevMonthAudit().pendingCount + ' pend.' : '✓ 100%' }}
                         </span>
                       </button>
                     }
@@ -1075,7 +1137,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                 </thead>
                 <tbody class="divide-y divide-slate-100 dark:divide-slate-800/80 bg-white dark:bg-slate-900 transition-colors">
                   @for (item of filteredTableData(); track item.storeId) {
-                    <tr class="transition-colors group text-xs border-b border-slate-100 dark:border-slate-800/60"
+                    <tr [id]="'store-row-' + item.storeId" class="transition-colors group text-xs border-b border-slate-100 dark:border-slate-800/60"
                         [class.hover:bg-slate-50/90]="!item.validationAlert.hasAlert"
                         [class.dark:hover:bg-slate-800/60]="!item.validationAlert.hasAlert"
                         [class.border-l-4]="true"
@@ -1147,6 +1209,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                               (keyup.enter)="onReadingBlur(item.storeId)"
                               (paste)="onPasteCell($event, item.storeId, 'reading')" 
                               [disabled]="!canEdit()" 
+                              [id]="'reading-input-' + item.storeId"
                               class="w-full text-right bg-white dark:bg-slate-950 dark:text-white border-2 rounded-lg px-2 py-1 focus:ring-2 font-mono font-black tabular-nums transition-all text-xs"
                               [class.border-rose-500]="item.validationAlert.severity === 'critical'"
                               [class.ring-2]="item.validationAlert.hasAlert && !item.anomalyConfirmed"
@@ -1310,7 +1373,18 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                   @if (filteredTableData().length === 0) {
                     <tr>
                       <td colspan="15" class="p-10 text-center text-slate-400 text-xs">
-                        @if (searchQuery()) {
+                        @if (statusFilter() === 'prev_missing') {
+                          <div class="py-6 space-y-2 max-w-md mx-auto">
+                            <div class="text-4xl">✨</div>
+                            <p class="font-black text-emerald-600 dark:text-emerald-400 text-sm">Todas as lojas do mês anterior já foram lidas!</p>
+                            <p class="text-slate-500 dark:text-slate-400 text-xs">
+                              Parabéns! Nenhuma loja que tinha medição em <strong>{{ getPreviousMonth(selectedMonth()) }}</strong> ficou para trás neste mês.
+                            </p>
+                            <button type="button" (click)="statusFilter.set('all')" class="mt-2 px-3.5 py-1.5 bg-slate-900 dark:bg-slate-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-xs">
+                              Ver Todas as Lojas
+                            </button>
+                          </div>
+                        } @else if (searchQuery()) {
                           Nenhuma loja encontrada para o termo pesquisado.
                         } @else if (!hasMonthlyListForSelectedMonth()) {
                           <div class="py-4 space-y-2 max-w-md mx-auto">
@@ -1382,7 +1456,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
               @if (mobileViewMode() === 'cards') {
                 <div class="flex flex-col divide-y divide-slate-200 dark:divide-slate-800 bg-slate-100 dark:bg-slate-950">
                   @for (item of filteredTableData(); track item.storeId) {
-                     <div class="p-4 bg-white dark:bg-slate-900 transition-colors"
+                     <div [id]="'store-card-' + item.storeId" class="p-4 bg-white dark:bg-slate-900 transition-colors"
                           [class.border-l-4]="true"
                           [class.border-l-rose-500]="item.validationAlert.severity === 'critical'"
                           [class.border-l-amber-500]="item.validationAlert.severity === 'warning'"
@@ -1556,6 +1630,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                                    (blur)="onReadingBlur(item.storeId)"
                                    (keyup.enter)="onReadingBlur(item.storeId)"
                                    [disabled]="!canEdit()"
+                                   [id]="'reading-card-input-' + item.storeId"
                                    class="w-full text-right text-xl font-mono p-2.5 border-2 rounded-xl focus:ring-2 font-bold bg-white dark:bg-slate-950 text-slate-900 dark:text-white disabled:bg-slate-100 dark:disabled:bg-slate-800 transition-colors"
                                    [class.border-rose-500]="item.validationAlert.severity === 'critical'"
                                    [class.ring-2]="item.validationAlert.hasAlert"
@@ -1778,7 +1853,18 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                   @if (filteredTableData().length === 0) {
                     <div class="p-8 text-center bg-white dark:bg-slate-900 border border-transparent dark:border-slate-800 rounded-xl my-3">
                       <div class="text-3xl mb-2">📋</div>
-                      @if (searchQuery()) {
+                      @if (statusFilter() === 'prev_missing') {
+                        <div class="py-4 space-y-2">
+                          <div class="text-4xl">✨</div>
+                          <p class="font-black text-emerald-600 dark:text-emerald-400 text-sm">100% do mês anterior conferido!</p>
+                          <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                            Todas as lojas que tinham valor em <strong>{{ getPreviousMonth(selectedMonth()) }}</strong> já foram lidas neste mês.
+                          </p>
+                          <button type="button" (click)="statusFilter.set('all')" class="mt-2 px-3.5 py-1.5 bg-slate-900 dark:bg-slate-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-xs">
+                            Ver Todas as Lojas
+                          </button>
+                        </div>
+                      } @else if (searchQuery()) {
                         <p class="font-bold text-slate-700 dark:text-slate-300 text-sm">Nenhuma loja encontrada</p>
                         <p class="text-xs text-slate-400 mt-1">Ajuste o termo da busca ou o filtro.</p>
                       } @else if (!hasMonthlyListForSelectedMonth()) {
@@ -3043,6 +3129,16 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
             <span class="text-slate-400">({{ fieldStats().progressPct }}%)</span>
           </span>
 
+          @if (prevMonthAudit().hasPreviousData && prevMonthAudit().pendingCount > 0) {
+            <button type="button" 
+              (click)="togglePrevMissingFilter()"
+              class="px-2.5 py-0.5 rounded-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-[10px] flex items-center gap-1 shadow-xs cursor-pointer animate-pulse"
+              title="Filtrar lojas que faltam do mês anterior">
+              <span>⏮️</span>
+              <span>{{ prevMonthAudit().pendingCount }} do mês ant.</span>
+            </button>
+          }
+
           @if (fieldStats().alerts > 0) {
             <button type="button" 
               (click)="statusFilter.set('alert'); mobileViewMode.set('cards')"
@@ -3064,6 +3160,201 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
           }
         </div>
       </div>
+
+      <!-- PREV MONTH CONTINUITY AUDIT MODAL -->
+      @if (showPrevMonthAuditModal()) {
+        <div class="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fade-in"
+             (click)="showPrevMonthAuditModal.set(false)">
+          <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden"
+               (click)="$event.stopPropagation()">
+            
+            <!-- Modal Header -->
+            <div class="p-5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-850 flex items-center justify-between gap-3">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 text-white flex items-center justify-center text-xl shadow-md shrink-0">
+                  ⏮️
+                </div>
+                <div>
+                  <h3 class="font-black text-slate-900 dark:text-white text-base flex items-center gap-2">
+                    <span>Conferência vs Mês Anterior</span>
+                    <span class="text-xs px-2 py-0.5 rounded-full font-mono font-bold"
+                          [class]="prevMonthAudit().pendingCount > 0 ? 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200 border border-amber-300 dark:border-amber-700' : 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700'">
+                      {{ selectedMonth() }} vs {{ getPreviousMonth(selectedMonth()) }}
+                    </span>
+                  </h3>
+                  <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Lojas de <strong>{{ utilityType() === 'luz' ? 'Energia/Luz' : (utilityType() === 'agua' ? 'Água' : 'Gás') }}</strong> que tiveram consumo/leitura em {{ getPreviousMonth(selectedMonth()) }}.
+                  </p>
+                </div>
+              </div>
+              <button (click)="showPrevMonthAuditModal.set(false)" 
+                class="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors text-base font-bold cursor-pointer">
+                ✕
+              </button>
+            </div>
+
+            <!-- Stats Bar -->
+            <div class="grid grid-cols-3 divide-x divide-slate-200 dark:divide-slate-800 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900 text-center py-3 text-xs">
+              <div>
+                <div class="text-[10px] uppercase font-bold text-slate-400">Medidas Mês Anterior</div>
+                <div class="text-lg font-black font-mono text-slate-800 dark:text-slate-100 mt-0.5">{{ prevMonthAudit().totalCount }}</div>
+              </div>
+              <div>
+                <div class="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400">Já Lidas Neste Mês</div>
+                <div class="text-lg font-black font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">{{ prevMonthAudit().completedCount }}</div>
+              </div>
+              <div>
+                <div class="text-[10px] uppercase font-bold text-amber-600 dark:text-amber-400">Faltam Ler</div>
+                <div class="text-lg font-black font-mono text-amber-600 dark:text-amber-400 mt-0.5">{{ prevMonthAudit().pendingCount }}</div>
+              </div>
+            </div>
+
+            <!-- Tabs: Pendentes vs Já Lidas -->
+            <div class="px-5 pt-3 pb-2 flex items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+              <div class="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
+                <button type="button"
+                  (click)="prevMonthAuditModalTab.set('pending')"
+                  [class]="prevMonthAuditModalTab() === 'pending' ? 'bg-amber-600 text-white font-extrabold shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'"
+                  class="px-3 py-1.5 rounded-lg text-xs transition-all cursor-pointer flex items-center gap-1.5">
+                  <span>⚠️ Faltam Ler</span>
+                  <span class="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold"
+                        [class]="prevMonthAuditModalTab() === 'pending' ? 'bg-white/20' : 'bg-slate-200 dark:bg-slate-700'">
+                    {{ prevMonthAudit().pendingCount }}
+                  </span>
+                </button>
+                <button type="button"
+                  (click)="prevMonthAuditModalTab.set('completed')"
+                  [class]="prevMonthAuditModalTab() === 'completed' ? 'bg-emerald-600 text-white font-extrabold shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'"
+                  class="px-3 py-1.5 rounded-lg text-xs transition-all cursor-pointer flex items-center gap-1.5">
+                  <span>✅ Já Lidas</span>
+                  <span class="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold"
+                        [class]="prevMonthAuditModalTab() === 'completed' ? 'bg-white/20' : 'bg-slate-200 dark:bg-slate-700'">
+                    {{ prevMonthAudit().completedCount }}
+                  </span>
+                </button>
+              </div>
+
+              @if (prevMonthAudit().pendingCount > 0) {
+                <button type="button"
+                  (click)="filterByPrevMissingAndClose()"
+                  class="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/70 dark:hover:bg-amber-900 text-amber-950 dark:text-amber-100 border border-amber-300 dark:border-amber-700 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs">
+                  <span>🔍 Filtrar na Tabela</span>
+                </button>
+              }
+            </div>
+
+            <!-- List Content -->
+            <div class="overflow-y-auto p-4 sm:p-5 flex-1 divide-y divide-slate-100 dark:divide-slate-800 space-y-2">
+              @if (prevMonthAuditModalTab() === 'pending') {
+                @if (prevMonthAudit().pendingCount === 0) {
+                  <div class="py-12 text-center">
+                    <div class="text-5xl mb-3">🎉</div>
+                    <h4 class="font-black text-slate-800 dark:text-white text-base">Nenhuma loja esquecida!</h4>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto mt-1">
+                      Todas as lojas que foram medidas em <strong>{{ getPreviousMonth(selectedMonth()) }}</strong> já possuem leitura registrada neste mês.
+                    </p>
+                  </div>
+                } @else {
+                  @for (store of prevMonthAudit().pendingStores; track store.storeId) {
+                    <div class="pt-2 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/80 dark:hover:bg-slate-850/50 p-2.5 rounded-2xl transition-colors">
+                      <div class="flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 flex items-center justify-center font-mono font-black text-xs shrink-0 border border-amber-300 dark:border-amber-800">
+                          {{ store.luc }}
+                        </div>
+                        <div>
+                          <div class="font-bold text-slate-800 dark:text-slate-100 text-xs flex items-center gap-1.5 flex-wrap">
+                            <span>{{ store.storeName }}</span>
+                            @if (store.contrato) {
+                              <span class="text-[10px] font-mono text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.2 rounded border border-slate-200 dark:border-slate-700">
+                                Ctr: {{ store.contrato }}
+                              </span>
+                            }
+                            @if (store.meterNumber) {
+                              <span class="text-[10px] font-mono text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.2 rounded border border-slate-200 dark:border-slate-700">
+                                Med: {{ store.meterNumber }}
+                              </span>
+                            }
+                          </div>
+                          <div class="text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-1 flex items-center gap-2">
+                            <span>Leitura Anterior: <strong class="text-slate-700 dark:text-slate-200">{{ store.prevReading | number:'1.0-2' }}</strong></span>
+                            <span>•</span>
+                            <span>Consumo Anterior: <strong class="text-teal-700 dark:text-teal-400">{{ store.prevConsumption | number:'1.0-2' }} {{ getUnit() }}</strong></span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <button type="button"
+                        (click)="jumpToStoreFromAudit(store.storeId)"
+                        class="px-3.5 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-bold rounded-xl shadow-xs cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 transition-transform active:scale-95">
+                        <span>✏️</span>
+                        <span>Preencher Agora</span>
+                      </button>
+                    </div>
+                  }
+                }
+              } @else {
+                <!-- Tab: Lojas Já Lidas -->
+                @for (store of prevMonthAudit().completedStores; track store.storeId) {
+                  <div class="pt-2 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/80 dark:hover:bg-slate-850/50 p-2.5 rounded-2xl transition-colors">
+                    <div class="flex items-start gap-3">
+                      <div class="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 flex items-center justify-center font-mono font-black text-xs shrink-0 border border-emerald-300 dark:border-emerald-800">
+                        {{ store.luc }}
+                      </div>
+                      <div>
+                        <div class="font-bold text-slate-800 dark:text-slate-100 text-xs flex items-center gap-1.5 flex-wrap">
+                          <span>{{ store.storeName }}</span>
+                          <span class="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.2 rounded border border-emerald-200 dark:border-emerald-800">
+                            ✓ Lida
+                          </span>
+                        </div>
+                        <div class="text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-1 flex items-center gap-2">
+                          <span>Ant: <strong>{{ store.prevReading | number:'1.0-2' }}</strong></span>
+                          <span>➜</span>
+                          <span>Atual: <strong class="text-emerald-700 dark:text-emerald-300">{{ store.currentReading | number:'1.0-2' }}</strong></span>
+                          <span>•</span>
+                          <span>Consumo: <strong class="text-slate-700 dark:text-slate-200">{{ store.consumption | number:'1.0-2' }} {{ getUnit() }}</strong></span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <button type="button"
+                      (click)="jumpToStoreFromAudit(store.storeId)"
+                      class="px-3 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-lg cursor-pointer flex items-center justify-center gap-1 whitespace-nowrap shrink-0 transition-colors">
+                      <span>Ver na tabela</span>
+                    </button>
+                  </div>
+                }
+              }
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-850 flex items-center justify-between gap-3">
+              <span class="text-xs text-slate-500 dark:text-slate-400">
+                @if (prevMonthAudit().pendingCount > 0) {
+                  Ainda restam <strong class="text-amber-600 dark:text-amber-400">{{ prevMonthAudit().pendingCount }} lojas</strong> para completar a conferência.
+                } @else {
+                  <span class="text-emerald-600 dark:text-emerald-400 font-bold">✓ Conferência concluída com sucesso!</span>
+                }
+              </span>
+              <div class="flex items-center gap-2">
+                @if (prevMonthAudit().pendingCount > 0) {
+                  <button type="button"
+                    (click)="filterByPrevMissingAndClose()"
+                    class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-black shadow-xs cursor-pointer transition-all">
+                    Filtrar as {{ prevMonthAudit().pendingCount }} na Tela
+                  </button>
+                }
+                <button type="button"
+                  (click)="showPrevMonthAuditModal.set(false)"
+                  class="px-4 py-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold cursor-pointer transition-colors">
+                  Fechar
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      }
     </div>
   `
 })
@@ -3141,13 +3432,17 @@ export class BillCalculatorComponent implements OnDestroy {
 
   // --- FIELD / MOBILE ENHANCED STATE ---
   searchQuery = signal<string>('');
-  statusFilter = signal<'all' | 'pending' | 'completed' | 'alert'>('all');
+  statusFilter = signal<'all' | 'pending' | 'completed' | 'alert' | 'prev_missing'>('all');
   sortBy = signal<string>('route');
   sortDirection = signal<'asc' | 'desc'>('asc');
   mobileViewMode = signal<'cards' | 'step'>('cards');
   stepIndex = signal<number>(0);
   activeNoteStoreId = signal<string | null>(null);
   activeNoteText = signal<string>('');
+
+  // --- PREVIOUS MONTH CONTINUITY AUDIT STATE ---
+  showPrevMonthAuditModal = signal<boolean>(false);
+  prevMonthAuditModalTab = signal<'pending' | 'completed'>('pending');
 
   // --- METER PHOTO EVIDENCE (EVIDÊNCIA FOTOGRÁFICA DO MEDIDOR) ---
   meterPhotos = signal<Record<string, MeterPhotoRecord>>({});
@@ -4382,6 +4677,33 @@ export class BillCalculatorComponent implements OnDestroy {
     return { total, completed, pending, alerts, progressPct };
   });
 
+  // --- PREVIOUS MONTH CONTINUITY AUDIT COMPUTED (CONFERÊNCIA DE LEITURAS HISTÓRICAS) ---
+  prevMonthAudit = computed(() => {
+    const list = this.tableData();
+    // Lojas presentes na tabela deste mês que tinham leitura ou consumo no mês anterior
+    const measuredLastMonth = list.filter(item => 
+      (item.prevReading > 0 || item.prevConsumption > 0 || (item.prevCost && item.prevCost > 0)) &&
+      !item.excludedFromBill
+    );
+    
+    const pendingStores = measuredLastMonth.filter(item => !item.isRead);
+    const completedStores = measuredLastMonth.filter(item => item.isRead);
+    const totalCount = measuredLastMonth.length;
+    const pendingCount = pendingStores.length;
+    const completedCount = completedStores.length;
+    const isAllDone = totalCount > 0 && pendingCount === 0;
+
+    return {
+      totalCount,
+      pendingCount,
+      completedCount,
+      pendingStores,
+      completedStores,
+      isAllDone,
+      hasPreviousData: totalCount > 0
+    };
+  });
+
   // --- MONTH CLOSING & AUDIT CHECKLIST COMPUTED (PASSO 3) ---
   closingChecklist = computed(() => {
     const list = this.tableData();
@@ -4472,6 +4794,12 @@ export class BillCalculatorComponent implements OnDestroy {
       list = list.filter(item => item.isRead);
     } else if (filter === 'alert') {
       list = list.filter(item => item.hasSuspiciousAlert);
+    } else if (filter === 'prev_missing') {
+      list = list.filter(item => 
+        (item.prevReading > 0 || item.prevConsumption > 0 || (item.prevCost && item.prevCost > 0)) &&
+        !item.isRead &&
+        !item.excludedFromBill
+      );
     }
 
     if (q) {
@@ -4700,6 +5028,43 @@ export class BillCalculatorComponent implements OnDestroy {
 
   setStepIndex(idx: number) {
     this.stepIndex.set(idx);
+  }
+
+  // --- PREVIOUS MONTH CONTINUITY AUDIT HELPERS ---
+  togglePrevMissingFilter() {
+    if (this.statusFilter() === 'prev_missing') {
+      this.statusFilter.set('all');
+    } else {
+      this.statusFilter.set('prev_missing');
+      this.mobileViewMode.set('cards');
+    }
+  }
+
+  filterByPrevMissingAndClose() {
+    this.statusFilter.set('prev_missing');
+    this.mobileViewMode.set('cards');
+    this.showPrevMonthAuditModal.set(false);
+  }
+
+  jumpToStoreFromAudit(storeId: string) {
+    this.showPrevMonthAuditModal.set(false);
+    this.mobileViewMode.set('cards');
+    if (this.statusFilter() === 'completed') {
+      this.statusFilter.set('all');
+    }
+    setTimeout(() => {
+      const el = document.getElementById('store-row-' + storeId) || document.getElementById('store-card-' + storeId);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const input = (document.getElementById('reading-input-' + storeId) || 
+                       document.getElementById('reading-card-input-' + storeId) || 
+                       el.querySelector('input[type="number"]')) as HTMLInputElement | null;
+        if (input) {
+          input.focus();
+          input.select();
+        }
+      }
+    }, 150);
   }
 
   // Field Notes Helpers

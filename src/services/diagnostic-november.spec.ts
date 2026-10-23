@@ -160,4 +160,91 @@ describe('Diagnostic: November vs October in Água', () => {
     const prevForNov = prevReadings.get('store-nov-1');
     console.log('Test 3 prev for novStore:', prevForNov);
   });
+
+  it('Diagnostic Test 4: Previous Month Continuity Audit correctly identifies forgotten stores', () => {
+    // Simulated tableData items in November
+    const mockTableData = [
+      // Store A: had reading in October, read in November (complete)
+      {
+        storeId: 'store-a',
+        luc: 'L-101',
+        storeName: 'Zara',
+        prevReading: 120,
+        prevConsumption: 15,
+        prevCost: 300,
+        currentReading: 135,
+        isRead: true,
+        excludedFromBill: false
+      },
+      // Store B: had reading in October, read in November (complete)
+      {
+        storeId: 'store-b',
+        luc: 'L-102',
+        storeName: 'Renner',
+        prevReading: 200,
+        prevConsumption: 25,
+        prevCost: 500,
+        currentReading: 230,
+        isRead: true,
+        excludedFromBill: false
+      },
+      // Store C: had reading in October, FORGOTTEN in November (pending!)
+      {
+        storeId: 'store-c',
+        luc: 'L-103',
+        storeName: 'McDonalds',
+        prevReading: 500,
+        prevConsumption: 80,
+        prevCost: 1600,
+        currentReading: 0,
+        isRead: false,
+        excludedFromBill: false
+      },
+      // Store D: never had reading (e.g. dry kiosk without water meter)
+      {
+        storeId: 'store-d',
+        luc: 'Q-01',
+        storeName: 'Quiosque Capinhas',
+        prevReading: 0,
+        prevConsumption: 0,
+        prevCost: 0,
+        currentReading: 0,
+        isRead: false,
+        excludedFromBill: false
+      }
+    ];
+
+    // Audit function logic (identical to prevMonthAudit computed signal)
+    const audit = (list: typeof mockTableData) => {
+      const measuredLastMonth = list.filter(item => 
+        (item.prevReading > 0 || item.prevConsumption > 0 || (item.prevCost && item.prevCost > 0)) &&
+        !item.excludedFromBill
+      );
+      const pendingStores = measuredLastMonth.filter(item => !item.isRead);
+      const completedStores = measuredLastMonth.filter(item => item.isRead);
+      const totalCount = measuredLastMonth.length;
+      const pendingCount = pendingStores.length;
+      const completedCount = completedStores.length;
+      const isAllDone = totalCount > 0 && pendingCount === 0;
+
+      return { totalCount, pendingCount, completedCount, pendingStores, completedStores, isAllDone, hasPreviousData: totalCount > 0 };
+    };
+
+    const initialAudit = audit(mockTableData);
+    expect(initialAudit.totalCount).toBe(3); // Store A, B, C (Store D is excluded because it had no previous measurement)
+    expect(initialAudit.completedCount).toBe(2); // Store A, B
+    expect(initialAudit.pendingCount).toBe(1); // Store C
+    expect(initialAudit.pendingStores[0].storeName).toBe('McDonalds');
+    expect(initialAudit.isAllDone).toBe(false);
+
+    // Now technician fills in McDonalds
+    mockTableData[2].currentReading = 585;
+    mockTableData[2].isRead = true;
+
+    const finalAudit = audit(mockTableData);
+    expect(finalAudit.totalCount).toBe(3);
+    expect(finalAudit.completedCount).toBe(3);
+    expect(finalAudit.pendingCount).toBe(0);
+    expect(finalAudit.isAllDone).toBe(true);
+  });
 });
