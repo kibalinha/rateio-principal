@@ -7,23 +7,57 @@ import { Store, MonthlyImportResult } from '../models';
 export type { Store, MonthlyImportResult };
 
 /**
+ * Normaliza o LUC para comparações seguras (ex: 'L-101', 'LUC 101', 'LUC-101' -> '101', 'Q-012' -> 'q012')
+ */
+export function normalizeLuc(luc?: string | null): string {
+  return (luc || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^luc\s*[-_./]?\s*/i, '')
+    .replace(/^l\s*[-_./]\s*/i, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * Normaliza o número do contrato para comparações seguras (remove pontuação e zeros à esquerda)
+ */
+export function normalizeContract(c?: string | null): string {
+  return (c || '').replace(/[^a-zA-Z0-9]/g, '').replace(/^0+/, '').toLowerCase();
+}
+
+/**
+ * Normaliza o nome da loja para comparação fonética/textual (sem acentos, sem sufixos societários comuns)
+ */
+export function normalizeStoreName(name?: string | null): string {
+  return (name || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\b(ltda|eireli|s\/a|sa|me|epp|cia|comercio|loja)\b/gi, '')
+    .replace(/[^a-z0-9]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
  * Determina se uma loja estava ativa em um determinado mês de referência (YYYY-MM).
+ * - Se isExplicitlyInMonthList for true: a loja pertence à lista explícita importada para o mês, logo está ativa nele.
  * - Se store.active !== false: loja atualmente ativa.
  * - Se inativa, mas deactivatedAt > month: a inativação ocorreu apenas em mês futuro; no mês consultado ela estava 100% ativa!
- * - Se inativa e deactivatedAt for nulo/indefinido (dados legados), mas a loja pertencia à lista explícita importada para o mês: estava ativa naquele mês.
  */
 export function isStoreActiveInMonth(store: Store, month: string, isExplicitlyInMonthList: boolean = false): boolean {
+  if (isExplicitlyInMonthList) {
+    return true;
+  }
   if (store.active !== false) {
     return true;
   }
   if (store.deactivatedAt && store.deactivatedAt > month) {
     return true;
   }
-  if (!store.deactivatedAt && isExplicitlyInMonthList) {
-    return true;
-  }
   return false;
 }
+
 
 @Injectable({
   providedIn: 'root'
@@ -519,30 +553,60 @@ export class StoreService {
 
       for (const item of items) {
         const cleanLuc = item.luc.trim();
-        const cleanContrato = item.contrato.trim();
-        const cleanName = item.name.trim();
+        let cleanContrato = item.contrato.trim();
+        let cleanName = item.name.trim();
         if (!cleanLuc) continue;
 
-        importedLucSet.add(cleanLuc.toLowerCase());
+        // Auto-correção para colunas invertidas acidentalmente (ex: Nome no Contrato e Contrato no Nome)
+        if (cleanContrato && cleanName) {
+          const isNamePureCode = /^[0-9\-\.\/]{2,15}$/.test(cleanName);
+          const isContratoTextual = /[a-zA-ZÀ-ÿ]{3,}/.test(cleanContrato) && !/^[0-9\-\.\/]+$/.test(cleanContrato);
+          if (isNamePureCode && isContratoTextual) {
+            const temp = cleanContrato;
+            cleanContrato = cleanName;
+            cleanName = temp;
+          }
+        }
 
-        // 1. Procura loja ativa existente com o mesmo LUC
+        const normLuc = normalizeLuc(cleanLuc);
+        const normContrato = normalizeContract(cleanContrato);
+        const normName = normalizeStoreName(cleanName);
+
+        importedLucSet.add(normLuc);
+
+        // 1. Procura loja ativa existente com o mesmo LUC normalizado
         const existingActiveIndex = list.findIndex(s => 
-          s.active !== false && s.luc.toLowerCase() === cleanLuc.toLowerCase()
+          s.active !== false && normalizeLuc(s.luc) === normLuc
         );
 
         if (existingActiveIndex > -1) {
           const existingStore = list[existingActiveIndex];
           const existingContrato = (existingStore.contrato || '').trim();
+          const existingNormContrato = normalizeContract(existingContrato);
+          const existingNormName = normalizeStoreName(existingStore.name || '');
 
-          // Verifica se o contrato é o mesmo (ou se ambos estão vazios e o nome é similar)
-          const sameContract = cleanContrato && existingContrato && 
-            existingContrato.toLowerCase() === cleanContrato.toLowerCase();
+          // Critérios para considerar a MESMA LOJA MANTIDA (preserva o mesmo ID e todo o histórico):
+          // a) Contratos normalizados idênticos (se ambos preenchidos)
+          const sameContract = !!(normContrato && existingNormContrato && normContrato === existingNormContrato);
           
-          const sameNameAndNoContract = !cleanContrato && !existingContrato && 
-            existingStore.name.toLowerCase() === cleanName.toLowerCase();
+          // b) Nomes idênticos ou compatíveis (um contém o outro)
+          const namesMatch = !!(normName && existingNormName && (
+            normName === existingNormName ||
+            normName.includes(existingNormName) ||
+            existingNormName.includes(normName)
+          ));
 
-          if (sameContract || sameNameAndNoContract) {
-            // Caso 1: Mesma loja e mesmo contrato mantidos!
+          // c) Um dos contratos (ou ambos) está vazio, mas o nome é compatível ou não há conflito
+          const contractEmptyAndNamesMatch = (!normContrato || !existingNormContrato) && 
+            (namesMatch || !normName || !existingNormName);
+
+          // d) Mesmo que o número do contrato tenha mudado (ex.: renovação/aditivo), se o nome da loja é o mesmo, é o mesmo lojista
+          const sameStoreEvenIfContractChanged = namesMatch;
+
+          const isSameStore = sameContract || contractEmptyAndNamesMatch || sameStoreEvenIfContractChanged;
+
+          if (isSameStore) {
+            // Caso 1: Mesma loja e mesmo lojista mantidos! Preserva o ID original intacto!
             const updatedStore = { ...existingStore };
             if (cleanName) updatedStore.name = cleanName;
             if (cleanContrato) updatedStore.contrato = cleanContrato;
@@ -554,7 +618,7 @@ export class StoreService {
             processedStoreIds.add(updatedStore.id);
             result.maintainedCount++;
           } else {
-            // Caso 2: SUBSTITUIÇÃO! Mesmo LUC, mas NOVO CONTRATO / NOVO LOJISTA!
+            // Caso 2: SUBSTITUIÇÃO REAL! Mesmo LUC, mas NOVO CONTRATO E NOVO LOJISTA!
             // Ex: Burger King contrato 333 -> Madero contrato 444
             // A loja antiga é INATIVADA com histórico 100% preservado pelo seu ID
             const deactivatedOldStore: Store = {
@@ -589,22 +653,24 @@ export class StoreService {
           }
         } else {
           // 2. Não há loja ativa neste LUC.
-          // Verifica se já existia uma loja inativa com esse exato LUC e CONTRATO para reativar
+          // Verifica se já existia uma loja inativa com esse exato LUC para reativar
           const existingInactiveIndex = list.findIndex(s => 
             s.active === false && 
-            s.luc.toLowerCase() === cleanLuc.toLowerCase() &&
+            normalizeLuc(s.luc) === normLuc &&
             (
-              (cleanContrato && s.contrato && s.contrato.toLowerCase() === cleanContrato.toLowerCase()) ||
-              (!cleanContrato && (!s.contrato || s.name.toLowerCase() === cleanName.toLowerCase()))
+              (normContrato && normalizeContract(s.contrato || '') === normContrato) ||
+              (!normContrato && (!s.contrato || normalizeStoreName(s.name) === normName || !normName)) ||
+              (normalizeStoreName(s.name) === normName)
             )
           );
 
           if (existingInactiveIndex > -1) {
-            // Reativa a loja existente
+            // Reativa a loja existente preservando seu ID original
             const reactivatedStore: Store = {
               ...list[existingInactiveIndex],
               active: true,
               name: cleanName || list[existingInactiveIndex].name,
+              contrato: cleanContrato || list[existingInactiveIndex].contrato,
               deactivatedAt: undefined,
               deactivationReason: undefined
             };
@@ -638,7 +704,7 @@ export class StoreService {
       if (inactivateMissing) {
         list = list.map(store => {
           const usesUtil = type === 'luz' ? store.usesLuz : (type === 'agua' ? store.usesAgua : store.usesGas);
-          if (store.active !== false && usesUtil && !importedLucSet.has(store.luc.toLowerCase())) {
+          if (store.active !== false && usesUtil && !importedLucSet.has(normalizeLuc(store.luc))) {
             result.inactivatedMissing.push({
               luc: store.luc,
               name: store.name,

@@ -2,7 +2,7 @@ import { Component, ElementRef, ViewChild, afterNextRender, inject, signal, effe
 import { CommonModule, CurrencyPipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import * as d3 from 'd3';
-import { StoreService } from '../services/store.service';
+import { StoreService, normalizeLuc, normalizeContract, normalizeStoreName } from '../services/store.service';
 import { HistoryService, BillData } from '../services/history.service';
 
 import { UtilityType } from '../models';
@@ -462,9 +462,33 @@ export class DashboardComponent {
      if (!bill || !bill.readings) return [];
 
      return stores.map(store => {
-         const r: any = bill.readings[store.id];
+         let r: any = bill.readings[store.id];
+         if (!r) {
+           const nLuc = normalizeLuc(store.luc);
+           const nContr = normalizeContract(store.contrato);
+           const nName = normalizeStoreName(store.name);
+
+           for (const [rid, readVal] of Object.entries(bill.readings)) {
+             const rObj = readVal as any;
+             if (rObj && typeof rObj === 'object') {
+               if (nLuc && normalizeLuc(rObj.luc) === nLuc) { r = rObj; break; }
+               if (nContr && normalizeContract(rObj.contrato) === nContr) { r = rObj; break; }
+               if (nName && normalizeStoreName(rObj.storeName) === nName) { r = rObj; break; }
+             }
+             const matchStore = stores.find(s => s.id === rid);
+             if (matchStore) {
+               if (nLuc && normalizeLuc(matchStore.luc) === nLuc) { r = readVal; break; }
+               if (nContr && normalizeContract(matchStore.contrato) === nContr) { r = readVal; break; }
+               if (nName && normalizeStoreName(matchStore.name) === nName) { r = readVal; break; }
+             }
+           }
+         }
          let cons = 0;
-         if (r && typeof r === 'object' && r.calculatedConsumption) cons = r.calculatedConsumption;
+         if (r && typeof r === 'object') {
+           cons = r.calculatedConsumption ?? r.consumption ?? 0;
+         } else if (typeof r === 'number') {
+           cons = r;
+         }
          
          return {
             name: store.name,

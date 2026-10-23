@@ -1,7 +1,7 @@
 import { Component, inject, signal, computed, effect, untracked, OnDestroy, HostListener } from '@angular/core';
 import { CommonModule, DecimalPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { StoreService } from '../services/store.service';
+import { StoreService, normalizeLuc, normalizeContract, normalizeStoreName } from '../services/store.service';
 import { HistoryService } from '../services/history.service';
 import { AuthService } from '../services/auth.service';
 import { ReportExportService } from '../services/report-export.service';
@@ -3315,8 +3315,15 @@ export class BillCalculatorComponent implements OnDestroy {
     gas: new Map()
   });
 
-  // Stores Previous Month Data for Calculations
-  previousReadings = signal<Map<string, { reading: number, consumption: number, cost?: number, month?: string }>>(new Map());
+  // Stores Previous Month Data for Calculations (Reativo e automático via HistoryService)
+  previousReadings = computed(() => {
+    const type = this.utilityType();
+    const month = this.selectedMonth();
+    this.historyService.bills();
+    this.storeService.stores();
+    this.storeService.monthlyStoreLists();
+    return this.historyService.getLastValidReadings(type, month);
+  });
 
   // Excel Import State
   showExcelImportModal = signal<boolean>(false);
@@ -3610,6 +3617,9 @@ export class BillCalculatorComponent implements OnDestroy {
 
       readingsToSave[row.storeId] = {
         ...original,
+        luc: row.luc,
+        contrato: row.contrato,
+        storeName: row.storeName,
         rawConsumption: row.rawConsumption,
         gasFactor: row.gasFactor,
         calculatedConsumption: row.consumption,
@@ -3820,9 +3830,8 @@ export class BillCalculatorComponent implements OnDestroy {
       this.meterPhotos.set({});
     });
 
-    // 2. Carrega Leituras Anteriores com busca retroativa inteligente pelo último valor válido caso a loja estivesse desativada
-    const prevMap: Map<string, { reading: number; consumption: number; cost?: number; month: string }> = this.historyService.getLastValidReadings(type, month);
-    this.previousReadings.set(prevMap);
+    // 2. Leituras Anteriores são computadas reativamente via computed signal previousReadings
+    const prevMap = this.previousReadings();
 
     // Carrega fotos do mês anterior (e fotos dos meses retroativos das lojas desativadas) para comparação visual
     this.indexedDb.getMeterPhotosForMonth(type, prevMonth).then(async prevPhotos => {
@@ -4010,8 +4019,24 @@ export class BillCalculatorComponent implements OnDestroy {
       const hist = map.get(store.id);
       let isPrevZero = false;
 
-      if (prevBill && prevBill.readings && prevBill.readings[store.id] !== undefined) {
-        const r = prevBill.readings[store.id];
+      let r: any = undefined;
+      if (prevBill && prevBill.readings) {
+        if (prevBill.readings[store.id] !== undefined) {
+          r = prevBill.readings[store.id];
+        } else if (store.luc) {
+          const normLuc = normalizeLuc(store.luc);
+          const normContrato = store.contrato ? normalizeContract(store.contrato) : '';
+          const allStores = this.storeService.stores();
+          const matchStore = allStores.find(s => s.id !== store.id && (
+            (s.luc && normalizeLuc(s.luc) === normLuc) ||
+            (normContrato && s.contrato && normalizeContract(s.contrato) === normContrato)
+          ));
+          if (matchStore && prevBill.readings[matchStore.id] !== undefined) {
+            r = prevBill.readings[matchStore.id];
+          }
+        }
+      }
+      if (r !== undefined) {
         const pCons = typeof r === 'object' && r !== null ? ((r as any).calculatedConsumption ?? (r as any).consumption ?? 0) : (typeof r === 'number' ? r : 0);
         isPrevZero = pCons === 0;
       }
@@ -4089,7 +4114,16 @@ export class BillCalculatorComponent implements OnDestroy {
 
       const storeMap = readingsStore[type] as Map<string, StoreReading>;
       const data = storeMap.get(store.id) || this.createDefaultReading();
-      const prevData = prevReadings.get(store.id) || { reading: 0, consumption: 0 };
+      const normLuc = store.luc ? normalizeLuc(store.luc) : '';
+      const normContrato = store.contrato ? normalizeContract(store.contrato) : '';
+      const normName = store.name ? normalizeStoreName(store.name) : '';
+      const prevData = prevReadings.get(store.id) 
+        || (normLuc && normContrato ? prevReadings.get(`luc_contrato:${normLuc}_${normContrato}`) : undefined)
+        || (normLuc && normName ? prevReadings.get(`luc_name:${normLuc}_${normName}`) : undefined)
+        || (normLuc ? prevReadings.get(`luc:${normLuc}`) : undefined) 
+        || (normContrato ? prevReadings.get(`contrato:${normContrato}`) : undefined)
+        || (normName ? prevReadings.get(`name:${normName}`) : undefined)
+        || { reading: 0, consumption: 0 };
 
       currentReading = data.reading;
       prevReading = prevData.reading;

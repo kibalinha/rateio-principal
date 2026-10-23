@@ -1,7 +1,7 @@
 import { Component, ElementRef, ViewChild, afterNextRender, inject, signal, effect, computed, untracked } from '@angular/core';
 import { CommonModule, CurrencyPipe, DecimalPipe } from '@angular/common';
 import * as d3 from 'd3';
-import { StoreService } from '../services/store.service';
+import { StoreService, normalizeLuc, normalizeContract, normalizeStoreName } from '../services/store.service';
 import { HistoryService } from '../services/history.service';
 import { ReportExportService } from '../services/report-export.service';
 import { IndexedDbService } from '../services/indexed-db.service';
@@ -875,8 +875,20 @@ export class StoreReportComponent {
       // 1. Helper to extract store consumption in any given month
       const getStoreConsumption = (p: string): number | null => {
         const bill = allData[`${utility}_${p}`];
-        if (!bill || !bill.readings || bill.readings[store.id] === undefined) return null;
-        const r: any = bill.readings[store.id];
+        if (!bill || !bill.readings) return null;
+        let r: any = bill.readings[store.id];
+        if (r === undefined && (store.luc || store.contrato)) {
+          const normLuc = store.luc ? normalizeLuc(store.luc) : '';
+          const normContrato = store.contrato ? normalizeContract(store.contrato) : '';
+          const matchStore = stores.find(s => s.id !== store.id && (
+            (normLuc && s.luc && normalizeLuc(s.luc) === normLuc) ||
+            (normContrato && s.contrato && normalizeContract(s.contrato) === normContrato)
+          ));
+          if (matchStore && bill.readings[matchStore.id] !== undefined) {
+            r = bill.readings[matchStore.id];
+          }
+        }
+        if (r === undefined) return null;
         if (typeof r === 'object' && r !== null) {
           return r.calculatedConsumption ?? r.consumption ?? 0;
         }
@@ -1177,8 +1189,20 @@ export class StoreReportComponent {
 
       // 4. Store specific consumption
       let storeConsumption = 0;
-      if (bill.readings && bill.readings[store.id]) {
-        const r: any = bill.readings[store.id];
+      let r: any = bill.readings ? bill.readings[store.id] : undefined;
+      if (r === undefined && (store.luc || store.contrato) && bill.readings) {
+        const normLuc = store.luc ? normalizeLuc(store.luc) : '';
+        const normContrato = store.contrato ? normalizeContract(store.contrato) : '';
+        const allStores = this.storeService.stores();
+        const matchStore = allStores.find(s => s.id !== store.id && (
+          (normLuc && s.luc && normalizeLuc(s.luc) === normLuc) ||
+          (normContrato && s.contrato && normalizeContract(s.contrato) === normContrato)
+        ));
+        if (matchStore && bill.readings[matchStore.id] !== undefined) {
+          r = bill.readings[matchStore.id];
+        }
+      }
+      if (r) {
         if (typeof r === 'object') {
           storeConsumption = r.calculatedConsumption ?? r.consumption ?? 0;
         } else if (typeof r === 'number') {

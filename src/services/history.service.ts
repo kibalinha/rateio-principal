@@ -2,7 +2,8 @@ import { Injectable, inject, signal, computed } from '@angular/core';
 import { IndexedDbService } from './indexed-db.service';
 import { SupabaseService } from './supabase.service';
 
-import { StoreReading, BillData } from '../models';
+import { StoreReading, BillData, Store } from '../models';
+import { StoreService, normalizeLuc, normalizeContract, normalizeStoreName } from './store.service';
 
 export type { StoreReading, BillData };
 
@@ -26,6 +27,29 @@ export class HistoryService {
       return {} as any;
     }
   })();
+  readonly storeService: StoreService = (() => {
+    try {
+      return inject(StoreService);
+    } catch {
+      return {} as any;
+    }
+  })();
+
+  private getAllStoresFallback(): Store[] {
+    try {
+      if (this.storeService && typeof this.storeService.stores === 'function') {
+        const s = this.storeService.stores();
+        if (s && s.length > 0) return s;
+      }
+    } catch {}
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('shop_rateio_stores_data');
+        if (raw) return JSON.parse(raw);
+      } catch {}
+    }
+    return [];
+  }
 
   private billsSignal = signal<Record<string, BillData>>(this.getStorage());
   readonly bills = computed(() => this.billsSignal());
@@ -204,6 +228,48 @@ export class HistoryService {
     const allData = this.billsSignal();
     const result = new Map<string, { reading: number; consumption: number; cost?: number; month: string }>();
 
+    // Mapeamentos multidimensionais de lojas para permitir busca e fallback por ID, LUC, Contrato e Nome
+    const allStores = this.getAllStoresFallback();
+    const idToLuc = new Map<string, string>();
+    const idToContrato = new Map<string, string>();
+    const idToName = new Map<string, string>();
+    const lucToIds = new Map<string, string[]>();
+    const contratoToIds = new Map<string, string[]>();
+    const nameToIds = new Map<string, string[]>();
+    const lucContratoToIds = new Map<string, string[]>();
+
+    for (const s of allStores) {
+      if (!s.id) continue;
+      const normLuc = s.luc ? normalizeLuc(s.luc) : '';
+      const normContrato = s.contrato ? normalizeContract(s.contrato) : '';
+      const normName = s.name ? normalizeStoreName(s.name) : '';
+
+      if (normLuc) {
+        idToLuc.set(s.id, normLuc);
+        const existing = lucToIds.get(normLuc) || [];
+        existing.push(s.id);
+        lucToIds.set(normLuc, existing);
+      }
+      if (normContrato) {
+        idToContrato.set(s.id, normContrato);
+        const existing = contratoToIds.get(normContrato) || [];
+        existing.push(s.id);
+        contratoToIds.set(normContrato, existing);
+      }
+      if (normName) {
+        idToName.set(s.id, normName);
+        const existing = nameToIds.get(normName) || [];
+        existing.push(s.id);
+        nameToIds.set(normName, existing);
+      }
+      if (normLuc && normContrato) {
+        const key = `${normLuc}_${normContrato}`;
+        const existing = lucContratoToIds.get(key) || [];
+        existing.push(s.id);
+        lucContratoToIds.set(key, existing);
+      }
+    }
+
     // 1. Identifica todos os meses passados que possuem faturas salvas desta utilidade e que sejam anteriores a currentMonth
     const pastMonths: string[] = [];
     const prefix = `${type}_`;
@@ -226,7 +292,7 @@ export class HistoryService {
       }
     }
 
-    // Ordena os meses do mais recente para o mais antigo (ex.: 2026-03, 2026-02, 2026-01...)
+    // Ordena os meses do mais recente para o mais antigo (ex.: 2026-10, 2026-09, 2026-08...)
     pastMonths.sort().reverse();
 
     // 2. Itera pelos meses passados mais recentes primeiro
@@ -248,7 +314,7 @@ export class HistoryService {
       for (const [storeId, r] of Object.entries(bill.readings)) {
         // Se já encontramos uma leitura válida (> 0) em um mês mais recente para esta loja, mantém ela
         const existing = result.get(storeId);
-        if (existing && existing.reading > 0) {
+        if (existing && (existing.reading > 0 || existing.consumption > 0)) {
           continue;
         }
 
@@ -271,11 +337,92 @@ export class HistoryService {
           cost = consumption * unitPrice;
         }
 
-        if (reading > 0) {
-          result.set(storeId, { reading, consumption, cost, month: m });
+        // Recupera metadados salvos na própria leitura ou mapeados pelo ID
+        const storeLuc = (r && typeof r === 'object') ? ((r as any).luc || (r as any).storeLuc) : undefined;
+        const normLuc = storeLuc ? normalizeLuc(storeLuc) : (idToLuc.get(storeId) || '');
+        const storeContrato = (r && typeof r === 'object') ? (r as any).contrato : undefined;
+        const normContrato = storeContrato ? normalizeContract(storeContrato) : (idToContrato.get(storeId) || '');
+        const storeName = (r && typeof r === 'object') ? ((r as any).storeName || (r as any).name) : undefined;
+        const normName = storeName ? normalizeStoreName(storeName) : (idToName.get(storeId) || '');
+
+        const hasValidData = reading > 0 || consumption > 0 || cost > 0;
+        if (hasValidData) {
+          const entry = { reading, consumption, cost, month: m };
+          result.set(storeId, entry);
+
+          if (normLuc) {
+            if (!result.has(`luc:${normLuc}`)) {
+              result.set(`luc:${normLuc}`, entry);
+            }
+            const peerIds = lucToIds.get(normLuc) || [];
+            for (const peerId of peerIds) {
+              const peerExisting = result.get(peerId);
+              if (!peerExisting || (peerExisting.reading === 0 && reading > 0)) {
+                result.set(peerId, entry);
+              }
+            }
+          }
+          if (normContrato) {
+            if (!result.has(`contrato:${normContrato}`)) {
+              result.set(`contrato:${normContrato}`, entry);
+            }
+            const peerIds = contratoToIds.get(normContrato) || [];
+            for (const peerId of peerIds) {
+              const peerExisting = result.get(peerId);
+              if (!peerExisting || (peerExisting.reading === 0 && reading > 0)) {
+                result.set(peerId, entry);
+              }
+            }
+          }
+          if (normName) {
+            if (!result.has(`name:${normName}`)) {
+              result.set(`name:${normName}`, entry);
+            }
+          }
+          if (normLuc && normContrato) {
+            const key = `luc_contrato:${normLuc}_${normContrato}`;
+            if (!result.has(key)) {
+              result.set(key, entry);
+            }
+            const peerIds = lucContratoToIds.get(`${normLuc}_${normContrato}`) || [];
+            for (const peerId of peerIds) {
+              const peerExisting = result.get(peerId);
+              if (!peerExisting || (peerExisting.reading === 0 && reading > 0)) {
+                result.set(peerId, entry);
+              }
+            }
+          }
+          if (normLuc && normName) {
+            const key = `luc_name:${normLuc}_${normName}`;
+            if (!result.has(key)) {
+              result.set(key, entry);
+            }
+          }
         } else if (!existing) {
           // Registra provisoriamente 0 com o mês mais recente caso nenhum mês anterior tenha leitura
           result.set(storeId, { reading: 0, consumption: 0, cost: 0, month: m });
+        }
+      }
+    }
+
+    // 3. Passagem de reconciliação final para lojas que ainda não tenham leitura associada
+    for (const s of allStores) {
+      if (!s.id) continue;
+      const cur = result.get(s.id);
+      if (!cur || cur.reading === 0) {
+        const normLuc = s.luc ? normalizeLuc(s.luc) : '';
+        const normContrato = s.contrato ? normalizeContract(s.contrato) : '';
+        const normName = s.name ? normalizeStoreName(s.name) : '';
+
+        const matchedEntry = 
+          (normLuc && normContrato ? result.get(`luc_contrato:${normLuc}_${normContrato}`) : undefined) ||
+          (normLuc && normName ? result.get(`luc_name:${normLuc}_${normName}`) : undefined) ||
+          (normLuc ? result.get(`luc:${normLuc}`) : undefined) ||
+          (normContrato ? result.get(`contrato:${normContrato}`) : undefined) ||
+          (normName ? result.get(`name:${normName}`) : undefined);
+
+        if (matchedEntry && (matchedEntry.reading > 0 || matchedEntry.consumption > 0 || (matchedEntry.cost || 0) > 0)) {
+          result.set(s.id, matchedEntry);
         }
       }
     }

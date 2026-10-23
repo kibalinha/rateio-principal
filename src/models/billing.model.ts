@@ -25,6 +25,11 @@ export type StoreReading = {
   isRollover?: boolean;       // Marcado como virada física de medidor (9999 -> 0000)
   meterNumber?: string;       // Número de identificação/série do relógio
   excludedFromBill?: boolean; // Se marcado, a loja é desconsiderada do rateio / valor final
+
+  // Metadados da Loja para reconciliação entre meses
+  luc?: string;
+  contrato?: string;
+  storeName?: string;
 };
 
 export interface BillData {

@@ -240,4 +240,29 @@ describe('StoreService - Monthly Store Isolation & Consultation', () => {
     // 6. O Catálogo Geral de lojas continua INTACTO (as lojas não são deletadas do sistema global)
     expect(service.stores().length).toBeGreaterThanOrEqual(3);
   });
+
+  it('deve manter a mesma loja mesmo se as colunas vierem invertidas (LUC, Nome, Contrato) ou com zeros à esquerda', () => {
+    // 1. Cadastra Zara com contrato 010423
+    service.processMonthlyStoreImport([
+      { luc: 'L-101', contrato: '010423', name: 'Zara Moda' }
+    ], 'luz', '2026-10', false);
+
+    const octStores = service.getStoresForMonth('luz', '2026-10');
+    const octId = octStores[0].id;
+
+    // 2. No mês seguinte, o lojista importa com colunas trocadas (Nome no Contrato, Contrato no Nome) e sem zeros
+    const result = service.processMonthlyStoreImport([
+      { luc: '101', contrato: 'Zara Moda', name: '10423' }
+    ], 'luz', '2026-11', false);
+
+    expect(result.maintainedCount).toBe(1);
+    expect(result.replacements.length).toBe(0);
+
+    const novStores = service.getStoresForMonth('luz', '2026-11');
+    expect(novStores.length).toBe(1);
+    // Preservou o ID original!
+    expect(novStores[0].id).toBe(octId);
+    expect(novStores[0].name).toBe('Zara Moda');
+  });
 });
+

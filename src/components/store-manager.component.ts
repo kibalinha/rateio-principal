@@ -1092,6 +1092,10 @@ export class StoreManagerComponent {
     const rows = text.split(/\r?\n/);
     const parsed: ParsedStoreRow[] = [];
 
+    let headerLucIdx = -1;
+    let headerNameIdx = -1;
+    let headerContratoIdx = -1;
+
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i].trim();
       if (!row) continue;
@@ -1109,32 +1113,72 @@ export class StoreManagerComponent {
 
       const cleanParts = parts.map(p => p.trim());
 
-      const lower0 = cleanParts[0]?.toLowerCase() || '';
-      const lower1 = cleanParts[1]?.toLowerCase() || '';
-      const lower2 = cleanParts[2]?.toLowerCase() || '';
+      // Detecção dinâmica de cabeçalho
+      const isHeaderRow = cleanParts.some(p => {
+        const lp = p.toLowerCase();
+        return lp.includes('luc') || lp.includes('código') || lp.includes('codigo') || 
+               lp.includes('contrato') || lp.includes('nome') || lp.includes('loja') || 
+               lp.includes('fantasia') || lp.includes('razão') || lp.includes('razao');
+      });
 
-      const isHeader = (
-        lower0.includes('luc') || lower0.includes('código') || lower0.includes('codigo')
-      ) && (
-        lower1.includes('contrato') || lower1.includes('nome') || lower2.includes('nome')
-      );
+      if (isHeaderRow && headerLucIdx === -1) {
+        cleanParts.forEach((p, idx) => {
+          const lp = p.toLowerCase();
+          if (lp.includes('luc') || lp.includes('código') || lp.includes('codigo') || lp.includes('unidade') || lp.includes('sala')) {
+            headerLucIdx = idx;
+          } else if (lp.includes('contrato') || lp.includes('contr')) {
+            headerContratoIdx = idx;
+          } else if (lp.includes('nome') || lp.includes('loja') || lp.includes('fantasia') || lp.includes('razão') || lp.includes('razao') || lp.includes('descrição')) {
+            headerNameIdx = idx;
+          }
+        });
+        continue;
+      }
 
-      if (isHeader) continue;
+      let luc = '';
+      let contrato = '';
+      let name = '';
 
-      if (cleanParts.length >= 3) {
-        const luc = cleanParts[0];
-        const contrato = cleanParts[1];
-        const name = cleanParts.slice(2).join(' ').trim();
+      if (headerLucIdx !== -1 && headerNameIdx !== -1) {
+        // Colunas identificadas pelo cabeçalho
+        luc = cleanParts[headerLucIdx] || '';
+        name = cleanParts[headerNameIdx] || '';
+        contrato = headerContratoIdx !== -1 ? (cleanParts[headerContratoIdx] || '') : '';
+      } else if (cleanParts.length >= 3) {
+        luc = cleanParts[0];
+        const p1 = cleanParts[1];
+        const p2 = cleanParts.slice(2).join(' ').trim();
 
-        if (luc && name) {
-          parsed.push({ luc, contrato, name });
+        const p1IsNumericCode = /^[0-9\-\.\/]{2,15}$/.test(p1);
+        const p2IsNumericCode = /^[0-9\-\.\/]{2,15}$/.test(p2);
+        const p1HasWords = /[a-zA-ZÀ-ÿ]{3,}/.test(p1);
+        const p2HasWords = /[a-zA-ZÀ-ÿ]{3,}/.test(p2);
+
+        if (p1IsNumericCode && p2HasWords) {
+          // Formato: LUC | CONTRATO | NOME
+          contrato = p1;
+          name = p2;
+        } else if (p1HasWords && p2IsNumericCode) {
+          // Formato: LUC | NOME | CONTRATO
+          name = p1;
+          contrato = p2;
+        } else if (p1HasWords) {
+          // P1 tem palavras -> mais provável ser nome
+          name = p1;
+          contrato = p2;
+        } else {
+          // Padrão do sistema: LUC | CONTRATO | NOME
+          contrato = p1;
+          name = p2;
         }
       } else if (cleanParts.length === 2) {
-        const luc = cleanParts[0];
-        const name = cleanParts[1];
-        if (luc && name) {
-          parsed.push({ luc, contrato: '', name });
-        }
+        luc = cleanParts[0];
+        name = cleanParts[1];
+        contrato = '';
+      }
+
+      if (luc && name) {
+        parsed.push({ luc, contrato, name });
       }
     }
     

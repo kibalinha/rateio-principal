@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import * as XLSX from 'xlsx';
 
 import { Store, UtilityType, ExcelImportRowPreview } from '../models';
+import { normalizeLuc, normalizeContract, normalizeStoreName } from '../services/store.service';
 
 export interface ExcelImportSuccessEvent {
   updatedReadings: Array<{
@@ -374,7 +375,35 @@ export class ExcelImportModalComponent {
         return false;
       });
 
-      const prevData = matchedStore ? prevReadings.get(matchedStore.id) : null;
+      let prevData = matchedStore ? prevReadings.get(matchedStore.id) : null;
+      if (!prevData && matchedStore) {
+        const nLuc = normalizeLuc(matchedStore.luc);
+        const nContr = normalizeContract(matchedStore.contrato);
+        const nName = normalizeStoreName(matchedStore.name);
+        if (nLuc && nContr && prevReadings.has(`luc_contrato:${nLuc}_${nContr}`)) {
+          prevData = prevReadings.get(`luc_contrato:${nLuc}_${nContr}`)!;
+        } else if (nLuc && nName && prevReadings.has(`luc_name:${nLuc}_${nName}`)) {
+          prevData = prevReadings.get(`luc_name:${nLuc}_${nName}`)!;
+        } else if (nLuc && prevReadings.has(`luc:${nLuc}`)) {
+          prevData = prevReadings.get(`luc:${nLuc}`)!;
+        } else if (nContr && prevReadings.has(`contrato:${nContr}`)) {
+          prevData = prevReadings.get(`contrato:${nContr}`)!;
+        } else if (nName && prevReadings.has(`name:${nName}`)) {
+          prevData = prevReadings.get(`name:${nName}`)!;
+        }
+      }
+      if (!prevData && normVal) {
+        const nLuc = normalizeLuc(rawLucVal);
+        const nContr = normalizeContract(rawLucVal);
+        const nName = normalizeStoreName(rawLucVal);
+        if (nLuc && prevReadings.has(`luc:${nLuc}`)) {
+          prevData = prevReadings.get(`luc:${nLuc}`)!;
+        } else if (nContr && prevReadings.has(`contrato:${nContr}`)) {
+          prevData = prevReadings.get(`contrato:${nContr}`)!;
+        } else if (nName && prevReadings.has(`name:${nName}`)) {
+          prevData = prevReadings.get(`name:${nName}`)!;
+        }
+      }
       const prevReading = prevData ? prevData.reading : 0;
       const diff = reading > prevReading ? (reading - prevReading) : 0;
 
@@ -458,7 +487,16 @@ export class ExcelImportModalComponent {
     const month = this.selectedMonth;
 
     const rows = stores.map(s => {
-      const p = prevReadings.get(s.id) || { reading: 0, consumption: 0 };
+      const nLuc = normalizeLuc(s.luc);
+      const nContr = normalizeContract(s.contrato);
+      const nName = normalizeStoreName(s.name);
+      const p = prevReadings.get(s.id) 
+        || (nLuc && nContr ? prevReadings.get(`luc_contrato:${nLuc}_${nContr}`) : undefined)
+        || (nLuc && nName ? prevReadings.get(`luc_name:${nLuc}_${nName}`) : undefined)
+        || (nLuc ? prevReadings.get(`luc:${nLuc}`) : undefined)
+        || (nContr ? prevReadings.get(`contrato:${nContr}`) : undefined)
+        || (nName ? prevReadings.get(`name:${nName}`) : undefined)
+        || { reading: 0, consumption: 0 };
       const item: Record<string, any> = {
         'LUC': s.luc,
         'Nome da Loja': s.name,
