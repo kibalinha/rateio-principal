@@ -537,15 +537,25 @@ FOR ALL USING (bucket_id = 'meter-photos') WITH CHECK (bucket_id = 'meter-photos
   async fetchMeterPhotos(type: string, month: string): Promise<Record<string, MeterPhotoRecord>> {
     try {
       const client = this.getClient();
-      const { data, error } = await client.from('meter_photos')
-        .select('*')
-        .eq('type', type)
-        .eq('month', month);
+      let allRows: any[] = [];
+      let from = 0;
+      const pageSize = 1000;
 
-      if (error || !data) return {};
+      while (true) {
+        const { data, error } = await client.from('meter_photos')
+          .select('*')
+          .eq('type', type)
+          .eq('month', month)
+          .range(from, from + pageSize - 1);
+
+        if (error || !data || data.length === 0) break;
+        allRows = allRows.concat(data);
+        if (data.length < pageSize) break;
+        from += pageSize;
+      }
 
       const map: Record<string, MeterPhotoRecord> = {};
-      for (const row of data) {
+      for (const row of allRows) {
         map[row.store_id] = {
           id: row.id,
           type: row.type,
