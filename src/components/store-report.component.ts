@@ -877,15 +877,23 @@ export class StoreReportComponent {
         const bill = allData[`${utility}_${p}`];
         if (!bill || !bill.readings) return null;
         let r: any = bill.readings[store.id];
-        if (r === undefined && (store.luc || store.contrato)) {
+        if (r === undefined && (store.luc || store.contrato || store.name)) {
           const normLuc = store.luc ? normalizeLuc(store.luc) : '';
           const normContrato = store.contrato ? normalizeContract(store.contrato) : '';
-          const matchStore = stores.find(s => s.id !== store.id && (
+          const normName = store.name ? normalizeStoreName(store.name) : '';
+          const matchStore = stores.find(s => s.id !== store.id && bill.readings[s.id] !== undefined && (
             (normLuc && s.luc && normalizeLuc(s.luc) === normLuc) ||
-            (normContrato && s.contrato && normalizeContract(s.contrato) === normContrato)
+            (normContrato && s.contrato && normalizeContract(s.contrato) === normContrato) ||
+            (normName && s.name && normalizeStoreName(s.name) === normName)
           ));
-          if (matchStore && bill.readings[matchStore.id] !== undefined) {
+          if (matchStore) {
             r = bill.readings[matchStore.id];
+          } else {
+            r = Object.values(bill.readings).find((rd: any) => rd && typeof rd === 'object' && (
+              (normLuc && rd.luc && normalizeLuc(rd.luc) === normLuc) ||
+              (normContrato && rd.contrato && normalizeContract(rd.contrato) === normContrato) ||
+              (normName && rd.storeName && normalizeStoreName(rd.storeName) === normName)
+            ));
           }
         }
         if (r === undefined) return null;
@@ -1190,16 +1198,24 @@ export class StoreReportComponent {
       // 4. Store specific consumption
       let storeConsumption = 0;
       let r: any = bill.readings ? bill.readings[store.id] : undefined;
-      if (r === undefined && (store.luc || store.contrato) && bill.readings) {
+      if (r === undefined && (store.luc || store.contrato || store.name) && bill.readings) {
         const normLuc = store.luc ? normalizeLuc(store.luc) : '';
         const normContrato = store.contrato ? normalizeContract(store.contrato) : '';
+        const normName = store.name ? normalizeStoreName(store.name) : '';
         const allStores = this.storeService.stores();
-        const matchStore = allStores.find(s => s.id !== store.id && (
+        const matchStore = allStores.find(s => s.id !== store.id && bill.readings[s.id] !== undefined && (
           (normLuc && s.luc && normalizeLuc(s.luc) === normLuc) ||
-          (normContrato && s.contrato && normalizeContract(s.contrato) === normContrato)
+          (normContrato && s.contrato && normalizeContract(s.contrato) === normContrato) ||
+          (normName && s.name && normalizeStoreName(s.name) === normName)
         ));
-        if (matchStore && bill.readings[matchStore.id] !== undefined) {
+        if (matchStore) {
           r = bill.readings[matchStore.id];
+        } else {
+          r = Object.values(bill.readings).find((rd: any) => rd && typeof rd === 'object' && (
+            (normLuc && rd.luc && normalizeLuc(rd.luc) === normLuc) ||
+            (normContrato && rd.contrato && normalizeContract(rd.contrato) === normContrato) ||
+            (normName && rd.storeName && normalizeStoreName(rd.storeName) === normName)
+          ));
         }
       }
       if (r) {

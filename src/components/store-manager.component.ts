@@ -1113,18 +1113,18 @@ export class StoreManagerComponent {
 
       const cleanParts = parts.map(p => p.trim());
 
-      // Detecção dinâmica de cabeçalho
-      const isHeaderRow = cleanParts.some(p => {
-        const lp = p.toLowerCase();
-        return lp.includes('luc') || lp.includes('código') || lp.includes('codigo') || 
-               lp.includes('contrato') || lp.includes('nome') || lp.includes('loja') || 
-               lp.includes('fantasia') || lp.includes('razão') || lp.includes('razao');
+      // Detecção dinâmica de cabeçalho (somente nas primeiras 3 linhas e com termos específicos de cabeçalho)
+      const isHeaderRow = i < 3 && cleanParts.some(p => {
+        const lp = p.toLowerCase().trim();
+        return lp === 'luc' || lp === 'luc2' || lp === 'código' || lp === 'codigo' || lp === 'unidade' || 
+               lp === 'contrato' || lp === 'nome' || lp === 'loja' || lp === 'razão social' ||
+               lp === 'nome da loja' || lp === 'nome fantasia' || lp === 'fantasia' || lp === 'descrição';
       });
 
       if (isHeaderRow && headerLucIdx === -1) {
         cleanParts.forEach((p, idx) => {
-          const lp = p.toLowerCase();
-          if (lp.includes('luc') || lp.includes('código') || lp.includes('codigo') || lp.includes('unidade') || lp.includes('sala')) {
+          const lp = p.toLowerCase().trim();
+          if (lp === 'luc' || lp === 'luc2' || lp.includes('código') || lp.includes('codigo') || lp.includes('unidade') || lp === 'sala') {
             headerLucIdx = idx;
           } else if (lp.includes('contrato') || lp.includes('contr')) {
             headerContratoIdx = idx;

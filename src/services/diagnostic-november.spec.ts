@@ -500,4 +500,33 @@ describe('Diagnostic: November vs October in Água', () => {
     const row3 = dataRows.find(r => r['LUC'] === '103')!;
     expect(row3['Status da Leitura']).toBe('Pendente');
   });
+
+  it('Diagnostic Test 8: 309 items imported for November Água (including stores like DEP/LUC1011) are fully retained without truncation to 229', () => {
+    // Generate 309 stores mimicking the SAP spreadsheet
+    const items309 = Array.from({ length: 309 }, (_, i) => {
+      const idx = i + 1;
+      let luc = `LUC-${idx}`;
+      if (idx === 233) luc = 'DEP/LUC1011';
+      return {
+        luc,
+        contrato: `20000${String(idx).padStart(3, '0')}`,
+        name: `Loja ${idx} Shopping`
+      };
+    });
+
+    expect(items309.length).toBe(309);
+
+    // Import for November 2026 Água
+    const importRes = storeService.processMonthlyStoreImport(items309, 'agua', '2026-11', false);
+    expect(importRes.maintainedCount + importRes.newCount).toBe(309);
+
+    // Verify all 309 stores are retrieved for November 2026 Água
+    const novAguaStores = storeService.getStoresForMonth('agua', '2026-11', false);
+    expect(novAguaStores.length).toBe(309);
+
+    // Verify store 233 (DEP/LUC1011) was NOT dropped as a header
+    const depStore = novAguaStores.find(s => s.luc === 'DEP/LUC1011');
+    expect(depStore).toBeDefined();
+    expect(depStore?.name).toBe('Loja 233 Shopping');
+  });
 });

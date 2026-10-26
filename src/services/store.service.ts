@@ -169,6 +169,19 @@ export class StoreService {
 
   private async syncWithSupabaseOnStart() {
     await this.refreshStoresFromSupabase();
+    if (typeof this.supabase?.fetchMonthlyStoreLists === 'function') {
+      try {
+        const remoteLists = await this.supabase.fetchMonthlyStoreLists();
+        if (remoteLists && Object.keys(remoteLists).length > 0) {
+          this.monthlyStoreListsSignal.update(curr => ({
+            ...remoteLists,
+            ...curr
+          }));
+        }
+      } catch (err) {
+        console.warn('Erro ao carregar listas mensais do Supabase:', err);
+      }
+    }
   }
 
   private loadInitialStores(): Store[] {
@@ -249,6 +262,7 @@ export class StoreService {
       }
     }
     this.indexedDb?.saveMonthlyStoreLists?.(lists);
+    this.supabase?.syncMonthlyStoreLists?.(lists).catch(() => {});
   }
 
   private getHistoryBillsFallback(): Record<string, any> {
@@ -617,6 +631,18 @@ export class StoreService {
             list[existingActiveIndex] = updatedStore;
             processedStoreIds.add(updatedStore.id);
             result.maintainedCount++;
+
+            // Desativa quaisquer registros duplicados remanescentes do mesmo LUC para evitar clones
+            for (let k = 0; k < list.length; k++) {
+              if (k !== existingActiveIndex && list[k].active !== false && normalizeLuc(list[k].luc) === normLuc) {
+                list[k] = {
+                  ...list[k],
+                  active: false,
+                  deactivatedAt: referenceMonth,
+                  deactivationReason: `Registro duplicado unificado com loja principal (${updatedStore.id})`
+                };
+              }
+            }
           } else {
             // Caso 2: SUBSTITUIÇÃO REAL! Mesmo LUC, mas NOVO CONTRATO E NOVO LOJISTA!
             // Ex: Burger King contrato 333 -> Madero contrato 444

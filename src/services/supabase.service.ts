@@ -244,7 +244,7 @@ FOR ALL USING (bucket_id = 'meter-photos') WITH CHECK (bucket_id = 'meter-photos
   }
 
   /**
-   * Sincroniza lista de lojas locais para o Supabase (Upsert)
+   * Sincroniza lista de lojas locais para o Supabase (Upsert em lotes de 500)
    */
   async syncStores(stores: Store[]): Promise<boolean> {
     if (!stores || stores.length === 0) return true;
@@ -265,26 +265,28 @@ FOR ALL USING (bucket_id = 'meter-photos') WITH CHECK (bucket_id = 'meter-photos
         updated_at: new Date().toISOString()
       }));
 
-      const { error } = await client.from('stores').upsert(recordsWithRoute, { onConflict: 'id' });
-      if (error) {
-        if (error.code === 'PGRST205') {
-          this.isTableReady.set(false);
-          return false;
-        }
-        // Fallback transparente se a coluna route_order ainda não foi criada no Supabase
-        if (error.message?.includes('route_order') || error.code === '42703' || error.code === 'PGRST204') {
-          const fallbackRecords = recordsWithRoute.map(({ route_order, ...rest }) => rest);
-          const { error: fallbackErr } = await client.from('stores').upsert(fallbackRecords, { onConflict: 'id' });
-          if (!fallbackErr) {
-            this.isTableReady.set(true);
-            this.isConnected.set(true);
-            this.addLog(`✓ ${stores.length} lojas sincronizadas no Supabase (modo compatível).`);
-            this.lastSyncTimestamp.set(new Date().toISOString());
-            return true;
+      const CHUNK_SIZE = 500;
+      for (let i = 0; i < recordsWithRoute.length; i += CHUNK_SIZE) {
+        const chunk = recordsWithRoute.slice(i, i + CHUNK_SIZE);
+        const { error } = await client.from('stores').upsert(chunk, { onConflict: 'id' });
+        if (error) {
+          if (error.code === 'PGRST205') {
+            this.isTableReady.set(false);
+            return false;
+          }
+          // Fallback transparente se a coluna route_order ainda não foi criada no Supabase
+          if (error.message?.includes('route_order') || error.code === '42703' || error.code === 'PGRST204') {
+            const fallbackRecords = chunk.map(({ route_order, ...rest }) => rest);
+            const { error: fallbackErr } = await client.from('stores').upsert(fallbackRecords, { onConflict: 'id' });
+            if (fallbackErr) {
+              console.error('Erro ao salvar lote de lojas no Supabase:', fallbackErr);
+              return false;
+            }
+          } else {
+            console.error('Erro ao salvar lojas no Supabase:', error);
+            return false;
           }
         }
-        console.error('Erro ao salvar lojas no Supabase:', error);
-        return false;
       }
 
       this.isTableReady.set(true);
@@ -318,21 +320,34 @@ FOR ALL USING (bucket_id = 'meter-photos') WITH CHECK (bucket_id = 'meter-photos
   }
 
   /**
-   * Busca todas as lojas cadastradas no Supabase
+   * Busca todas as lojas cadastradas no Supabase paginando com .range() para evitar truncamento em 1000 registros
    */
   async fetchStores(): Promise<Store[] | null> {
     try {
       const client = this.getClient();
-      const { data, error } = await client.from('stores').select('*').order('luc', { ascending: true });
+      let allRows: any[] = [];
+      let from = 0;
+      const pageSize = 1000;
 
-      if (error) {
-        if (error.code === 'PGRST205') this.isTableReady.set(false);
-        return null;
+      while (true) {
+        const { data, error } = await client
+          .from('stores')
+          .select('*')
+          .order('luc', { ascending: true })
+          .range(from, from + pageSize - 1);
+
+        if (error) {
+          if (error.code === 'PGRST205') this.isTableReady.set(false);
+          return null;
+        }
+
+        if (!data || data.length === 0) break;
+        allRows = allRows.concat(data);
+        if (data.length < pageSize) break;
+        from += pageSize;
       }
 
-      if (!data) return [];
-
-      return data.map((row: any) => ({
+      return allRows.map((row: any) => ({
         id: String(row.id),
         luc: String(row.luc),
         contrato: row.contrato ? String(row.contrato) : undefined,
@@ -557,15 +572,29 @@ FOR ALL USING (bucket_id = 'meter-photos') WITH CHECK (bucket_id = 'meter-photos
   async fetchAllBills(): Promise<Record<string, BillData> | null> {
     try {
       const client = this.getClient();
-      const { data, error } = await client.from('bills').select('*');
-      if (error) {
-        if (error.code === 'PGRST205') this.isTableReady.set(false);
-        return null;
+      let allRows: any[] = [];
+      let from = 0;
+      const pageSize = 1000;
+
+      while (true) {
+        const { data, error } = await client
+          .from('bills')
+          .select('*')
+          .range(from, from + pageSize - 1);
+
+        if (error) {
+          if (error.code === 'PGRST205') this.isTableReady.set(false);
+          return null;
+        }
+
+        if (!data || data.length === 0) break;
+        allRows = allRows.concat(data);
+        if (data.length < pageSize) break;
+        from += pageSize;
       }
-      if (!data) return {};
 
       const map: Record<string, BillData> = {};
-      for (const row of data) {
+      for (const row of allRows) {
         map[row.id] = row.data as BillData;
       }
       return map;
@@ -752,6 +781,46 @@ FOR ALL USING (bucket_id = 'meter-photos') WITH CHECK (bucket_id = 'meter-photos
         .maybeSingle();
       if (error || !data || !data.data) return null;
       return data.data as { groqKey?: string; geminiKey?: string };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Sincroniza as listas de lojas por vigência mensal no Supabase (configuração compartilhada).
+   */
+  async syncMonthlyStoreLists(lists: Record<string, string[]>): Promise<boolean> {
+    try {
+      const client = this.getClient();
+      const { error } = await client.from('bills').upsert({
+        id: '__monthly_store_lists_v1__',
+        type: 'config',
+        month: 'global',
+        data: { lists },
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id' });
+      return !error;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Busca as listas de lojas por vigência mensal armazenadas no Supabase.
+   */
+  async fetchMonthlyStoreLists(): Promise<Record<string, string[]> | null> {
+    try {
+      const client = this.getClient();
+      const { data, error } = await client
+        .from('bills')
+        .select('data')
+        .eq('id', '__monthly_store_lists_v1__')
+        .maybeSingle();
+
+      if (!error && data && data.data && data.data.lists) {
+        return data.data.lists as Record<string, string[]>;
+      }
+      return null;
     } catch {
       return null;
     }
