@@ -93,10 +93,15 @@ export class StoreService {
     if (this.indexedDb?.getMonthlyStoreLists) {
       this.indexedDb.getMonthlyStoreLists().then(idbLists => {
         if (idbLists && Object.keys(idbLists).length > 0) {
-          this.monthlyStoreListsSignal.update(curr => ({
-            ...curr,
-            ...idbLists
-          }));
+          this.monthlyStoreListsSignal.update(curr => {
+            const merged: Record<string, string[]> = { ...curr };
+            for (const [key, list] of Object.entries(idbLists)) {
+              if (!merged[key] || (Array.isArray(list) && list.length > merged[key].length)) {
+                merged[key] = list;
+              }
+            }
+            return merged;
+          });
         }
       }).catch(() => {});
     }
@@ -161,6 +166,28 @@ export class StoreService {
           localStorage.setItem(this.STORAGE_KEY, JSON.stringify(finalStores));
         }
         await this.indexedDb.saveStores(finalStores);
+
+        // Também atualiza listas mensais caso tenham sido modificadas remotamente
+        if (typeof this.supabase?.fetchMonthlyStoreLists === 'function') {
+          const remoteLists = await this.supabase.fetchMonthlyStoreLists();
+          if (remoteLists && Object.keys(remoteLists).length > 0) {
+            this.monthlyStoreListsSignal.update(curr => {
+              const merged: Record<string, string[]> = { ...curr };
+              for (const [key, remoteList] of Object.entries(remoteLists)) {
+                if (!merged[key] || (Array.isArray(remoteList) && remoteList.length >= merged[key].length)) {
+                  merged[key] = remoteList;
+                }
+              }
+              if (typeof localStorage !== 'undefined') {
+                try {
+                  localStorage.setItem(this.MONTHLY_LISTS_STORAGE_KEY, JSON.stringify(merged));
+                } catch {}
+              }
+              this.indexedDb?.saveMonthlyStoreLists?.(merged);
+              return merged;
+            });
+          }
+        }
       }
     } catch (err) {
       console.warn('Sincronização de lojas com Supabase:', err);
@@ -173,10 +200,21 @@ export class StoreService {
       try {
         const remoteLists = await this.supabase.fetchMonthlyStoreLists();
         if (remoteLists && Object.keys(remoteLists).length > 0) {
-          this.monthlyStoreListsSignal.update(curr => ({
-            ...remoteLists,
-            ...curr
-          }));
+          this.monthlyStoreListsSignal.update(curr => {
+            const merged: Record<string, string[]> = { ...curr };
+            for (const [key, remoteList] of Object.entries(remoteLists)) {
+              if (!merged[key] || (Array.isArray(remoteList) && remoteList.length >= merged[key].length)) {
+                merged[key] = remoteList;
+              }
+            }
+            if (typeof localStorage !== 'undefined') {
+              try {
+                localStorage.setItem(this.MONTHLY_LISTS_STORAGE_KEY, JSON.stringify(merged));
+              } catch {}
+            }
+            this.indexedDb?.saveMonthlyStoreLists?.(merged);
+            return merged;
+          });
         }
       } catch (err) {
         console.warn('Erro ao carregar listas mensais do Supabase:', err);
