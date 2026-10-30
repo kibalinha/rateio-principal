@@ -6,6 +6,8 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
   --color-slate-850: #151e2e;
   --color-slate-750: #243247;
   --color-primary: #0f172a;
@@ -18,12 +20,17 @@
 
 /* Base and utilities */
 body { 
-  font-family: 'Inter', sans-serif; 
+  font-family: var(--font-sans); 
   background-color: #f1f5f9;
   overscroll-behavior-y: contain;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
   transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.font-mono, [class*="font-mono"] {
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum" on, "zero" on;
 }
 
 html.dark body {
@@ -85,4 +92,31 @@ html.dark ::-webkit-scrollbar-thumb:hover { background: #475569; }
   top: 0; right: 0; bottom: 0; left: 0;
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
   animation: shimmer 1.8s infinite;
+}
+
+/* AI OCR Laser Scanner Animation */
+@keyframes laserScan {
+  0% { top: 2%; opacity: 0.85; }
+  50% { opacity: 1; }
+  100% { top: 96%; opacity: 0.85; }
+}
+
+.laser-scanner-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent 5%, #38bdf8 30%, #818cf8 50%, #38bdf8 70%, transparent 95%);
+  box-shadow: 0 0 16px 3px rgba(56, 189, 248, 0.85);
+  animation: laserScan 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite alternate;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.laser-scanner-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(56, 189, 248, 0.05) 0%, rgba(99, 102, 241, 0.08) 100%);
+  pointer-events: none;
+  z-index: 10;
 }

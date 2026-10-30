@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm test)",
+      "Bash(npx vitest:*)",
+      "Bash(npx playwright:*)"
+    ],
+    "deny": [
+      "Edit(.env*)",
+      "Write(.env*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "src/services/**",
+        "command": "npm test"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "**/.env*",
+        "command": "powershell -Command \"Write-Error 'Blocked: .env files are protected'; exit 1\""
+      }
+    ]
+  }
+}

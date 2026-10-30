@@ -30,7 +30,14 @@ import { MeterPhotoRecord } from '../models';
                 </p>
               </div>
             </div>
-            <button (click)="onClose()" class="text-slate-400 hover:text-white text-xl font-bold p-1 cursor-pointer">✕</button>
+            <button (click)="onClose()" 
+              aria-label="Fechar modal de evidência fotográfica" 
+              class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 transition-colors font-bold cursor-pointer" 
+              title="Fechar">
+              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
           </div>
 
           <!-- Photo Canvas / Image Display -->
@@ -39,8 +46,18 @@ import { MeterPhotoRecord } from '../models';
                  alt="Foto do Medidor" 
                  class="max-w-full max-h-[58vh] object-contain select-none">
             
+            <!-- AI Laser Scanner Line & Vision Grid overlay during OCR processing -->
+            @if (isReadingOcr === photo.storeId) {
+              <div class="laser-scanner-overlay"></div>
+              <div class="laser-scanner-line"></div>
+              <div class="absolute bottom-3 right-3 bg-indigo-950/90 text-indigo-200 border border-indigo-500/50 px-2.5 py-1 rounded-lg text-[10px] font-mono flex items-center gap-1.5 shadow-lg z-30 animate-pulse">
+                <span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+                <span>Visão Computacional Ativa</span>
+              </div>
+            }
+
             <!-- Badge overlay with verified reading value -->
-            <div class="absolute top-3 left-3 bg-slate-900/85 backdrop-blur-md text-white px-2.5 py-1 rounded-lg text-xs font-mono border border-slate-700 flex items-center gap-1.5 shadow-md">
+            <div class="absolute top-3 left-3 bg-slate-900/85 backdrop-blur-md text-white px-2.5 py-1 rounded-lg text-xs font-mono border border-slate-700 flex items-center gap-1.5 shadow-md z-30">
               <span class="text-teal-400 font-bold">🔢 Leitura:</span>
               <strong class="text-white">{{ photo.readingValue || 0 }}</strong>
             </div>
@@ -74,7 +91,10 @@ import { MeterPhotoRecord } from '../models';
                     }
                   </div>
                 </div>
-                <button (click)="dismissFeedback.emit(photo.storeId)" class="p-1 text-slate-400 hover:text-white font-bold cursor-pointer">✕</button>
+                <button (click)="dismissFeedback.emit(photo.storeId)" 
+                  aria-label="Dispensar aviso de feedback" 
+                  class="p-1 text-slate-400 hover:text-white font-bold cursor-pointer" 
+                  title="Dispensar">✕</button>
               </div>
               @if (fb.success) {
                 <div class="text-[10px] opacity-80 flex items-center justify-between border-t border-white/10 pt-1">

@@ -22,7 +22,7 @@ export class AuthService {
       if (saved && (saved === 'ADM' || saved === 'TEC' || saved === 'VIS')) {
         return saved;
       }
-    } catch {}
+    } catch { }
     return 'ADM';
   }
 
@@ -57,7 +57,7 @@ export class AuthService {
             this.setRole('ADM');
           }
         }
-      }).catch(() => {});
+      }).catch(() => { });
 
       client.auth.onAuthStateChange((_event, session) => {
         const u = session?.user || null;
@@ -96,7 +96,7 @@ export class AuthService {
     this.currentUserRole.set(role);
     try {
       localStorage.setItem('shop_rateio_user_role', role);
-    } catch {}
+    } catch { }
   }
 
   validateAdminPassword(password: string): boolean {
@@ -104,7 +104,7 @@ export class AuthService {
   }
 
   getRoleLabel(role: UserRole) {
-    switch(role) {
+    switch (role) {
       case 'ADM': return 'Administrador';
       case 'TEC': return 'Técnico';
       case 'VIS': return 'Visualizador';

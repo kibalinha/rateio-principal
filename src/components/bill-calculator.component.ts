@@ -74,13 +74,16 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
             <!-- Botão Mês Anterior -->
             <button type="button" 
               (click)="goToPreviousMonth()" 
-              class="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white flex items-center justify-center font-bold text-xs sm:text-sm shadow-xs transition-all active:scale-95 cursor-pointer border border-slate-200/80 dark:border-slate-600/80"
+              aria-label="Ir para o mês anterior"
+              class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white flex items-center justify-center font-bold text-xs sm:text-sm shadow-xs transition-all active:scale-95 cursor-pointer border border-slate-200/80 dark:border-slate-600/80"
               title="Ir para o mês anterior">
-              ◀
+              <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7" />
+              </svg>
             </button>
 
             <!-- Card Central do Mês com Input Nativo Integrado -->
-            <div class="flex items-center gap-1.5 px-2 py-0.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xs">
+            <div class="flex items-center gap-1.5 px-2.5 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xs">
               <span class="text-xs">📅</span>
               <div class="flex flex-col text-left">
                 <span class="text-[9px] uppercase font-black text-slate-400 dark:text-slate-500 tracking-wider">Mês de Referência</span>
@@ -88,6 +91,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                   <input type="month" 
                     [ngModel]="selectedMonth()" 
                     (ngModelChange)="onMonthChange($event)"
+                    aria-label="Escolher mês e ano de referência no calendário"
                     class="bg-transparent border-none text-slate-800 dark:text-slate-100 font-extrabold text-xs sm:text-sm focus:ring-0 p-0 cursor-pointer outline-none font-mono"
                     title="Clique para escolher qualquer mês no calendário">
                   @if (isLocked()) {
@@ -100,16 +104,20 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
             <!-- Botão Próximo Mês -->
             <button type="button" 
               (click)="goToNextMonth()" 
-              class="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white flex items-center justify-center font-bold text-xs sm:text-sm shadow-xs transition-all active:scale-95 cursor-pointer border border-slate-200/80 dark:border-slate-600/80"
+              aria-label="Ir para o próximo mês"
+              class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white flex items-center justify-center font-bold text-xs sm:text-sm shadow-xs transition-all active:scale-95 cursor-pointer border border-slate-200/80 dark:border-slate-600/80"
               title="Ir para o próximo mês">
-              ▶
+              <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7" />
+              </svg>
             </button>
 
             <!-- Botão 'Hoje' / Mês Atual -->
             @if (!isCurrentMonth()) {
               <button type="button" 
                 (click)="goToCurrentMonth()" 
-                class="px-2 py-1 rounded-xl bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 hover:bg-teal-100 dark:hover:bg-teal-900/60 text-[10px] font-extrabold cursor-pointer transition-all shadow-2xs whitespace-nowrap"
+                aria-label="Voltar para o mês corrente atual"
+                class="px-2.5 py-1.5 min-h-[34px] rounded-xl bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 hover:bg-teal-100 dark:hover:bg-teal-900/60 text-[10px] font-extrabold cursor-pointer transition-all shadow-2xs whitespace-nowrap"
                 title="Voltar para o mês corrente atual">
                 Hoje
               </button>
