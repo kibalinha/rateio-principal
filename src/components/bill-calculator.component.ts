@@ -3292,6 +3292,10 @@ export class BillCalculatorComponent implements OnDestroy {
   }
 
   ngOnDestroy() {
+    if (this.autoSaveTimer) {
+      clearTimeout(this.autoSaveTimer);
+      this.autoSaveTimer = null;
+    }
     if (this.photoSubscriptionUnsubscribe) {
       try {
         this.photoSubscriptionUnsubscribe();
@@ -3409,9 +3413,13 @@ export class BillCalculatorComponent implements OnDestroy {
     const currentTableData = this.tableData();
     const readingsMap = this.readings()[type] as Map<string, StoreReading>;
     const readingsToSave: Record<string, StoreReading> = {};
+    const existingStoresSet = new Set(this.storeService.stores().map(s => s.id));
 
     readingsMap.forEach((val, storeId) => {
-      readingsToSave[storeId] = { ...val };
+      // Ignora resíduos de lojas excluídas permanentemente do sistema
+      if (existingStoresSet.has(storeId)) {
+        readingsToSave[storeId] = { ...val };
+      }
     });
 
     currentTableData.forEach(row => {
@@ -4006,13 +4014,7 @@ export class BillCalculatorComponent implements OnDestroy {
         if (hasVirtual) {
           totalRawGas += Number(d.virtual);
         } else {
-          let diff = (d.reading || 0) - (p.reading || 0);
-          if (d.isRollover && (d.reading || 0) < (p.reading || 0) && (p.reading || 0) > 0) {
-            const digitsBase = (p.reading || 0) > 10000 ? 100000 : ((p.reading || 0) > 1000 ? 10000 : 1000);
-            diff = (digitsBase - (p.reading || 0)) + (d.reading || 0);
-          } else if (diff < 0) {
-            diff = 0;
-          }
+          const diff = this.apportionmentEngine.calculateReadingDifference(d.reading || 0, p.reading || 0, !!d.isRollover);
           const adjNum = Number(d.adjustment);
           const adj = (!isNaN(adjNum) && adjNum > 0) ? adjNum : 1.347;
           const fcmNum = Number(d.fcm);
@@ -4086,13 +4088,7 @@ export class BillCalculatorComponent implements OnDestroy {
       if (virtual !== undefined) {
         rawConsumption = virtual;
       } else {
-        let diff = currentReading - prevReading;
-        if (isRollover && currentReading < prevReading && prevReading > 0) {
-          const digitsBase = prevReading > 10000 ? 100000 : (prevReading > 1000 ? 10000 : 1000);
-          diff = (digitsBase - prevReading) + currentReading;
-        } else if (diff < 0) {
-          diff = 0;
-        }
+        const diff = this.apportionmentEngine.calculateReadingDifference(currentReading, prevReading, isRollover);
 
         if (type === 'gas') {
           const initial = diff * adjustment;
@@ -6106,6 +6102,8 @@ export class BillCalculatorComponent implements OnDestroy {
       gasFactor: item.gasFactor,
       unitPrice: this.calculatedUnitPrice() || 0,
       totalCost: item.cost || 0,
+      originalCost: item.originalCost,
+      excludedFromBill: item.excludedFromBill,
       variationPct: item.variation,
       note: item.note,
       photoDataUrl: photo?.photoDataUrl,

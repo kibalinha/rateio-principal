@@ -23,6 +23,8 @@ export interface StoreVoucherData {
   gasFactor?: number;
   unitPrice: number;
   totalCost: number;
+  originalCost?: number;
+  excludedFromBill?: boolean;
   variationPct?: number;
   note?: string;
   photoDataUrl?: string;

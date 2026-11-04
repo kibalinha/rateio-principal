@@ -120,7 +120,14 @@ import { IndexedDbService } from '../services/indexed-db.service';
               </div>
               <div class="text-right">
                 <div class="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase font-extrabold tracking-wider">Total a Pagar</div>
-                <strong class="text-xl font-mono font-black text-emerald-700 dark:text-emerald-300">{{ voucher.totalCost | currency:'BRL' }}</strong>
+                @if (voucher.excludedFromBill) {
+                  <strong class="text-xl font-mono font-black text-slate-500 dark:text-slate-400">R$ 0,00</strong>
+                  <div class="text-[10px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">
+                    Fora do SAP (Custo R$ {{ voucher.originalCost || 0 | number:'1.2-2' }} transferido para Área Comum)
+                  </div>
+                } @else {
+                  <strong class="text-xl font-mono font-black text-emerald-700 dark:text-emerald-300">{{ voucher.totalCost | currency:'BRL' }}</strong>
+                }
                 @if (voucher.prevCost) {
                   <div class="text-[10px] text-slate-400 font-sans mt-0.5" title="Valor faturado no mês anterior">
                     Mês anterior: <strong class="font-mono text-slate-600 dark:text-slate-300">{{ voucher.prevCost | currency:'BRL' }}</strong>
@@ -231,7 +238,9 @@ export class StoreVoucherModalComponent {
       `📊 *Consumo Faturado:* ${v.consumption.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${v.unit}`,
       (v.utilityType === 'gas' && v.gasFactor && Math.abs(v.gasFactor - 1) > 0.0001) ? (`⚖️ _Consumo rateado conforme fatura da concessionária (Fator: ${v.gasFactor.toFixed(4)}x)_`) : '',
       `💵 *Tarifa de Rateio:* R$ ${v.unitPrice.toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })} / ${v.unit}`,
-      `💰 *VALOR A PAGAR:* R$ ${v.totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      v.excludedFromBill
+        ? `⚠️ *Fora do SAP:* Cobrança direta R$ 0,00 (Custo apurado de R$ ${(v.originalCost || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} transferido para a Área Comum do condomínio).`
+        : `💰 *VALOR A PAGAR:* R$ ${v.totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       v.note ? `📝 *Observação de Campo:* ${v.note}` : '',
       '',
       v.photoDataUrl ? '📸 _Foto do relógio auditada e arquivada pela administração._' : '',

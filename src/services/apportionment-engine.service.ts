@@ -56,7 +56,8 @@ export function calculateReadingDifference(currentReading: number, prevReading: 
   const prev = Number(prevReading) || 0;
 
   if (isRollover && curr < prev && prev > 0) {
-    const digitsBase = prev > 10000 ? 100000 : (prev > 1000 ? 10000 : 1000);
+    const digitsCount = Math.max(3, Math.floor(Math.abs(prev)).toString().length);
+    const digitsBase = Math.pow(10, digitsCount);
     return Math.max(0, (digitsBase - prev) + curr);
   }
 

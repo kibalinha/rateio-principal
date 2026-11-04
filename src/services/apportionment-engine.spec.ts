@@ -49,8 +49,14 @@ describe('ApportionmentEngineService - Cálculos Matemáticos de Rateio', () => 
     });
 
     it('deve calcular corretamente a virada de medidor de 5 dígitos (ex: 99980 -> 0020)', () => {
-      const diff = calculateReadingDifference(20, 99980, true);
+      const diff = calculateReadingDifference(20, 999980 ? 99980 : 0, true);
       expect(diff).toBe(40);
+    });
+
+    it('deve calcular corretamente a virada de medidor de 6 dígitos em subestação / grandes lojas (ex: 998500 -> 000150)', () => {
+      // 998500 para 1000000 = 1500 + 150 = 1650
+      const diff = calculateReadingDifference(150, 998500, true);
+      expect(diff).toBe(1650);
     });
   });
 
