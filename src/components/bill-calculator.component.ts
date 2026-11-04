@@ -3144,16 +3144,20 @@ export class BillCalculatorComponent implements OnDestroy {
     const monthStores = [...this.storeService.getStoresForMonth(type, month, false)];
 
     // Se houver leituras salvas para lojas (ex.: lojas que estavam no rateio antes de serem inativadas),
-    // inclui-as para manter a integridade dos cálculos e histórico
+    // inclui-as para manter a integridade dos cálculos e histórico apenas se tiverem medição/consumo real
     if (readingsMap && readingsMap.size > 0) {
       const allStoresMap = new Map(this.storeService.stores().map(s => [s.id, s]));
       const monthStoreIds = new Set(monthStores.map(s => s.id));
-      for (const storeId of readingsMap.keys()) {
+      for (const [storeId, r] of readingsMap.entries()) {
         if (!monthStoreIds.has(storeId)) {
           const s = allStoresMap.get(storeId);
           if (s) {
             const usesUtil = type === 'luz' ? s.usesLuz : (type === 'agua' ? s.usesAgua : s.usesGas);
-            if (usesUtil) {
+            const isReadOrJustified = typeof r === 'object' && r !== null
+              ? (Number(r.reading) > 0 || Number(r.calculatedConsumption) > 0 || (r.cost !== undefined && Number(r.cost) > 0) || !!r.isJustified)
+              : (typeof r === 'number' && r > 0);
+
+            if (usesUtil && isReadOrJustified) {
               monthStores.push(s);
             }
           }

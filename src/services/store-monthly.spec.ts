@@ -264,5 +264,46 @@ describe('StoreService - Monthly Store Isolation & Consultation', () => {
     expect(novStores[0].id).toBe(octId);
     expect(novStores[0].name).toBe('Zara Moda');
   });
+
+  it('deve desativar e reativar loja pontualmente no mês com toggleStoreActive preservando o histórico anterior', () => {
+    // 1. Cadastra 2 lojas em Outubro/2026
+    service.processMonthlyStoreImport([
+      { luc: 'L-101', contrato: '101', name: 'Loja A' },
+      { luc: 'L-102', contrato: '102', name: 'Loja B' }
+    ], 'agua', '2026-10', false);
+
+    // 2. Importa as 2 lojas em Novembro/2026
+    service.processMonthlyStoreImport([
+      { luc: 'L-101', contrato: '101', name: 'Loja A' },
+      { luc: 'L-102', contrato: '102', name: 'Loja B' }
+    ], 'agua', '2026-11', false);
+
+    const novStoresBefore = service.getStoresForMonth('agua', '2026-11', false);
+    expect(novStoresBefore.length).toBe(2);
+
+    const storeB = novStoresBefore.find(s => s.luc === 'L-102')!;
+    expect(storeB).toBeDefined();
+
+    // 3. Usuário inativa Loja B no mês de Novembro/2026
+    service.toggleStoreActive(storeB.id, '2026-11', 'Fechamento temporário');
+
+    // 4. Em Novembro/2026, Loja B não deve aparecer nas lojas ativas
+    const novActive = service.getStoresForMonth('agua', '2026-11', false);
+    expect(novActive.length).toBe(1);
+    expect(novActive.some(s => s.id === storeB.id)).toBe(false);
+
+    // 5. CRUCIAL: Em Outubro/2026, Loja B continua 100% ativa (histórico intacto!)
+    const octActive = service.getStoresForMonth('agua', '2026-10', false);
+    expect(octActive.length).toBe(2);
+    expect(octActive.some(s => s.id === storeB.id)).toBe(true);
+
+    // 6. Usuário reativa Loja B no mês de Novembro/2026
+    service.toggleStoreActive(storeB.id, '2026-11');
+
+    // 7. Loja B volta a aparecer como ativa em Novembro/2026
+    const novActiveReactivated = service.getStoresForMonth('agua', '2026-11', false);
+    expect(novActiveReactivated.length).toBe(2);
+    expect(novActiveReactivated.some(s => s.id === storeB.id)).toBe(true);
+  });
 });
 

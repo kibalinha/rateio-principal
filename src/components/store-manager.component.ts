@@ -809,7 +809,7 @@ export class StoreManagerComponent {
 
   isStoreActiveInSelectedMonth(store: Store): boolean {
     if (this.viewMode() === 'month') {
-      return isStoreActiveInMonth(store, this.consultationMonth(), true);
+      return isStoreActiveInMonth(store, this.consultationMonth(), false);
     }
     return store.active !== false;
   }
@@ -819,7 +819,7 @@ export class StoreManagerComponent {
     const m = this.consultationMonth();
     return this.allTabStores().filter(s => {
       if (isMonthView) {
-        return isStoreActiveInMonth(s, m, true);
+        return isStoreActiveInMonth(s, m, false);
       }
       return s.active !== false;
     }).length;
@@ -830,7 +830,7 @@ export class StoreManagerComponent {
     const m = this.consultationMonth();
     return this.allTabStores().filter(s => {
       if (isMonthView) {
-        return !isStoreActiveInMonth(s, m, true);
+        return !isStoreActiveInMonth(s, m, false);
       }
       return s.active === false;
     }).length;
@@ -847,9 +847,9 @@ export class StoreManagerComponent {
      const m = this.consultationMonth();
 
      if (filter === 'active') {
-       list = list.filter(s => isMonthView ? isStoreActiveInMonth(s, m, true) : s.active !== false);
+       list = list.filter(s => isMonthView ? isStoreActiveInMonth(s, m, false) : s.active !== false);
      } else if (filter === 'inactive') {
-       list = list.filter(s => isMonthView ? !isStoreActiveInMonth(s, m, true) : s.active === false);
+       list = list.filter(s => isMonthView ? !isStoreActiveInMonth(s, m, false) : s.active === false);
      }
 
      const query = this.searchTerm().trim().toLowerCase();
@@ -1047,11 +1047,11 @@ export class StoreManagerComponent {
   storeToDelete = signal<Store | null>(null);
 
   inactivateStore(store: Store) {
-    this.storeService.toggleStoreActive(store.id, this.importReferenceMonth(), 'Inativada manualmente');
+    this.storeService.toggleStoreActive(store.id, this.consultationMonth(), 'Inativada manualmente');
   }
 
   reactivateStore(store: Store) {
-    this.storeService.toggleStoreActive(store.id);
+    this.storeService.toggleStoreActive(store.id, this.consultationMonth());
   }
 
   confirmRemoveStore(store: Store) {

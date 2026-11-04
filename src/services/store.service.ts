@@ -391,7 +391,7 @@ export class StoreService {
         if (!matchesType) return false;
 
         if (!includeInactive) {
-          const isActiveInMonth = isStoreActiveInMonth(s, month, true);
+          const isActiveInMonth = isStoreActiveInMonth(s, month, false);
           if (!isActiveInMonth) return false;
         }
 
@@ -425,7 +425,7 @@ export class StoreService {
       if (!matchesType) return false;
 
       if (!includeInactive) {
-        const isActiveInMonth = isStoreActiveInMonth(s, month, true);
+        const isActiveInMonth = isStoreActiveInMonth(s, month, false);
         if (!isActiveInMonth) return false;
       }
 
@@ -565,10 +565,11 @@ export class StoreService {
 
   // Alterna o status ativo/inativo de uma loja
   toggleStoreActive(id: string, referenceMonth?: string, reason?: string) {
+    let newStatus = false;
     this.storesSignal.update(list => {
       const updated = list.map(store => {
         if (store.id !== id) return store;
-        const newStatus = !store.active;
+        newStatus = !store.active;
         return {
           ...store,
           active: newStatus,
@@ -579,6 +580,31 @@ export class StoreService {
       this.persistStores(updated);
       return updated;
     });
+
+    if (referenceMonth) {
+      const store = this.storesSignal().find(s => s.id === id);
+      if (store) {
+        if (newStatus) {
+          // Reativando: inclui na lista mensal do mês de referência
+          if (store.usesLuz) this.addStoreToMonth('luz', referenceMonth, store.id);
+          if (store.usesAgua) this.addStoreToMonth('agua', referenceMonth, store.id);
+          if (store.usesGas) this.addStoreToMonth('gas', referenceMonth, store.id);
+        } else {
+          // Inativando: remove da lista mensal do mês de referência
+          this.monthlyStoreListsSignal.update(current => {
+            const updated = { ...current };
+            for (const type of ['luz', 'agua', 'gas'] as const) {
+              const key = `${type}_${referenceMonth}`;
+              if (updated[key]) {
+                updated[key] = updated[key].filter(sId => sId !== id);
+              }
+            }
+            this.persistMonthlyStoreLists(updated);
+            return updated;
+          });
+        }
+      }
+    }
   }
 
   // Processa a importação mensal com detecção automática de substituições
