@@ -26,7 +26,7 @@ export type StoreReading = {
   isJustified?: boolean;      // Loja justificada pelo técnico (ex: fechada/em reforma/consumo zero)
   justificationReason?: string; // Motivo da justificativa
   meterNumber?: string;       // Número de identificação/série do relógio
-  excludedFromBill?: boolean; // Se marcado, a loja é desconsiderada do rateio / valor final
+  excludedFromBill?: boolean; // Se marcado ("Fora do SAP"), o valor e consumo da loja são transferidos para a Área Comum
 
   // Metadados da Loja para reconciliação entre meses
   luc?: string;

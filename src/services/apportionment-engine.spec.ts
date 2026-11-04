@@ -375,6 +375,57 @@ describe('ApportionmentEngineService - Cálculos Matemáticos de Rateio', () => 
       expect(summary.commonAreaCost).toBe(0);
       expect(summary.commonAreaConsumption).toBe(0);
     });
+
+    it('deve transferir o consumo e custo da loja "Fora do SAP" para a Área Comum fechando 100% da fatura', () => {
+      const engine = new ApportionmentEngineService();
+      // Fatura de Água da Concessionária: R$ 10.000,00 e 1.000 m³ -> Tarifa R$ 10,00 / m³
+      const totalBill = 10000;
+      const totalConcessionariaM3 = 1000;
+      const unitPrice = engine.calculateUnitPrice(totalBill, totalConcessionariaM3);
+      expect(unitPrice).toBe(10.0);
+
+      // Três lojas medidas no shopping:
+      // Loja A: 400 m³ (R$ 4.000,00) - No SAP
+      // Loja B: 200 m³ (R$ 2.000,00) - Fora do SAP (excludedFromBill = true)
+      // Loja C: 150 m³ (R$ 1.500,00) - No SAP
+      // Ar Condicionado: 50 m³ (R$ 500,00)
+      const storeA = { consumption: 400, cost: 400 * unitPrice, excludedFromBill: false };
+      const storeB = { consumption: 200, cost: 0, rawCost: 200 * unitPrice, excludedFromBill: true };
+      const storeC = { consumption: 150, cost: 150 * unitPrice, excludedFromBill: false };
+      const acConsumption = 50;
+      const acCost = acConsumption * unitPrice; // R$ 500,00
+
+      // Total a Faturar no SAP (deduzindo a loja B que está fora do SAP)
+      const stores = [storeA, storeB, storeC];
+      const totalDistributedConsumption = stores.reduce((acc, s) => acc + (s.excludedFromBill ? 0 : s.consumption), 0);
+      const totalDistributedCost = stores.reduce((acc, s) => acc + (s.excludedFromBill ? 0 : s.cost), 0);
+
+      expect(totalDistributedConsumption).toBe(550); // 400 + 150 (loja B excluída do SAP)
+      expect(totalDistributedCost).toBe(5500); // R$ 4.000 + R$ 1.500
+
+      // Cálculo de Área Comum considerando apenas as lojas no SAP
+      const commonArea = engine.calculateCommonArea(
+        totalConcessionariaM3,
+        totalBill,
+        totalDistributedConsumption,
+        totalDistributedCost,
+        acConsumption,
+        acCost,
+        false
+      );
+
+      // O consumo da Loja B (200 m³) e o custo da Loja B (R$ 2.000,00) foram integralmente transferidos para a Área Comum!
+      // Área comum esperada:
+      // Consumo = 1.000 (total) - 550 (lojas SAP) - 50 (AC) = 400 m³ (sendo 200 m³ base comum + 200 m³ da Loja B)
+      // Custo = R$ 10.000 - R$ 5.500 - R$ 500 = R$ 4.000,00 (sendo R$ 2.000 base + R$ 2.000 da Loja B)
+      expect(commonArea.consumption).toBe(400);
+      expect(commonArea.cost).toBe(4000);
+
+      // O somatório de (Lojas SAP + AC + Área Comum) fecha rigorosamente em 100% da fatura da concessionária
+      const totalReconciled = totalDistributedCost + acCost + commonArea.cost;
+      expect(totalReconciled).toBe(totalBill);
+      expect(totalConcessionariaM3 - (totalDistributedConsumption + acConsumption + commonArea.consumption)).toBe(0);
+    });
   });
 
 });

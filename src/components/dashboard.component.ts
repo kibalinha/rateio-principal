@@ -409,6 +409,8 @@ export class DashboardComponent {
     let tenantsConsumption = 0;
     if (bill.readings) {
        Object.values(bill.readings).forEach((r: any) => {
+           // Lojas fora do SAP têm seu valor e consumo transferidos para a Área Comum
+           if (typeof r === 'object' && r?.excludedFromBill) return;
            // Use calculatedConsumption if saved (BillCalculator updates this now)
            if (typeof r === 'object' && r.calculatedConsumption) {
                tenantsConsumption += r.calculatedConsumption;
