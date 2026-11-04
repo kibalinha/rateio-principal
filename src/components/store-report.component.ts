@@ -1226,7 +1226,15 @@ export class StoreReportComponent {
         }
       }
 
-      const storeCost = storeConsumption * unitPrice;
+      let storeCost = 0;
+      if (r && typeof r === 'object' && r.excludedFromBill) {
+        storeCost = 0;
+      } else if (r && typeof r === 'object' && r.cost !== undefined && r.cost !== null && !isNaN(Number(r.cost))) {
+        storeCost = Number(r.cost);
+      } else {
+        storeCost = storeConsumption * unitPrice;
+      }
+
       const pctBill = totalBill > 0 ? (storeCost / totalBill) * 100 : 0;
 
       return {
@@ -1237,16 +1245,17 @@ export class StoreReportComponent {
         unitPrice,
         totalBill,
         pctBill,
-        hasData: true,
+        hasData: r !== undefined,
         photo: this.reportPhotos()[period] || null
       };
-    }).filter(d => d.hasData && d.consumption > 0);
+    }).filter(d => d.hasData);
 
     if (rawList.length === 0) return [];
 
-    // Calculate store's average consumption in this historical window
-    const totalCons = rawList.reduce((acc, d) => acc + d.consumption, 0);
-    const storeAvg = totalCons / rawList.length;
+    // Calculate store's average consumption in this historical window (baseline de consumo ativo)
+    const positiveItems = rawList.filter(d => d.consumption > 0);
+    const totalCons = positiveItems.reduce((acc, d) => acc + d.consumption, 0);
+    const storeAvg = positiveItems.length > 0 ? (totalCons / positiveItems.length) : 0;
 
     // Enrich with comparative MoM and variance vs average
     return rawList.map((item, idx) => {

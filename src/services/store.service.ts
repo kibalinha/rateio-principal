@@ -58,6 +58,16 @@ export function isStoreActiveInMonth(store: Store, month: string, isExplicitlyIn
   return false;
 }
 
+/**
+ * Gera um UUID seguro com fallback para ambientes sem suporte a crypto.randomUUID (ex: HTTP local ou webviews legadas)
+ */
+export function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 9);
+}
+
 
 @Injectable({
   providedIn: 'root'
@@ -546,7 +556,7 @@ export class StoreService {
   addStore(store: Omit<Store, 'id'>, referenceMonth?: string) {
     const newStore: Store = { 
       ...store, 
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       active: store.active !== undefined ? store.active : true,
       _offlineCreated: true as any
     };
@@ -721,7 +731,7 @@ export class StoreService {
 
             // Criamos a nova loja ativa com novo ID
             const newStore: Store = {
-              id: crypto.randomUUID(),
+              id: generateUUID(),
               luc: cleanLuc,
               contrato: cleanContrato,
               name: cleanName,
@@ -774,7 +784,7 @@ export class StoreService {
           } else {
             // Caso 3: Loja completamente NOVA no shopping
             const newStore: Store = {
-              id: crypto.randomUUID(),
+              id: generateUUID(),
               luc: cleanLuc,
               contrato: cleanContrato,
               name: cleanName,

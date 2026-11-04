@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { StoreService } from './store.service';
+import { StoreService, generateUUID } from './store.service';
 
 describe('StoreService - Monthly Store Isolation & Consultation', () => {
   let service: StoreService;
@@ -304,6 +304,14 @@ describe('StoreService - Monthly Store Isolation & Consultation', () => {
     const novActiveReactivated = service.getStoresForMonth('agua', '2026-11', false);
     expect(novActiveReactivated.length).toBe(2);
     expect(novActiveReactivated.some(s => s.id === storeB.id)).toBe(true);
+  });
+
+  it('generateUUID deve gerar identificador único válido com ou sem suporte nativo', () => {
+    const id1 = generateUUID();
+    const id2 = generateUUID();
+    expect(typeof id1).toBe('string');
+    expect(id1.length).toBeGreaterThan(5);
+    expect(id1).not.toBe(id2);
   });
 });
 

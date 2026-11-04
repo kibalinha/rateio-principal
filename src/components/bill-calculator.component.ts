@@ -1,7 +1,7 @@
 import { Component, inject, signal, computed, effect, untracked, OnDestroy, HostListener } from '@angular/core';
 import { CommonModule, DecimalPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { StoreService, normalizeLuc, normalizeContract, normalizeStoreName } from '../services/store.service';
+import { StoreService, normalizeLuc, normalizeContract, normalizeStoreName, generateUUID } from '../services/store.service';
 import { HistoryService } from '../services/history.service';
 import { AuthService } from '../services/auth.service';
 import { ReportExportService } from '../services/report-export.service';
@@ -3727,7 +3727,7 @@ export class BillCalculatorComponent implements OnDestroy {
 
   addCostItem() {
     if (!this.authService.canConfigureBill()) return;
-    const newId = crypto.randomUUID();
+    const newId = generateUUID();
     const newItem = { id: newId, name: 'Novo Item de Custo', value: 0 };
 
     if (this.utilityType() === 'luz') this.luzCostItems.update(items => [...items, newItem]);

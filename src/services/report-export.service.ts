@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import JSZip from 'jszip';
 import { Store, MonthlyChartItem, StoreVoucherData, CalculatorExcelOptions, PackageZipOptions } from '../models';
+import { calculateReadingDifference } from './apportionment-engine.service';
 
 export type { StoreVoucherData, CalculatorExcelOptions, PackageZipOptions };
 
@@ -91,7 +92,7 @@ export class ReportExportService {
 
     // 1. Sheet "Rateio_Lojas"
     const storesRows = options.tableData.map(row => {
-      const diff = (row.currentReading || 0) - (row.prevReading || 0);
+      const diff = calculateReadingDifference(row.currentReading || 0, row.prevReading || 0, !!row.isRollover);
       const item: Record<string, any> = {
         'LUC': row.luc,
         'Contrato': row.contrato || '—',
@@ -99,7 +100,7 @@ export class ReportExportService {
         'Leitura Anterior': row.prevReading || 0,
         [`Consumo Mês Anterior (${options.unit})`]: Number((row.prevConsumption || 0).toFixed(4)),
         'Leitura Atual': row.currentReading || 0,
-        'Diferença': diff > 0 ? diff : 0,
+        'Diferença': diff,
       };
 
       if (options.utilityType === 'luz') {
@@ -131,9 +132,17 @@ export class ReportExportService {
       item['% no Rateio'] = options.totalDistributedCost > 0 
         ? Number(((row.cost / options.totalDistributedCost) * 100).toFixed(2)) 
         : 0;
-      item['Status da Leitura'] = row.isJustified 
-        ? `Justificada (${row.justificationReason || 'Sem consumo'})` 
-        : ((row.currentReading || 0) > 0 ? 'Concluída' : 'Pendente');
+
+      let statusStr = '';
+      if (row.excludedFromBill) {
+        const origCost = (row.originalCost !== undefined ? row.originalCost : row.cost) || 0;
+        statusStr = `Fora do SAP (R$ ${origCost.toFixed(2)} p/ Área Comum)`;
+      } else if (row.isJustified) {
+        statusStr = `Justificada (${row.justificationReason || 'Sem consumo'})`;
+      } else {
+        statusStr = (row.currentReading || 0) > 0 ? 'Concluída' : 'Pendente';
+      }
+      item['Status da Leitura'] = statusStr;
       item['Observação de Campo'] = row.note || '';
 
       return item;
@@ -800,18 +809,39 @@ Todas as fotos foram conferidas pelo leiturista e processadas via OCR/inspeção
 
     // Box de Total a Pagar
     y += 2;
-    doc.setFillColor(236, 253, 245);
-    doc.setDrawColor(52, 211, 153);
-    doc.roundedRect(margin, y, pageWidth - (margin * 2), 15, 2, 2, 'FD');
+    if (data.excludedFromBill) {
+      doc.setFillColor(241, 245, 249);
+      doc.setDrawColor(203, 213, 225);
+      doc.roundedRect(margin, y, pageWidth - (margin * 2), 15, 2, 2, 'FD');
 
-    doc.setTextColor(6, 78, 59);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9.5);
-    doc.text('TOTAL A COBRAR NO RATEIO:', margin + 5, y + 6);
+      doc.setTextColor(71, 85, 105);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9.5);
+      doc.text('COBRANÇA DIRETA (FORA DO SAP):', margin + 5, y + 6);
 
-    doc.setFontSize(13);
-    doc.setTextColor(5, 150, 105);
-    doc.text(`R$ ${data.totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, pageWidth - margin - 5, y + 10.5, { align: 'right' });
+      doc.setFontSize(13);
+      doc.setTextColor(100, 116, 139);
+      doc.text('R$ 0,00', pageWidth - margin - 5, y + 6.5, { align: 'right' });
+
+      doc.setFontSize(7.5);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(180, 83, 9); // amber-700
+      const origCostStr = (data.originalCost || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      doc.text(`* Custo apurado de R$ ${origCostStr} transferido para a Área Comum do condomínio.`, margin + 5, y + 11.5);
+    } else {
+      doc.setFillColor(236, 253, 245);
+      doc.setDrawColor(52, 211, 153);
+      doc.roundedRect(margin, y, pageWidth - (margin * 2), 15, 2, 2, 'FD');
+
+      doc.setTextColor(6, 78, 59);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9.5);
+      doc.text('TOTAL A COBRAR NO RATEIO:', margin + 5, y + 6);
+
+      doc.setFontSize(13);
+      doc.setTextColor(5, 150, 105);
+      doc.text(`R$ ${data.totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, pageWidth - margin - 5, y + 10.5, { align: 'right' });
+    }
 
     y += 20;
 

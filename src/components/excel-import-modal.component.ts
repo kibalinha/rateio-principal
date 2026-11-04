@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
 
 import { Store, UtilityType, ExcelImportRowPreview } from '../models';
 import { normalizeLuc, normalizeContract, normalizeStoreName } from '../services/store.service';
+import { calculateReadingDifference } from '../services/apportionment-engine.service';
 
 export interface ExcelImportSuccessEvent {
   updatedReadings: Array<{
@@ -405,7 +406,7 @@ export class ExcelImportModalComponent {
         }
       }
       const prevReading = prevData ? prevData.reading : 0;
-      const diff = reading > prevReading ? (reading - prevReading) : 0;
+      const diff = calculateReadingDifference(reading, prevReading, false);
 
       const rawConst = mappings.constant ? this.parseExcelNumber(rawRow[mappings.constant]) : 1;
       const constant = rawConst > 0 ? rawConst : 1;
@@ -689,7 +690,7 @@ export class ExcelImportModalComponent {
     if (!str) return 0;
     if (str.includes(',') && str.includes('.')) {
       str = str.replace(/\./g, '').replace(',', '.');
-    } else if (/^\d{1,3}\.\d{3}$/.test(str)) {
+    } else if (/^\d{1,3}(\.\d{3})+$/.test(str)) {
       str = str.replace(/\./g, '');
     } else if (str.includes(',')) {
       str = str.replace(',', '.');
@@ -705,7 +706,7 @@ export class ExcelImportModalComponent {
     let clean = str;
     if (clean.includes(',') && clean.includes('.')) {
       clean = clean.replace(/\./g, '').replace(',', '.');
-    } else if (/^\d{1,3}\.\d{3}$/.test(clean)) {
+    } else if (/^\d{1,3}(\.\d{3})+$/.test(clean)) {
       clean = clean.replace(/\./g, '');
     } else if (clean.includes(',')) {
       clean = clean.replace(',', '.');

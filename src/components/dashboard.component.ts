@@ -405,27 +405,34 @@ export class DashboardComponent {
     const acConsumption = bill.acInput || 0;
     const acCost = acConsumption * unitPrice;
 
-    // 5. Tenants Consumption (Estimate from Readings)
+    // 5. Tenants Consumption and Cost (Exact values from readings when available)
     let tenantsConsumption = 0;
+    let actualTenantsCost = 0;
+    let hasActualCosts = false;
+
     if (bill.readings) {
        Object.values(bill.readings).forEach((r: any) => {
            // Lojas fora do SAP têm seu valor e consumo transferidos para a Área Comum
            if (typeof r === 'object' && r?.excludedFromBill) return;
-           // Use calculatedConsumption if saved (BillCalculator updates this now)
-           if (typeof r === 'object' && r.calculatedConsumption) {
-               tenantsConsumption += r.calculatedConsumption;
-           } else if (typeof r === 'object' && r.consumption) { 
-               tenantsConsumption += r.consumption;
+           
+           if (typeof r === 'object' && r.calculatedConsumption !== undefined) {
+               tenantsConsumption += Number(r.calculatedConsumption) || 0;
+           } else if (typeof r === 'object' && r.consumption !== undefined) { 
+               tenantsConsumption += Number(r.consumption) || 0;
+           }
+
+           if (typeof r === 'object' && r.cost !== undefined && r.cost !== null && !isNaN(Number(r.cost))) {
+               actualTenantsCost += Number(r.cost);
+               hasActualCosts = true;
            }
        });
     }
 
-    // Common Area = Total - Tenants - AC
-    // Use Math.max(0, ...) to avoid negative if data is inconsistent
+    const tenantsCost = hasActualCosts ? actualTenantsCost : (tenantsConsumption * unitPrice);
+
+    // Common Area = Total - Tenants - AC (Garante invariante: tenantsCost + acCost + commonAreaCost === totalBill)
     const commonAreaConsumption = Math.max(0, totalConsumption - tenantsConsumption - acConsumption);
-    
-    const tenantsCost = tenantsConsumption * unitPrice;
-    const commonAreaCost = commonAreaConsumption * unitPrice;
+    const commonAreaCost = Math.max(0, totalBill - tenantsCost - acCost);
 
     return {
        totalBill,
@@ -485,20 +492,33 @@ export class DashboardComponent {
              }
            }
          }
+
+         // Lojas fora do SAP não geram cobrança direta ao lojista
+         if (r && typeof r === 'object' && r.excludedFromBill) {
+           return null;
+         }
+
          let cons = 0;
          if (r && typeof r === 'object') {
            cons = r.calculatedConsumption ?? r.consumption ?? 0;
          } else if (typeof r === 'number') {
            cons = r;
          }
+
+         let cost = 0;
+         if (r && typeof r === 'object' && r.cost !== undefined && r.cost !== null && !isNaN(Number(r.cost))) {
+           cost = Number(r.cost);
+         } else {
+           cost = cons * data.unitPrice;
+         }
          
          return {
             name: store.name,
             consumption: cons,
-            cost: cons * data.unitPrice
+            cost: cost
          };
      })
-     .filter(s => s.cost > 0)
+     .filter((s): s is { name: string; consumption: number; cost: number } => s !== null && s.cost > 0)
      .sort((a, b) => b.cost - a.cost);
   });
 
@@ -530,12 +550,40 @@ export class DashboardComponent {
 
            if (bill.readings) {
               relevantStores.forEach(s => {
-                 const r:any = bill.readings[s.id];
+                 let r: any = bill.readings[s.id];
+                 if (!r) {
+                   const nLuc = normalizeLuc(s.luc);
+                   const nContr = normalizeContract(s.contrato);
+                   const nName = normalizeStoreName(s.name);
+
+                   for (const [rid, readVal] of Object.entries(bill.readings)) {
+                     const rObj = readVal as any;
+                     if (rObj && typeof rObj === 'object') {
+                       if (nLuc && normalizeLuc(rObj.luc) === nLuc) { r = rObj; break; }
+                       if (nContr && normalizeContract(rObj.contrato) === nContr) { r = rObj; break; }
+                       if (nName && normalizeStoreName(rObj.storeName) === nName) { r = rObj; break; }
+                     }
+                   }
+                 }
+
+                 if (r && typeof r === 'object' && r.excludedFromBill) return;
+
                  let cons = 0;
-                 if(r && typeof r === 'object' && r.calculatedConsumption) cons = r.calculatedConsumption;
+                 if (r && typeof r === 'object') {
+                   cons = r.calculatedConsumption ?? r.consumption ?? 0;
+                 } else if (typeof r === 'number') {
+                   cons = r;
+                 }
+
+                 let cost = 0;
+                 if (r && typeof r === 'object' && r.cost !== undefined && r.cost !== null && !isNaN(Number(r.cost))) {
+                   cost = Number(r.cost);
+                 } else {
+                   cost = cons * price;
+                 }
                  
                  const current = storeMap.get(s.name) || 0;
-                 storeMap.set(s.name, current + (cons * price));
+                 storeMap.set(s.name, current + cost);
               });
            }
         }
