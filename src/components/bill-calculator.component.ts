@@ -2762,7 +2762,8 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
         [isOpen]="showExcelImportModal()"
         [utilityType]="utilityType()"
         [selectedMonth]="selectedMonth()"
-        [activeStores]="activeStores()"
+        [activeStores]="storesForImportModal()"
+        [allStores]="storeService.stores()"
         [previousReadings]="previousReadings()"
         [unit]="getUnit()"
         (close)="closeExcelImportModal()"
@@ -3168,6 +3169,40 @@ export class BillCalculatorComponent implements OnDestroy {
     return monthStores;
   });
 
+  // Lojas disponibilizadas para o modal de importação e geração de modelo de campo
+  storesForImportModal = computed<Store[]>(() => {
+    const active = this.activeStores();
+    if (active.length > 0) {
+      return active;
+    }
+
+    const type = this.utilityType();
+    const month = this.selectedMonth();
+
+    // 1. Tentar obter lojas do mês anterior para esta utilidade
+    const prevMonth = this.getPreviousMonth(month);
+    if (prevMonth) {
+      const prevStores = this.storeService.getStoresForMonth(type, prevMonth, false);
+      if (prevStores && prevStores.length > 0) {
+        return prevStores;
+      }
+    }
+
+    // 2. Se o mês anterior também não tiver, pegar todas as lojas cadastradas que usam esse insumo e estão ativas
+    const allActive = this.storeService.stores().filter(s => {
+      const usesUtil = type === 'luz' ? s.usesLuz : (type === 'agua' ? s.usesAgua : s.usesGas);
+      return usesUtil && s.active !== false;
+    });
+    if (allActive.length > 0) {
+      return allActive;
+    }
+
+    // 3. Fallback geral de todas as lojas cadastradas com este insumo
+    return this.storeService.stores().filter(s => {
+      return type === 'luz' ? s.usesLuz : (type === 'agua' ? s.usesAgua : s.usesGas);
+    });
+  });
+
   constructor() {
     // Sincronização inteligente de chaves de IA (Desktop <-> Celular)
     const localGroq = this.geminiService.getSavedGroqKey();
@@ -3394,6 +3429,16 @@ export class BillCalculatorComponent implements OnDestroy {
     });
 
     this.readings.update(curr => ({ ...curr, [type]: currentReadingsMap }));
+
+    // Se o mês não tinha lista de lojas explícita definida, registra as lojas importadas como a lista oficial deste mês
+    const month = this.selectedMonth();
+    const importedStoreIds = event.updatedReadings.map(item => item.storeId);
+    if (!this.storeService.hasMonthlyList(type, month) && importedStoreIds.length > 0) {
+      this.storeService.setMonthlyStoreList(type, month, importedStoreIds);
+    } else if (importedStoreIds.length > 0) {
+      importedStoreIds.forEach(id => this.storeService.addStoreToMonth(type, month, id));
+    }
+
     this.closeExcelImportModal();
     this.internalSave();
     this.indexedDb.showToast(`🎉 ${updatedCount} lojas importadas e atualizadas com sucesso do Excel!`);

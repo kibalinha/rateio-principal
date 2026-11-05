@@ -182,4 +182,35 @@ describe('Excel Import Modal: Route Ordering & Intelligent Template Import', () 
     expect(matchLivraria?.status).toBe('matched');
     expect(matchLivraria?.reading).toBe(210);
   });
+
+  it('Scenario 5: When activeStores is empty in a new month, template uses allStores fallback', () => {
+    const comp = new ExcelImportModalComponent();
+    comp.activeStores = []; // Mês novo em branco no rateio!
+    comp.allStores = mockStores; // Catálogo geral de lojas
+    comp.utilityType = 'luz';
+    comp.selectedMonth = '2026-11';
+
+    const { workbook, filename } = comp.generateImportTemplateWorkbook();
+    expect(filename).toContain('Planilha_Roteiro_LUZ_2026-11.xlsx');
+
+    const sheetData: any[] = XLSX.utils.sheet_to_json(workbook.Sheets['Leituras_LUZ']);
+    expect(sheetData.length).toBe(4);
+    expect(sheetData[0]['Nome da Loja']).toBe('Farmácia Raia');
+    expect(sheetData[0]['Ordem / Rota']).toBe(1);
+  });
+
+  it('Scenario 6: Even if both activeStores and allStores are empty, sheet is never blank and contains headers', () => {
+    const comp = new ExcelImportModalComponent();
+    comp.activeStores = [];
+    comp.allStores = [];
+    comp.utilityType = 'agua';
+    comp.selectedMonth = '2026-11';
+
+    const { workbook } = comp.generateImportTemplateWorkbook();
+    const sheetData: any[] = XLSX.utils.sheet_to_json(workbook.Sheets['Leituras_AGUA']);
+    expect(sheetData.length).toBeGreaterThan(0);
+    expect(sheetData[0]).toHaveProperty('LUC');
+    expect(sheetData[0]).toHaveProperty('Nome da Loja');
+    expect(sheetData[0]).toHaveProperty('Leitura Atual (Preencher)');
+  });
 });

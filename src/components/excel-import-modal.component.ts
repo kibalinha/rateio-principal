@@ -97,6 +97,21 @@ export interface ExcelImportSuccessEvent {
               </div>
             </div>
 
+            <!-- INFORMAÇÃO SOBRE A QUANTIDADE E ORIGEM DAS LOJAS DA PLANILHA -->
+            <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] px-3.5 py-2 bg-teal-50/80 dark:bg-teal-950/30 text-teal-800 dark:text-teal-300 rounded-xl border border-teal-200 dark:border-teal-900/40">
+              <span class="flex items-center gap-1.5 font-medium">
+                <span>🏢</span>
+                <span>
+                  Planilha de Campo: <strong>{{ effectiveStores().length }} lojas</strong> preparadas na ordem física.
+                </span>
+              </span>
+              @if (activeStores.length === 0 && effectiveStores().length > 0) {
+                <span class="text-[10px] font-semibold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 px-2 py-0.5 rounded-md border border-amber-300 dark:border-amber-800/50">
+                  Mês novo/em branco: Lojas obtidas do cadastro geral do shopping
+                </span>
+              }
+            </div>
+
             <!-- TAB 1: UPLOAD DE ARQUIVO -->
             @if (importMethod() === 'file') {
               <div 
@@ -373,6 +388,7 @@ export class ExcelImportModalComponent {
   @Input() utilityType: UtilityType = 'luz';
   @Input() selectedMonth = '';
   @Input() activeStores: Store[] = [];
+  @Input() allStores: Store[] = [];
   @Input() previousReadings: Map<string, { reading: number; consumption: number }> = new Map();
   @Input() unit = '';
 
@@ -402,12 +418,37 @@ export class ExcelImportModalComponent {
   });
   isDraggingFile = signal<boolean>(false);
 
+  // Lista efetiva de lojas: Se o mês atual estiver em branco no rateio, busca do catálogo de lojas fornecido
+  effectiveStores = computed<Store[]>(() => {
+    // 1. Se activeStores foi injetado pelo componente pai e possui lojas, prioriza
+    if (this.activeStores && this.activeStores.length > 0) {
+      return this.activeStores;
+    }
+
+    const type = this.utilityType;
+    const all = this.allStores || [];
+
+    // 2. Fallback: Lojas ativas do catálogo geral cadastradas para este insumo
+    const activeRegistered = all.filter(s => {
+      const usesUtil = type === 'luz' ? s.usesLuz : (type === 'agua' ? s.usesAgua : s.usesGas);
+      return usesUtil && s.active !== false;
+    });
+    if (activeRegistered.length > 0) {
+      return activeRegistered;
+    }
+
+    // 3. Fallback: Qualquer loja cadastrada com este insumo
+    return all.filter(s => {
+      return type === 'luz' ? s.usesLuz : (type === 'agua' ? s.usesAgua : s.usesGas);
+    });
+  });
+
   importPreviewList = computed<ExcelImportRowPreview[]>(() => {
     const rows = this.rawExcelRows();
     if (rows.length === 0) return [];
 
     const mappings = this.columnMappings();
-    const stores = this.activeStores;
+    const stores = this.effectiveStores();
     const prevReadings = this.previousReadings;
     const type = this.utilityType;
 
@@ -575,7 +616,7 @@ export class ExcelImportModalComponent {
 
   generateImportTemplateWorkbook(): { workbook: XLSX.WorkBook; filename: string } {
     const type = this.utilityType;
-    const stores = this.activeStores;
+    const stores = this.effectiveStores();
     const prevReadings = this.previousReadings;
     const month = this.selectedMonth;
     const mode = this.templateSortOrder();
@@ -630,6 +671,22 @@ export class ExcelImportModalComponent {
       item['Observacao de Campo'] = '';
       return item;
     });
+
+    // Se o banco estiver completamente vazio de lojas para este insumo, gera uma linha de exemplo com cabeçalhos
+    if (rows.length === 0) {
+      rows.push({
+        'Ordem / Rota': 1,
+        'LUC': 'LUC-001',
+        'Nome da Loja': 'Nome da Loja (Cadastre as lojas no sistema)',
+        'Contrato': '1001',
+        'Nº Medidor': 'MED-001',
+        'Leitura Anterior': 100,
+        'Leitura Atual (Preencher)': '',
+        ...(type === 'luz' ? { 'Constante': 1, 'Ajuste': 1 } : type === 'gas' ? { 'Ajuste (x)': 1.347, 'Ajuste Add (+)': 0, 'FCM': 1.0727, 'Fluxo (R$)': 0 } : { 'Constante': 1, 'Ajuste': 1 }),
+        'Consumo Virtual': '',
+        'Observacao de Campo': 'Exemplo de preenchimento'
+      });
+    }
 
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(rows);
