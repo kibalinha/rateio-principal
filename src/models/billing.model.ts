@@ -69,6 +69,7 @@ export interface ExcelImportRowPreview {
   matchedStore?: Store;
   storeName: string;
   luc: string;
+  routeOrder?: number;
   reading: number;
   prevReading: number;
   consumptionPreview: number;

@@ -74,13 +74,27 @@ export interface ExcelImportSuccessEvent {
                 </button>
               </div>
 
-              <!-- Botão Baixar Modelo Formatado -->
-              <button type="button"
-                (click)="downloadImportTemplate()"
-                class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer">
-                <span>📑</span>
-                <span>Baixar Planilha Modelo (.xlsx)</span>
-              </button>
+              <!-- Seletor de Ordenação & Botão Baixar Modelo Formatado -->
+              <div class="flex items-center gap-2 flex-wrap">
+                <div class="flex items-center gap-1.5 bg-white dark:bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs shadow-xs">
+                  <span class="text-slate-400 font-medium">Ordem:</span>
+                  <select [ngModel]="templateSortOrder()" 
+                          (ngModelChange)="templateSortOrder.set($event)"
+                          class="bg-transparent border-0 font-bold text-slate-800 dark:text-slate-200 text-xs focus:ring-0 cursor-pointer">
+                    <option value="route">🚶 Rota de Leitura (Caminhada do Técnico)</option>
+                    <option value="luc">🔢 Código LUC</option>
+                    <option value="name">🔤 Nome da Loja (A-Z)</option>
+                  </select>
+                </div>
+
+                <button type="button"
+                  (click)="downloadImportTemplate()"
+                  class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                  [title]="'Baixar modelo oficial ordenado por ' + (templateSortOrder() === 'route' ? 'Rota Física' : templateSortOrder() === 'luc' ? 'LUC' : 'Nome')">
+                  <span>📑</span>
+                  <span>Baixar Planilha Modelo (.xlsx)</span>
+                </button>
+              </div>
             </div>
 
             <!-- TAB 1: UPLOAD DE ARQUIVO -->
@@ -152,16 +166,48 @@ export interface ExcelImportSuccessEvent {
                 </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
-                  <!-- Coluna Identificadora (LUC ou Nome) -->
+                  <!-- Coluna Identificadora LUC -->
                   <div>
                     <label class="block font-bold text-[11px] text-slate-700 dark:text-slate-300 mb-1">
-                      Identificação da Loja (LUC ou Nome) <span class="text-rose-500">*</span>
+                      Coluna LUC / Código <span class="text-rose-500">*</span>
                     </label>
                     <select 
                       [ngModel]="columnMappings().luc"
                       (ngModelChange)="updateColumnMapping('luc', $event)"
                       class="w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-xs font-medium">
                       <option value="">-- Selecione a Coluna --</option>
+                      @for (h of rawExcelHeaders(); track h) {
+                        <option [value]="h">{{ h }}</option>
+                      }
+                    </select>
+                  </div>
+
+                  <!-- Coluna Nome da Loja -->
+                  <div>
+                    <label class="block font-bold text-[11px] text-slate-700 dark:text-slate-300 mb-1">
+                      Nome da Loja (Opcional)
+                    </label>
+                    <select 
+                      [ngModel]="columnMappings().storeName"
+                      (ngModelChange)="updateColumnMapping('storeName', $event)"
+                      class="w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-xs font-medium">
+                      <option value="">-- Não Mapear --</option>
+                      @for (h of rawExcelHeaders(); track h) {
+                        <option [value]="h">{{ h }}</option>
+                      }
+                    </select>
+                  </div>
+
+                  <!-- Coluna Nº Medidor / Contrato -->
+                  <div>
+                    <label class="block font-bold text-[11px] text-slate-700 dark:text-slate-300 mb-1">
+                      Nº Medidor / Contrato (Opcional)
+                    </label>
+                    <select 
+                      [ngModel]="columnMappings().meterNumber"
+                      (ngModelChange)="updateColumnMapping('meterNumber', $event)"
+                      class="w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-xs font-medium">
+                      <option value="">-- Não Mapear --</option>
                       @for (h of rawExcelHeaders(); track h) {
                         <option [value]="h">{{ h }}</option>
                       }
@@ -246,6 +292,7 @@ export interface ExcelImportSuccessEvent {
                     <thead class="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 sticky top-0 font-bold border-b border-slate-200 dark:border-slate-700">
                       <tr>
                         <th class="p-2.5">Status</th>
+                        <th class="p-2.5 text-center"># Rota</th>
                         <th class="p-2.5">LUC</th>
                         <th class="p-2.5">Loja Identificada</th>
                         <th class="p-2.5 text-right">Leitura Ant.</th>
@@ -267,6 +314,9 @@ export interface ExcelImportSuccessEvent {
                                 ✕ Ignorado
                               </span>
                             }
+                          </td>
+                          <td class="p-2.5 text-center font-bold text-slate-500 dark:text-slate-400">
+                            {{ row.routeOrder !== undefined && row.routeOrder !== null ? row.routeOrder : '—' }}
                           </td>
                           <td class="p-2.5 font-bold">{{ row.luc }}</td>
                           <td class="p-2.5 font-sans font-medium text-slate-800 dark:text-slate-200">
@@ -333,10 +383,14 @@ export class ExcelImportModalComponent {
   importMethod = signal<'file' | 'paste'>('file');
   importedFileName = signal<string>('');
   importPastedText = signal<string>('');
+  templateSortOrder = signal<'route' | 'luc' | 'name'>('route');
   rawExcelHeaders = signal<string[]>([]);
   rawExcelRows = signal<Record<string, any>[]>([]);
   columnMappings = signal<Record<string, string>>({
     luc: '',
+    storeName: '',
+    contrato: '',
+    meterNumber: '',
     reading: '',
     constant: '',
     adjustment: '',
@@ -359,20 +413,44 @@ export class ExcelImportModalComponent {
 
     const normalizeKey = (s: any) => String(s || '').toLowerCase().trim().replace(/[^a-z0-9]/gi, '');
 
-    return rows.map((rawRow, idx) => {
+    const previewRows = rows.map((rawRow, idx) => {
       const rawLucVal = mappings.luc ? String(rawRow[mappings.luc] || '').trim() : '';
+      const rawNameVal = mappings.storeName ? String(rawRow[mappings.storeName] || '').trim() : '';
+      const rawContratoVal = mappings.contrato ? String(rawRow[mappings.contrato] || '').trim() : '';
+      const rawMeterVal = mappings.meterNumber ? String(rawRow[mappings.meterNumber] || '').trim() : '';
       const rawReadingVal = mappings.reading ? rawRow[mappings.reading] : '';
       const reading = this.parseExcelNumber(rawReadingVal);
 
-      // Correspondência inteligente (LUC, Nome da Loja, Contrato ou Medidor)
-      const normVal = normalizeKey(rawLucVal);
+      // Correspondência inteligente em múltiplas camadas (LUC -> Contrato -> Medidor -> Nome)
+      const normLucVal = normalizeKey(rawLucVal);
+      const normNameVal = normalizeKey(rawNameVal);
+      const normContrVal = normalizeKey(rawContratoVal);
+      const normMeterVal = normalizeKey(rawMeterVal);
+
       const matchedStore = stores.find(s => {
-        if (!normVal) return false;
-        if (normalizeKey(s.luc) === normVal) return true;
-        if (normalizeKey(s.name) === normVal) return true;
-        if (s.contrato && normalizeKey(s.contrato) === normVal) return true;
-        if (s.meterNumber && normalizeKey(s.meterNumber) === normVal) return true;
-        if (s.name && s.name.toLowerCase().includes(rawLucVal.toLowerCase())) return true;
+        const sLuc = normalizeKey(s.luc);
+        const sContr = s.contrato ? normalizeKey(s.contrato) : '';
+        const sMeter = s.meterNumber ? normalizeKey(s.meterNumber) : '';
+        const sName = normalizeKey(s.name);
+
+        // 1. Pelo LUC
+        if (normLucVal && sLuc && sLuc === normLucVal) return true;
+        // 2. Pelo Contrato
+        if (normContrVal && sContr && sContr === normContrVal) return true;
+        // 3. Pelo Medidor
+        if (normMeterVal && sMeter && sMeter === normMeterVal) return true;
+        // 4. Pelo Nome da Loja
+        if (normNameVal && sName && sName === normNameVal) return true;
+
+        // Fallbacks se o leiturista usou a coluna LUC com nome/contrato/medidor
+        if (normLucVal) {
+          if (sContr && sContr === normLucVal) return true;
+          if (sMeter && sMeter === normLucVal) return true;
+          if (sName && sName === normLucVal) return true;
+          if (s.name && s.name.toLowerCase().includes(rawLucVal.toLowerCase())) return true;
+        }
+        if (normNameVal && s.name && s.name.toLowerCase().includes(rawNameVal.toLowerCase())) return true;
+
         return false;
       });
 
@@ -393,7 +471,7 @@ export class ExcelImportModalComponent {
           prevData = prevReadings.get(`name:${nName}`)!;
         }
       }
-      if (!prevData && normVal) {
+      if (!prevData && normLucVal) {
         const nLuc = normalizeLuc(rawLucVal);
         const nContr = normalizeContract(rawLucVal);
         const nName = normalizeStoreName(rawLucVal);
@@ -434,6 +512,7 @@ export class ExcelImportModalComponent {
           matchedStore,
           storeName: matchedStore.name,
           luc: matchedStore.luc,
+          routeOrder: matchedStore.routeOrder,
           reading,
           prevReading,
           consumptionPreview,
@@ -452,7 +531,7 @@ export class ExcelImportModalComponent {
       } else {
         return {
           rawRow,
-          storeName: rawLucVal || `Linha ${idx + 1}`,
+          storeName: rawNameVal || rawLucVal || `Linha ${idx + 1}`,
           luc: rawLucVal || '—',
           reading,
           prevReading: 0,
@@ -461,6 +540,19 @@ export class ExcelImportModalComponent {
           message: rawLucVal ? 'Loja não localizada no cadastro deste insumo' : 'Coluna de identificação vazia'
         };
       }
+    });
+
+    // Ordena pré-visualização por Rota física (ou LUC numérico)
+    return previewRows.sort((a, b) => {
+      if (a.status === 'matched' && b.status === 'matched') {
+        const orderA = a.routeOrder !== undefined && a.routeOrder !== null ? a.routeOrder : 9999;
+        const orderB = b.routeOrder !== undefined && b.routeOrder !== null ? b.routeOrder : 9999;
+        if (orderA !== orderB) return orderA - orderB;
+        return (a.luc || '').localeCompare(b.luc || '', undefined, { numeric: true });
+      }
+      if (a.status === 'matched') return -1;
+      if (b.status === 'matched') return 1;
+      return 0;
     });
   });
 
@@ -481,13 +573,27 @@ export class ExcelImportModalComponent {
     this.columnMappings.update(curr => ({ ...curr, [field]: headerName }));
   }
 
-  downloadImportTemplate() {
+  generateImportTemplateWorkbook(): { workbook: XLSX.WorkBook; filename: string } {
     const type = this.utilityType;
     const stores = this.activeStores;
     const prevReadings = this.previousReadings;
     const month = this.selectedMonth;
+    const mode = this.templateSortOrder();
 
-    const rows = stores.map(s => {
+    const sortedStores = [...stores].sort((a, b) => {
+      if (mode === 'route') {
+        const orderA = a.routeOrder !== undefined && a.routeOrder !== null ? a.routeOrder : 9999;
+        const orderB = b.routeOrder !== undefined && b.routeOrder !== null ? b.routeOrder : 9999;
+        if (orderA !== orderB) return orderA - orderB;
+        return (a.luc || '').localeCompare(b.luc || '', undefined, { numeric: true });
+      } else if (mode === 'luc') {
+        return (a.luc || '').localeCompare(b.luc || '', undefined, { numeric: true });
+      } else {
+        return (a.name || '').localeCompare(b.name || '');
+      }
+    });
+
+    const rows = sortedStores.map((s, idx) => {
       const nLuc = normalizeLuc(s.luc);
       const nContr = normalizeContract(s.contrato);
       const nName = normalizeStoreName(s.name);
@@ -498,13 +604,15 @@ export class ExcelImportModalComponent {
         || (nContr ? prevReadings.get(`contrato:${nContr}`) : undefined)
         || (nName ? prevReadings.get(`name:${nName}`) : undefined)
         || { reading: 0, consumption: 0 };
+
       const item: Record<string, any> = {
+        'Ordem / Rota': s.routeOrder !== undefined && s.routeOrder !== null ? s.routeOrder : (idx + 1),
         'LUC': s.luc,
         'Nome da Loja': s.name,
         'Contrato': s.contrato || '',
-        'Medidor': s.meterNumber || '',
+        'Nº Medidor': s.meterNumber || '',
         'Leitura Anterior': p.reading || 0,
-        'Leitura Atual': '',
+        'Leitura Atual (Preencher)': '',
       };
       if (type === 'luz') {
         item['Constante'] = 1;
@@ -519,26 +627,48 @@ export class ExcelImportModalComponent {
         item['Ajuste'] = 1;
       }
       item['Consumo Virtual'] = '';
-      item['Observacao'] = '';
+      item['Observacao de Campo'] = '';
       return item;
     });
 
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(rows);
     ws['!cols'] = [
-      { wch: 12 },
-      { wch: 30 },
-      { wch: 14 },
-      { wch: 16 },
-      { wch: 16 },
-      { wch: 16 },
-      { wch: 12 },
-      { wch: 14 },
-      { wch: 12 },
-      { wch: 25 },
+      { wch: 14 }, // Ordem / Rota
+      { wch: 12 }, // LUC
+      { wch: 32 }, // Nome da Loja
+      { wch: 16 }, // Contrato
+      { wch: 18 }, // Nº Medidor
+      { wch: 16 }, // Leitura Anterior
+      { wch: 24 }, // Leitura Atual (Preencher)
+      { wch: 12 }, // Constante
+      { wch: 14 }, // Ajuste
+      { wch: 16 }, // Consumo Virtual
+      { wch: 30 }, // Observacao de Campo
     ];
-    XLSX.utils.book_append_sheet(wb, ws, `Modelo_${type.toUpperCase()}`);
-    XLSX.writeFile(wb, `Planilha_Modelo_${type.toUpperCase()}_${month}.xlsx`);
+
+    const instructions = [
+      { 'GUIA DE LEITURA EM CAMPO': '1. A ordem das lojas nesta planilha segue o roteiro físico planejado para o leiturista.' },
+      { 'GUIA DE LEITURA EM CAMPO': '2. Preencha apenas a coluna "Leitura Atual (Preencher)" com os dígitos visíveis do hidrômetro/medidor.' },
+      { 'GUIA DE LEITURA EM CAMPO': '3. NÃO altere as colunas LUC, Contrato ou Nº Medidor para que a importação automática vincule a loja exata.' },
+      { 'GUIA DE LEITURA EM CAMPO': '4. Caso a loja esteja fechada ou o medidor inacessível, anote na coluna "Observacao de Campo" (ex: "Fechado", "Vidro embaçado").' },
+      { 'GUIA DE LEITURA EM CAMPO': '5. Se uma medição acordada for estipulada em cota fixa, pode preencher "Consumo Virtual".' },
+      { 'GUIA DE LEITURA EM CAMPO': '6. Ao finalizar a ronda, basta importar este mesmo arquivo .xlsx no sistema.' }
+    ];
+    const wsInst = XLSX.utils.json_to_sheet(instructions);
+    wsInst['!cols'] = [{ wch: 120 }];
+
+    XLSX.utils.book_append_sheet(wb, ws, `Leituras_${type.toUpperCase()}`);
+    XLSX.utils.book_append_sheet(wb, wsInst, 'Instrucoes_Leiturista');
+    return {
+      workbook: wb,
+      filename: `Planilha_Roteiro_${type.toUpperCase()}_${month}.xlsx`
+    };
+  }
+
+  downloadImportTemplate() {
+    const { workbook, filename } = this.generateImportTemplateWorkbook();
+    XLSX.writeFile(workbook, filename);
   }
 
   onExcelFileSelected(event: Event) {
@@ -612,6 +742,9 @@ export class ExcelImportModalComponent {
 
     const mappings: Record<string, string> = {
       luc: '',
+      storeName: '',
+      contrato: '',
+      meterNumber: '',
       reading: '',
       constant: '',
       adjustment: '',
@@ -626,10 +759,26 @@ export class ExcelImportModalComponent {
 
     extractedHeaders.forEach(h => {
       const nh = norm(h);
-      if (!mappings.luc && (nh === 'luc' || nh.includes('luc') || nh.includes('loja') || nh.includes('nome') || nh.includes('codigo') || nh.includes('unidade'))) {
+
+      // LUC:
+      if (!mappings.luc && (nh === 'luc' || nh.includes('luc') || nh.includes('unidade') || nh === 'loja' || nh === 'codigo')) {
         mappings.luc = h;
       }
-      if (!mappings.reading && (nh.includes('leitura atual') || nh === 'leitura' || nh.includes('medicao') || nh.includes('atual') || nh.includes('valor medido') || nh.includes('hidrometro'))) {
+      // Nome da Loja:
+      if (!mappings.storeName && (nh.includes('nome da loja') || nh.includes('razao social') || nh.includes('fantasia') || (nh.includes('nome') && !nh.includes('medidor')))) {
+        mappings.storeName = h;
+      }
+      // Contrato:
+      if (!mappings.contrato && (nh.includes('contrato') || nh.includes('contr'))) {
+        mappings.contrato = h;
+      }
+      // Medidor:
+      if (!mappings.meterNumber && (nh.includes('medidor') || nh.includes('hidrometro') || nh.includes('relogio') || nh.includes('serie'))) {
+        mappings.meterNumber = h;
+      }
+      // Leitura Atual (Preenchida pelo técnico): NUNCA deve capturar "Leitura Anterior"
+      if (!mappings.reading && !nh.includes('anterior') && !nh.includes('ant') &&
+          (nh.includes('leitura atual') || nh.includes('preencher') || nh.includes('medicao atual') || nh.includes('valor medido') || nh === 'leitura' || nh.includes('leitura'))) {
         mappings.reading = h;
       }
       if (!mappings.constant && (nh.includes('const') || nh.includes('constante'))) {
@@ -650,7 +799,7 @@ export class ExcelImportModalComponent {
       if (!mappings.fluxoCost && (nh.includes('fluxo') || nh.includes('custo fluxo'))) {
         mappings.fluxoCost = h;
       }
-      if (!mappings.note && (nh.includes('obs') || nh.includes('observacao') || nh.includes('nota') || nh.includes('comentario'))) {
+      if (!mappings.note && (nh.includes('obs') || nh.includes('observacao') || nh.includes('nota') || nh.includes('comentario') || nh.includes('campo'))) {
         mappings.note = h;
       }
     });

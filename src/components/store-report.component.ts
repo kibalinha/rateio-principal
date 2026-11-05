@@ -8,13 +8,13 @@ import { IndexedDbService } from '../services/indexed-db.service';
 import { ThemeService } from '../services/theme.service';
 import { NavigationService } from '../services/navigation.service';
 
-import { 
-  Store, 
-  MeterPhotoRecord, 
-  MonthlyChartItem, 
-  StoreAlertInfo, 
-  UtilityType, 
-  StoreStatusFilter as StatusFilter 
+import {
+  Store,
+  MeterPhotoRecord,
+  MonthlyChartItem,
+  StoreAlertInfo,
+  UtilityType,
+  StoreStatusFilter as StatusFilter
 } from '../models';
 import { evaluateAlertSeverity } from '../services/apportionment-engine.service';
 import { MeterPhotoModalComponent } from './meter-photo-modal.component';
@@ -944,7 +944,7 @@ export class StoreReportComponent {
       const windowAvg = windowPositive.length > 0
         ? windowPositive.reduce((a, b) => a + b, 0) / windowPositive.length
         : overallAvg;
-      
+
       const storeAvg = windowPositive.length >= 2 ? windowAvg : (overallAvg > 0 ? overallAvg : windowAvg);
       const latestItem = windowItems[windowItems.length - 1];
 
@@ -1092,7 +1092,7 @@ export class StoreReportComponent {
     // 3. Search Query (Name, LUC, Contrato)
     const query = this.searchQuery().trim().toLowerCase();
     if (query) {
-      list = list.filter(s => 
+      list = list.filter(s =>
         s.name.toLowerCase().includes(query) ||
         s.luc.toLowerCase().includes(query) ||
         (s.contrato && s.contrato.toLowerCase().includes(query))
@@ -1116,21 +1116,21 @@ export class StoreReportComponent {
 
     // Scan keys (format e.g.: "luz_2026-02")
     Object.keys(allData).forEach(key => {
-       const parts = key.split('_');
-       if (parts.length === 2 && parts[1].length === 7) {
-          monthSet.add(parts[1]);
-       }
+      const parts = key.split('_');
+      if (parts.length === 2 && parts[1].length === 7) {
+        monthSet.add(parts[1]);
+      }
     });
 
     // If empty, generate the 12 most recent months up to current system date to avoid empty lists
     if (monthSet.size < 6) {
-       const now = new Date();
-       for (let i = 11; i >= 0; i--) {
-          const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-          const yyyy = d.getFullYear();
-          const mm = (d.getMonth() + 1).toString().padStart(2, '0');
-          monthSet.add(`${yyyy}-${mm}`);
-       }
+      const now = new Date();
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const yyyy = d.getFullYear();
+        const mm = (d.getMonth() + 1).toString().padStart(2, '0');
+        monthSet.add(`${yyyy}-${mm}`);
+      }
     }
 
     return Array.from(monthSet).sort();
@@ -1182,14 +1182,14 @@ export class StoreReportComponent {
 
       // 1. Month total bill
       const totalBill = (bill.costItems || []).reduce((acc: number, item: any) => acc + (item.value || 0), 0);
-      
+
       // 2. Month total consumption input by technicans/admin
       let totalConsumption = 0;
       if (type === 'luz') {
-         const c = bill.consumptionInput || {};
-         totalConsumption = (c.bss1||0) + (c.bss2||0) + (c.bss3||0) + (c.bss4||0);
+        const c = bill.consumptionInput || {};
+        totalConsumption = (c.bss1 || 0) + (c.bss2 || 0) + (c.bss3 || 0) + (c.bss4 || 0);
       } else {
-         totalConsumption = Number(bill.consumptionInput) || 0;
+        totalConsumption = Number(bill.consumptionInput) || 0;
       }
 
       // 3. System-wide unit price
@@ -1260,7 +1260,7 @@ export class StoreReportComponent {
     // Enrich with comparative MoM and variance vs average
     return rawList.map((item, idx) => {
       const diffFromAvgPct = storeAvg > 0 ? ((item.consumption - storeAvg) / storeAvg) * 100 : 0;
-      
+
       let momDiffPct: number | null = null;
       if (idx > 0 && rawList[idx - 1].consumption > 0) {
         momDiffPct = ((item.consumption - rawList[idx - 1].consumption) / rawList[idx - 1].consumption) * 100;
@@ -1390,11 +1390,11 @@ export class StoreReportComponent {
     effect(() => {
       const list = this.storeService.stores();
       if (list.length > 0 && !this.selectedStoreId()) {
-         untracked(() => {
-           // Prefer an active store first
-           const firstActive = list.find(s => s.active !== false);
-           this.selectedStoreId.set(firstActive ? firstActive.id : list[0].id);
-         });
+        untracked(() => {
+          // Prefer an active store first
+          const firstActive = list.find(s => s.active !== false);
+          this.selectedStoreId.set(firstActive ? firstActive.id : list[0].id);
+        });
       }
     });
 
@@ -1404,12 +1404,12 @@ export class StoreReportComponent {
       if (periods.length > 0) {
         untracked(() => {
           if (!this.startPeriod()) {
-             // 6 months ago or the first one
-             const initialIdx = Math.max(0, periods.length - 6);
-             this.startPeriod.set(periods[initialIdx]);
+            // 6 months ago or the first one
+            const initialIdx = Math.max(0, periods.length - 6);
+            this.startPeriod.set(periods[initialIdx]);
           }
           if (!this.endPeriod()) {
-             this.endPeriod.set(periods[periods.length - 1]);
+            this.endPeriod.set(periods[periods.length - 1]);
           }
         });
       }
@@ -1495,7 +1495,7 @@ export class StoreReportComponent {
   // Filter actions
   setStatusFilter(filter: StatusFilter) {
     this.statusFilter.set(filter);
-    
+
     // If the currently selected store is not in the newly filtered list, optionally select the first one
     const currentList = this.filteredStores();
     if (currentList.length > 0 && !currentList.some(s => s.id === this.selectedStoreId())) {
@@ -1560,7 +1560,7 @@ export class StoreReportComponent {
     this.startPeriod.set(period);
     // If end period is before new start period, push it forward
     if (this.endPeriod() < period) {
-       this.endPeriod.set(period);
+      this.endPeriod.set(period);
     }
     this.checkCurrentStoreAfterFilterChange();
   }
@@ -1606,11 +1606,11 @@ export class StoreReportComponent {
   }
 
   getUnit(): string {
-     return this.selectedUtility() === 'luz' ? 'kWh' : 'm³';
+    return this.selectedUtility() === 'luz' ? 'kWh' : 'm³';
   }
 
   getUtilityColorBg() {
-    switch(this.selectedUtility()) {
+    switch (this.selectedUtility()) {
       case 'luz': return 'bg-amber-500';
       case 'agua': return 'bg-blue-500';
       case 'gas': return 'bg-red-500';
@@ -1618,7 +1618,7 @@ export class StoreReportComponent {
   }
 
   getUtilityColorText() {
-    switch(this.selectedUtility()) {
+    switch (this.selectedUtility()) {
       case 'luz': return 'text-amber-600';
       case 'agua': return 'text-blue-600';
       case 'gas': return 'text-red-600';
@@ -1723,7 +1723,7 @@ export class StoreReportComponent {
     const xAxisG = svg.append('g')
       .attr('transform', `translate(0,${height})`)
       .call(d3.axisBottom(x));
-      
+
     xAxisG.selectAll('text')
       .style('opacity', isDark ? 0.9 : 0.7)
       .style('font-size', '10px')
@@ -1741,7 +1741,7 @@ export class StoreReportComponent {
 
     const yAxisG = svg.append('g')
       .call(d3.axisLeft(y).ticks(5).tickFormat((d: any) => `${d}`));
-      
+
     yAxisG.selectAll('text')
       .style('opacity', isDark ? 0.9 : 0.7)
       .style('font-size', '10px')
@@ -1755,7 +1755,7 @@ export class StoreReportComponent {
       .attr('class', 'grid')
       .attr('opacity', isDark ? 0.15 : 0.08)
       .call(d3.axisLeft(y).tickSize(-width).tickFormat(() => ''));
-      
+
     gridG.selectAll('line')
       .style('stroke', isDark ? '#475569' : '#cbd5e1');
     gridG.select('.domain').remove();
@@ -1867,23 +1867,23 @@ export class StoreReportComponent {
       .attr('stroke', (d: MonthlyChartItem) => d.alertLevel === 'critical' ? '#9f1239' : gradientStart)
       .attr('stroke-width', 2)
       .style('cursor', 'pointer')
-      .on('mouseover', function(this: SVGCircleElement, _e: MouseEvent, d: MonthlyChartItem) {
-         d3.select(this).attr('r', 7.5);
-         
-         const tipText = `${d.consumption.toFixed(1)} ${self.getUnit()} (${d.diffFromAvgPct >= 0 ? '+' : ''}${d.diffFromAvgPct.toFixed(0)}% vs média)`;
-         svg.append('text')
-           .attr('id', `ctooltip-${d.key}`)
-           .attr('x', x(d.monthLabel)!)
-           .attr('y', y(d.consumption) - 14)
-           .attr('text-anchor', 'middle')
-           .text(tipText)
-           .style('font-size', '11px')
-           .style('font-weight', 'bold')
-           .style('fill', d.alertLevel === 'critical' ? '#e11d48' : (isDark ? '#f1f5f9' : '#334155'));
+      .on('mouseover', function (this: SVGCircleElement, _e: MouseEvent, d: MonthlyChartItem) {
+        d3.select(this).attr('r', 7.5);
+
+        const tipText = `${d.consumption.toFixed(1)} ${self.getUnit()} (${d.diffFromAvgPct >= 0 ? '+' : ''}${d.diffFromAvgPct.toFixed(0)}% vs média)`;
+        svg.append('text')
+          .attr('id', `ctooltip-${d.key}`)
+          .attr('x', x(d.monthLabel)!)
+          .attr('y', y(d.consumption) - 14)
+          .attr('text-anchor', 'middle')
+          .text(tipText)
+          .style('font-size', '11px')
+          .style('font-weight', 'bold')
+          .style('fill', d.alertLevel === 'critical' ? '#e11d48' : (isDark ? '#f1f5f9' : '#334155'));
       })
-      .on('mouseout', function(this: SVGCircleElement, _e: MouseEvent, d: MonthlyChartItem) {
-         d3.select(this).attr('r', d.alertLevel === 'critical' ? 6 : 4.5);
-         d3.select(`#ctooltip-${d.key}`).remove();
+      .on('mouseout', function (this: SVGCircleElement, _e: MouseEvent, d: MonthlyChartItem) {
+        d3.select(this).attr('r', d.alertLevel === 'critical' ? 6 : 4.5);
+        d3.select(`#ctooltip-${d.key}`).remove();
       });
 
     // Top value text on vertices
@@ -1933,7 +1933,7 @@ export class StoreReportComponent {
     const xAxisG = svg.append('g')
       .attr('transform', `translate(0,${height})`)
       .call(d3.axisBottom(x));
-      
+
     xAxisG.selectAll('text')
       .style('opacity', isDark ? 0.9 : 0.7)
       .style('font-size', '10px')
@@ -1950,7 +1950,7 @@ export class StoreReportComponent {
 
     const yAxisG = svg.append('g')
       .call(d3.axisLeft(y).ticks(5).tickFormat((d: any) => `R$${d}`));
-      
+
     yAxisG.selectAll('text')
       .style('opacity', isDark ? 0.9 : 0.7)
       .style('font-size', '10px')
@@ -1981,17 +1981,17 @@ export class StoreReportComponent {
       .attr('fill', '#10b981')
       .attr('rx', 4)
       .attr('opacity', isDark ? 0.9 : 0.8)
-      .on('mouseover', function(this: SVGRectElement) {
-         d3.select(this)
-           .transition()
-           .duration(150)
-           .attr('opacity', 1.0);
+      .on('mouseover', function (this: SVGRectElement) {
+        d3.select(this)
+          .transition()
+          .duration(150)
+          .attr('opacity', 1.0);
       })
-      .on('mouseout', function(this: SVGRectElement) {
-         d3.select(this)
-           .transition()
-           .duration(150)
-           .attr('opacity', isDark ? 0.9 : 0.8);
+      .on('mouseout', function (this: SVGRectElement) {
+        d3.select(this)
+          .transition()
+          .duration(150)
+          .attr('opacity', isDark ? 0.9 : 0.8);
       });
 
     // Top values text
