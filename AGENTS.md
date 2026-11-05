@@ -24,3 +24,5 @@ Sistema de gestão e rateio de despesas (água, energia, áreas comuns) para sho
 4. **Subagentes Disponíveis**:
    - `apportionment-auditor`: Para auditoria de regras de rateio e balanço de despesas.
    - `azure-migration-reviewer`: Para auditoria de conformidade MSAL e arquitetura Azure.
+5. **Roteamento Inteligente de Skills**:
+   - Sempre que uma tarefa envolver áreas especializadas (segurança, performance, testes avançados ou refatoração), consultar ativamente `.agents/skills/<nome-da-skill>/SKILL.md` ou acionar a skill `skill-router` para adotar os padrões corretos sob demanda.
