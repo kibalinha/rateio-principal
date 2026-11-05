@@ -634,7 +634,7 @@ export class ExcelImportModalComponent {
       }
     });
 
-    const rows = sortedStores.map((s, idx) => {
+    const rows = sortedStores.map(s => {
       const nLuc = normalizeLuc(s.luc);
       const nContr = normalizeContract(s.contrato);
       const nName = normalizeStoreName(s.name);
@@ -646,80 +646,40 @@ export class ExcelImportModalComponent {
         || (nName ? prevReadings.get(`name:${nName}`) : undefined)
         || { reading: 0, consumption: 0 };
 
-      const item: Record<string, any> = {
-        'Ordem / Rota': s.routeOrder !== undefined && s.routeOrder !== null ? s.routeOrder : (idx + 1),
-        'LUC': s.luc,
-        'Nome da Loja': s.name,
+      return {
+        'LUC': s.luc || '',
+        'Nome da Loja': s.name || '',
         'Contrato': s.contrato || '',
-        'Nº Medidor': s.meterNumber || '',
         'Leitura Anterior': p.reading || 0,
-        'Leitura Atual (Preencher)': '',
+        'Leitura Atual': '',
       };
-      if (type === 'luz') {
-        item['Constante'] = 1;
-        item['Ajuste'] = 1;
-      } else if (type === 'gas') {
-        item['Ajuste (x)'] = 1.347;
-        item['Ajuste Add (+)'] = 0;
-        item['FCM'] = 1.0727;
-        item['Fluxo (R$)'] = 0;
-      } else {
-        item['Constante'] = 1;
-        item['Ajuste'] = 1;
-      }
-      item['Consumo Virtual'] = '';
-      item['Observacao de Campo'] = '';
-      return item;
     });
 
-    // Se o banco estiver completamente vazio de lojas para este insumo, gera uma linha de exemplo com cabeçalhos
+    // Se o banco estiver completamente vazio de lojas para este insumo, gera uma linha de exemplo
     if (rows.length === 0) {
       rows.push({
-        'Ordem / Rota': 1,
         'LUC': 'LUC-001',
-        'Nome da Loja': 'Nome da Loja (Cadastre as lojas no sistema)',
+        'Nome da Loja': 'Loja Exemplo',
         'Contrato': '1001',
-        'Nº Medidor': 'MED-001',
         'Leitura Anterior': 100,
-        'Leitura Atual (Preencher)': '',
-        ...(type === 'luz' ? { 'Constante': 1, 'Ajuste': 1 } : type === 'gas' ? { 'Ajuste (x)': 1.347, 'Ajuste Add (+)': 0, 'FCM': 1.0727, 'Fluxo (R$)': 0 } : { 'Constante': 1, 'Ajuste': 1 }),
-        'Consumo Virtual': '',
-        'Observacao de Campo': 'Exemplo de preenchimento'
+        'Leitura Atual': '',
       });
     }
 
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(rows);
     ws['!cols'] = [
-      { wch: 14 }, // Ordem / Rota
-      { wch: 12 }, // LUC
-      { wch: 32 }, // Nome da Loja
+      { wch: 14 }, // LUC
+      { wch: 35 }, // Nome da Loja
       { wch: 16 }, // Contrato
-      { wch: 18 }, // Nº Medidor
-      { wch: 16 }, // Leitura Anterior
-      { wch: 24 }, // Leitura Atual (Preencher)
-      { wch: 12 }, // Constante
-      { wch: 14 }, // Ajuste
-      { wch: 16 }, // Consumo Virtual
-      { wch: 30 }, // Observacao de Campo
+      { wch: 18 }, // Leitura Anterior
+      { wch: 18 }, // Leitura Atual
     ];
-
-    const instructions = [
-      { 'GUIA DE LEITURA EM CAMPO': '1. A ordem das lojas nesta planilha segue o roteiro físico planejado para o leiturista.' },
-      { 'GUIA DE LEITURA EM CAMPO': '2. Preencha apenas a coluna "Leitura Atual (Preencher)" com os dígitos visíveis do hidrômetro/medidor.' },
-      { 'GUIA DE LEITURA EM CAMPO': '3. NÃO altere as colunas LUC, Contrato ou Nº Medidor para que a importação automática vincule a loja exata.' },
-      { 'GUIA DE LEITURA EM CAMPO': '4. Caso a loja esteja fechada ou o medidor inacessível, anote na coluna "Observacao de Campo" (ex: "Fechado", "Vidro embaçado").' },
-      { 'GUIA DE LEITURA EM CAMPO': '5. Se uma medição acordada for estipulada em cota fixa, pode preencher "Consumo Virtual".' },
-      { 'GUIA DE LEITURA EM CAMPO': '6. Ao finalizar a ronda, basta importar este mesmo arquivo .xlsx no sistema.' }
-    ];
-    const wsInst = XLSX.utils.json_to_sheet(instructions);
-    wsInst['!cols'] = [{ wch: 120 }];
 
     XLSX.utils.book_append_sheet(wb, ws, `Leituras_${type.toUpperCase()}`);
-    XLSX.utils.book_append_sheet(wb, wsInst, 'Instrucoes_Leiturista');
     return {
       workbook: wb,
-      filename: `Planilha_Roteiro_${type.toUpperCase()}_${month}.xlsx`
+      filename: `Planilha_Leituras_${type.toUpperCase()}_${month}.xlsx`
     };
   }
 

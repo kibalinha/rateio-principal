@@ -56,7 +56,7 @@ describe('Excel Import Modal: Route Ordering & Intelligent Template Import', () 
     }
   ];
 
-  it('Scenario 1: downloadImportTemplate orders stores by physical route and adds instructions sheet', () => {
+  it('Scenario 1: downloadImportTemplate orders stores by physical route with simplified columns', () => {
     const comp = new ExcelImportModalComponent();
     comp.activeStores = mockStores;
     comp.utilityType = 'agua';
@@ -65,26 +65,22 @@ describe('Excel Import Modal: Route Ordering & Intelligent Template Import', () 
 
     const { workbook, filename } = comp.generateImportTemplateWorkbook();
 
-    expect(filename).toContain('Planilha_Roteiro_AGUA_2026-11.xlsx');
+    expect(filename).toContain('Planilha_Leituras_AGUA_2026-11.xlsx');
     expect(workbook.SheetNames).toContain('Leituras_AGUA');
-    expect(workbook.SheetNames).toContain('Instrucoes_Leiturista');
 
     const sheetData: any[] = XLSX.utils.sheet_to_json(workbook.Sheets['Leituras_AGUA']);
     expect(sheetData.length).toBe(4);
 
-    // Deve estar ordenado por routeOrder: 1 (Farmácia Raia), 2 (Livraria Leitura), 3 (Outback), e Quiosque Café no final
+    // Deve estar ordenado por rota física: Farmácia Raia, Livraria Leitura, Outback, Quiosque Café
     expect(sheetData[0]['Nome da Loja']).toBe('Farmácia Raia');
-    expect(sheetData[0]['Ordem / Rota']).toBe(1);
-    expect(sheetData[1]['Nome da Loja']).toBe('Livraria Leitura');
-    expect(sheetData[1]['Ordem / Rota']).toBe(2);
-    expect(sheetData[2]['Nome da Loja']).toBe('Restaurante Outback');
-    expect(sheetData[2]['Ordem / Rota']).toBe(3);
-    expect(sheetData[3]['Nome da Loja']).toBe('Quiosque Café');
+    expect(sheetData[0]['LUC']).toBe('LUC-100');
+    expect(sheetData[0]['Contrato']).toBe('CTR-111');
+    expect(sheetData[0]).toHaveProperty('Leitura Anterior');
+    expect(sheetData[0]).toHaveProperty('Leitura Atual');
 
-    // Verifica se a coluna "Leitura Atual (Preencher)" e "Nº Medidor" existem
-    expect(sheetData[0]).toHaveProperty('Leitura Atual (Preencher)');
-    expect(sheetData[0]).toHaveProperty('Nº Medidor');
-    expect(sheetData[0]['Nº Medidor']).toBe('MED-123');
+    expect(sheetData[1]['Nome da Loja']).toBe('Livraria Leitura');
+    expect(sheetData[2]['Nome da Loja']).toBe('Restaurante Outback');
+    expect(sheetData[3]['Nome da Loja']).toBe('Quiosque Café');
   });
 
   it('Scenario 2: Template download supports sorting by LUC and Store Name if requested', () => {
@@ -112,21 +108,18 @@ describe('Excel Import Modal: Route Ordering & Intelligent Template Import', () 
     expect(sheetByLuc[3]['LUC']).toBe('LUC-300');
   });
 
-  it('Scenario 3: processImportedJsonData safely distinguishes "Leitura Atual (Preencher)" from "Leitura Anterior"', () => {
+  it('Scenario 3: processImportedJsonData safely distinguishes "Leitura Atual" from "Leitura Anterior" in simplified sheet', () => {
     const comp = new ExcelImportModalComponent();
     comp.activeStores = mockStores;
     comp.utilityType = 'agua';
 
     const testRows = [
       {
-        'Ordem / Rota': 1,
         'LUC': 'LUC-100',
         'Nome da Loja': 'Farmácia Raia',
         'Contrato': 'CTR-111',
-        'Nº Medidor': 'MED-123',
         'Leitura Anterior': 1500,
-        'Leitura Atual (Preencher)': 1580,
-        'Observacao de Campo': 'Hidrômetro limpo'
+        'Leitura Atual': 1580
       }
     ];
 
@@ -135,16 +128,13 @@ describe('Excel Import Modal: Route Ordering & Intelligent Template Import', () 
     const mappings = comp.columnMappings();
     expect(mappings.luc).toBe('LUC');
     expect(mappings.storeName).toBe('Nome da Loja');
-    expect(mappings.meterNumber).toBe('Nº Medidor');
-    expect(mappings.reading).toBe('Leitura Atual (Preencher)'); // NUNCA deve mapear 'Leitura Anterior'
-    expect(mappings.note).toBe('Observacao de Campo');
+    expect(mappings.contrato).toBe('Contrato');
+    expect(mappings.reading).toBe('Leitura Atual'); // NUNCA deve mapear 'Leitura Anterior'
 
     const preview = comp.importPreviewList();
     expect(preview.length).toBe(1);
     expect(preview[0].status).toBe('matched');
     expect(preview[0].reading).toBe(1580);
-    expect(preview[0].prevReading).toBe(0); // se não injetado no map
-    expect(preview[0].note).toBe('Hidrômetro limpo');
     expect(preview[0].routeOrder).toBe(1);
   });
 
@@ -191,12 +181,12 @@ describe('Excel Import Modal: Route Ordering & Intelligent Template Import', () 
     comp.selectedMonth = '2026-11';
 
     const { workbook, filename } = comp.generateImportTemplateWorkbook();
-    expect(filename).toContain('Planilha_Roteiro_LUZ_2026-11.xlsx');
+    expect(filename).toContain('Planilha_Leituras_LUZ_2026-11.xlsx');
 
     const sheetData: any[] = XLSX.utils.sheet_to_json(workbook.Sheets['Leituras_LUZ']);
     expect(sheetData.length).toBe(4);
     expect(sheetData[0]['Nome da Loja']).toBe('Farmácia Raia');
-    expect(sheetData[0]['Ordem / Rota']).toBe(1);
+    expect(sheetData[0]['LUC']).toBe('LUC-100');
   });
 
   it('Scenario 6: Even if both activeStores and allStores are empty, sheet is never blank and contains headers', () => {
@@ -211,6 +201,8 @@ describe('Excel Import Modal: Route Ordering & Intelligent Template Import', () 
     expect(sheetData.length).toBeGreaterThan(0);
     expect(sheetData[0]).toHaveProperty('LUC');
     expect(sheetData[0]).toHaveProperty('Nome da Loja');
-    expect(sheetData[0]).toHaveProperty('Leitura Atual (Preencher)');
+    expect(sheetData[0]).toHaveProperty('Contrato');
+    expect(sheetData[0]).toHaveProperty('Leitura Anterior');
+    expect(sheetData[0]).toHaveProperty('Leitura Atual');
   });
 });
