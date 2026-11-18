@@ -4,6 +4,7 @@ import { SupabaseService } from './supabase.service';
 
 import { StoreReading, BillData, Store } from '../models';
 import { StoreService, normalizeLuc, normalizeContract, normalizeStoreName } from './store.service';
+import { parsePtBrNumber } from './apportionment-engine.service';
 
 export type { StoreReading, BillData };
 
@@ -301,13 +302,13 @@ export class HistoryService {
       if (!bill || !bill.readings) continue;
 
       // Tarifa unitária do mês histórico para cálculo do custo caso não esteja gravado diretamente
-      const totalBill = (bill.costItems || []).reduce((acc: number, item: any) => acc + (item.value || 0), 0);
+      const totalBill = (bill.costItems || []).reduce((acc: number, item: any) => acc + parsePtBrNumber(item?.value), 0);
       let totalConsumption = 0;
       if (type === 'luz') {
         const c = bill.consumptionInput || {};
-        totalConsumption = (c.bss1 || 0) + (c.bss2 || 0) + (c.bss3 || 0) + (c.bss4 || 0);
+        totalConsumption = parsePtBrNumber(c.bss1) + parsePtBrNumber(c.bss2) + parsePtBrNumber(c.bss3) + parsePtBrNumber(c.bss4);
       } else {
-        totalConsumption = Number(bill.consumptionInput) || 0;
+        totalConsumption = parsePtBrNumber(bill.consumptionInput);
       }
       const unitPrice = totalConsumption > 0 ? (totalBill / totalConsumption) : 0;
 

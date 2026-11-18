@@ -333,10 +333,12 @@ Data e Hora de Geração    : ${issueDate}
 --------------------------------------------------------------------------------
 Valor Total da Fatura     : R$ ${options.totalBill.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
 Consumo Faturado (Total)  : ${options.totalConsumption.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${options.unit}
-Tarifa Unitária Rateada   : R$ ${options.unitPrice.toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })} / ${options.unit}
+Tarifa Unitária Rateada   : R$ ${options.unitPrice.toLocaleString('pt-BR', { minimumFractionDigits: 6, maximumFractionDigits: 6 })} / ${options.unit}
 Consumo Total das Lojas   : ${options.totalStoreConsumption.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${options.unit}
 Valor Total Rateado Lojas : R$ ${options.totalDistributedCost.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-Diferença Residual        : R$ ${(options.totalBill - options.totalDistributedCost).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+Custo Ar Condicionado     : R$ ${(options.airConditioningCost || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+Custo Áreas Comuns        : R$ ${(options.commonAreaCost || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+Diferença Residual        : R$ ${(options.totalBill - ((options.totalDistributedCost || 0) + (options.airConditioningCost || 0) + (options.commonAreaCost || 0))).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
 
 2. DISCRIMINAÇÃO DOS ITENS DE CUSTO DA CONCESSIONÁRIA:
 --------------------------------------------------------------------------------

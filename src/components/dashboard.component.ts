@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import * as d3 from 'd3';
 import { StoreService, normalizeLuc, normalizeContract, normalizeStoreName } from '../services/store.service';
 import { HistoryService, BillData } from '../services/history.service';
+import { parsePtBrNumber } from '../services/apportionment-engine.service';
 
 import { UtilityType } from '../models';
 
@@ -178,7 +179,7 @@ type ViewMode = 'annual' | 'monthly';
                         {{ monthlyMetrics().totalConsumption | number:'1.0-4' }} {{ getUnit() }}
                      </span>
                      <span class="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-slate-600 dark:text-slate-300 font-mono">
-                        {{ monthlyMetrics().unitPrice | currency:'BRL':'symbol':'1.4-4' }}/{{ getUnit() }}
+                        {{ monthlyMetrics().unitPrice | currency:'BRL':'symbol':'1.6-6' }}/{{ getUnit() }}
                      </span>
                   </div>
                </div>
@@ -248,9 +249,9 @@ type ViewMode = 'annual' | 'monthly';
                                   <td class="p-3 text-right font-bold text-slate-800 dark:text-slate-100">{{ store.cost | currency:'BRL' }}</td>
                                   <td class="p-3 text-right">
                                      <div class="flex items-center justify-end gap-2">
-                                        <span class="text-xs text-slate-500 dark:text-slate-400">{{ (store.cost / monthlyMetrics().totalBill * 100) | number:'1.1-1' }}%</span>
-                                        <div class="w-16 bg-slate-100 dark:bg-slate-800 rounded-full h-1.5">
-                                           <div class="h-1.5 rounded-full bg-slate-400 dark:bg-slate-500" [style.width.%]="(store.cost / monthlyMetrics().totalBill * 100)"></div>
+                                        <span class="text-xs text-slate-500 dark:text-slate-400">{{ (monthlyMetrics().totalBill > 0 ? (store.cost / monthlyMetrics().totalBill * 100) : 0) | number:'1.1-1' }}%</span>
+                                        <div class="w-16 bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                                           <div class="h-1.5 rounded-full bg-slate-400 dark:bg-slate-500" [style.width.%]="monthlyMetrics().totalBill > 0 ? (store.cost / monthlyMetrics().totalBill * 100 > 100 ? 100 : store.cost / monthlyMetrics().totalBill * 100) : 0"></div>
                                         </div>
                                      </div>
                                   </td>
@@ -334,14 +335,14 @@ export class DashboardComponent {
       }
 
       // Re-calculate Total Bill from Cost Items
-      const totalCost = (bill.costItems || []).reduce((acc: number, item: any) => acc + (item.value || 0), 0);
+      const totalCost = (bill.costItems || []).reduce((acc: number, item: any) => acc + parsePtBrNumber(item?.value), 0);
       
       let consumption = 0;
       if (type === 'luz') {
          const c = bill.consumptionInput || {};
-         consumption = (c.bss1||0) + (c.bss2||0) + (c.bss3||0) + (c.bss4||0);
+         consumption = parsePtBrNumber(c.bss1) + parsePtBrNumber(c.bss2) + parsePtBrNumber(c.bss3) + parsePtBrNumber(c.bss4);
       } else {
-         consumption = Number(bill.consumptionInput) || 0;
+         consumption = parsePtBrNumber(bill.consumptionInput);
       }
 
       return { 
@@ -387,15 +388,15 @@ export class DashboardComponent {
     }
 
     // 1. Total Bill
-    const totalBill = (bill.costItems || []).reduce((acc: number, item: any) => acc + (item.value || 0), 0);
+    const totalBill = (bill.costItems || []).reduce((acc: number, item: any) => acc + parsePtBrNumber(item?.value), 0);
     
     // 2. Total Input Consumption
     let totalConsumption = 0;
     if (type === 'luz') {
        const c = bill.consumptionInput || {};
-       totalConsumption = (c.bss1||0) + (c.bss2||0) + (c.bss3||0) + (c.bss4||0);
+       totalConsumption = parsePtBrNumber(c.bss1) + parsePtBrNumber(c.bss2) + parsePtBrNumber(c.bss3) + parsePtBrNumber(c.bss4);
     } else {
-       totalConsumption = Number(bill.consumptionInput) || 0;
+       totalConsumption = parsePtBrNumber(bill.consumptionInput);
     }
 
     // 3. Unit Price

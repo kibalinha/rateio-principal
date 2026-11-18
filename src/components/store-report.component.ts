@@ -16,7 +16,7 @@ import {
   UtilityType,
   StoreStatusFilter as StatusFilter
 } from '../models';
-import { evaluateAlertSeverity } from '../services/apportionment-engine.service';
+import { evaluateAlertSeverity, parsePtBrNumber } from '../services/apportionment-engine.service';
 import { MeterPhotoModalComponent } from './meter-photo-modal.component';
 
 export type { MonthlyChartItem, StoreAlertInfo };
@@ -740,7 +740,7 @@ export type { MonthlyChartItem, StoreAlertInfo };
 
                   <!-- Unit Price -->
                   <td class="p-3.5 text-right font-mono text-slate-400 dark:text-slate-500 whitespace-nowrap">
-                    {{ item.unitPrice | currency:'BRL':'symbol':'1.4-4' }}
+                    {{ item.unitPrice | currency:'BRL':'symbol':'1.6-6' }}
                   </td>
 
                   <!-- Cost -->
@@ -808,6 +808,7 @@ export type { MonthlyChartItem, StoreAlertInfo };
       <app-meter-photo-modal 
         [isOpen]="showPhotoModal()"
         [photo]="activeReportPhoto()"
+        [enableDelete]="false"
         (close)="closePhotoViewer()"
         (download)="downloadActivePhoto()"
       />
@@ -1181,15 +1182,15 @@ export class StoreReportComponent {
       }
 
       // 1. Month total bill
-      const totalBill = (bill.costItems || []).reduce((acc: number, item: any) => acc + (item.value || 0), 0);
+      const totalBill = (bill.costItems || []).reduce((acc: number, item: any) => acc + parsePtBrNumber(item?.value), 0);
 
       // 2. Month total consumption input by technicans/admin
       let totalConsumption = 0;
       if (type === 'luz') {
         const c = bill.consumptionInput || {};
-        totalConsumption = (c.bss1 || 0) + (c.bss2 || 0) + (c.bss3 || 0) + (c.bss4 || 0);
+        totalConsumption = parsePtBrNumber(c.bss1) + parsePtBrNumber(c.bss2) + parsePtBrNumber(c.bss3) + parsePtBrNumber(c.bss4);
       } else {
-        totalConsumption = Number(bill.consumptionInput) || 0;
+        totalConsumption = parsePtBrNumber(bill.consumptionInput);
       }
 
       // 3. System-wide unit price
@@ -1871,6 +1872,7 @@ export class StoreReportComponent {
         d3.select(this).attr('r', 7.5);
 
         const tipText = `${d.consumption.toFixed(1)} ${self.getUnit()} (${d.diffFromAvgPct >= 0 ? '+' : ''}${d.diffFromAvgPct.toFixed(0)}% vs média)`;
+        svg.select(`#ctooltip-${d.key}`).remove();
         svg.append('text')
           .attr('id', `ctooltip-${d.key}`)
           .attr('x', x(d.monthLabel)!)

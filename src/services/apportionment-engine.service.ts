@@ -61,13 +61,21 @@ export function parsePtBrNumber(raw: string | number | null | undefined): number
   const hasDot = cleaned.includes('.');
 
   let normalized = cleaned;
-  if (hasComma) {
-    // No padrão pt-BR, se há vírgula, pontos são separadores de milhar e vírgula é decimal
-    normalized = cleaned.replace(/\./g, '').replace(',', '.');
+  if (hasComma && hasDot) {
+    if (cleaned.lastIndexOf(',') > cleaned.lastIndexOf('.')) {
+      // Padrão pt-BR: 1.234,56
+      normalized = cleaned.replace(/\./g, '').replace(',', '.');
+    } else {
+      // Padrão en-US (ex: Excel raw:false): 1,234.56
+      normalized = cleaned.replace(/,/g, '');
+    }
+  } else if (hasComma) {
+    normalized = cleaned.replace(',', '.');
   } else if (hasDot) {
     const parts = cleaned.split('.');
-    // Múltiplos pontos (ex: 1.114.768) ou ponto único seguido de exatamente 3 dígitos (ex: 994.683, 56.890)
-    if (parts.length > 2 || (parts.length === 2 && parts[1].length === 3)) {
+    const firstPartDigits = parts[0].replace('-', '');
+    // Múltiplos pontos (ex: 1.114.768) ou ponto único seguido de exatamente 3 dígitos (ex: 994.683, 56.890, exceto 0.xxx)
+    if (parts.length > 2 || (parts.length === 2 && parts[1].length === 3 && firstPartDigits !== '0')) {
       normalized = cleaned.replace(/\./g, '');
     }
   }

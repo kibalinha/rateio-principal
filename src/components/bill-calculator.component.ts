@@ -2032,7 +2032,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                           <div class="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-200/50 dark:border-slate-700/50">
                             <div class="h-full rounded-full transition-all duration-300"
                                  [style.width.%]="stepProgressPercent()"
-                                 [class]="utilityType() === 'electricity' 
+                                 [class]="utilityType() === 'luz' 
                                    ? 'bg-gradient-to-r from-amber-400 to-yellow-500' 
                                    : (utilityType() === 'gas' ? 'bg-gradient-to-r from-orange-500 to-rose-500' : 'bg-gradient-to-r from-teal-500 to-emerald-500')">
                             </div>
@@ -2046,7 +2046,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                             (ngModelChange)="setStepIndex($event)"
                             class="w-full text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl p-2 font-mono text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-teal-500">
                             @for (st of tableData(); track st.storeId; let sIdx = $index) {
-                              <option [value]="sIdx">
+                              <option [ngValue]="sIdx">
                                 {{ st.routeOrder ? '#' + st.routeOrder + ' ' : '' }}{{ st.luc }} - {{ st.storeName }} {{ st.isRead ? '✓ (' + st.currentReading + ')' : '⏳' }}
                               </option>
                             }
@@ -2709,10 +2709,10 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
         [isOpen]="showPhotoModal()"
         [photo]="activePhotoRecord()"
         [isOnline]="indexedDb.isOnline()"
-        [enableOcr]="true"
+        [enableOcr]="canEdit() && activePhotoRecord()?.month === selectedMonth()"
         [enableVoucher]="true"
-        [enableReplace]="true"
-        [enableDelete]="true"
+        [enableReplace]="canEdit() && activePhotoRecord()?.month === selectedMonth()"
+        [enableDelete]="canEdit() && activePhotoRecord()?.month === selectedMonth()"
         [isReplacing]="isCapturingPhoto() === activePhotoRecord()?.storeId"
         [isReadingOcr]="isReadingOcr()"
         [ocrModelLabel]="ocrCurrentModelLabel()"
@@ -3154,13 +3154,16 @@ export class BillCalculatorComponent implements OnDestroy {
 
     // Se houver leituras salvas para lojas (ex.: lojas que estavam no rateio antes de serem inativadas),
     // inclui-as para manter a integridade dos cálculos e histórico apenas se tiverem medição/consumo real
+    // e sem duplicar LUCs já presentes na lista mensal
     if (readingsMap && readingsMap.size > 0) {
       const allStoresMap = new Map(this.storeService.stores().map(s => [s.id, s]));
       const monthStoreIds = new Set(monthStores.map(s => s.id));
+      const monthStoreLucs = new Set(monthStores.map(s => normalizeLuc(s.luc)).filter(Boolean));
       for (const [storeId, r] of readingsMap.entries()) {
         if (!monthStoreIds.has(storeId)) {
           const s = allStoresMap.get(storeId);
-          if (s) {
+          const normLuc = s ? normalizeLuc(s.luc) : '';
+          if (s && (!normLuc || !monthStoreLucs.has(normLuc))) {
             const usesUtil = type === 'luz' ? s.usesLuz : (type === 'agua' ? s.usesAgua : s.usesGas);
             const isReadOrJustified = typeof r === 'object' && r !== null
               ? (Number(r.reading) > 0 || Number(r.calculatedConsumption) > 0 || (r.cost !== undefined && Number(r.cost) > 0) || !!r.isJustified)
@@ -3168,6 +3171,8 @@ export class BillCalculatorComponent implements OnDestroy {
 
             if (usesUtil && isReadOrJustified) {
               monthStores.push(s);
+              monthStoreIds.add(s.id);
+              if (normLuc) monthStoreLucs.add(normLuc);
             }
           }
         }
@@ -3592,7 +3597,7 @@ export class BillCalculatorComponent implements OnDestroy {
       this.lockedBy.set(existingData.lockedBy || null);
 
       const normalizedCostItems = Array.isArray(existingData.costItems)
-        ? existingData.costItems.map((item: any) => ({ ...item, value: Number(item?.value) || 0 }))
+        ? existingData.costItems.map((item: any) => ({ ...item, value: parsePtBrNumber(item?.value) }))
         : [];
 
       if (type === 'luz') this.luzCostItems.set(normalizedCostItems);
@@ -3606,20 +3611,20 @@ export class BillCalculatorComponent implements OnDestroy {
         const ci = existingData.consumptionInput;
         if (ci && typeof ci === 'object') {
           this.luzConsumption.set({
-            bss1: Number(ci.bss1) || 0,
-            bss2: Number(ci.bss2) || 0,
-            bss3: Number(ci.bss3) || 0,
-            bss4: Number(ci.bss4) || 0,
+            bss1: parsePtBrNumber(ci.bss1),
+            bss2: parsePtBrNumber(ci.bss2),
+            bss3: parsePtBrNumber(ci.bss3),
+            bss4: parsePtBrNumber(ci.bss4),
           });
         } else {
-          this.luzConsumption.set({ bss1: Number(ci) || 0, bss2: 0, bss3: 0, bss4: 0 });
+          this.luzConsumption.set({ bss1: parsePtBrNumber(ci), bss2: 0, bss3: 0, bss4: 0 });
         }
       }
-      else if (type === 'agua') this.aguaTotalReading.set(Number(existingData.consumptionInput) || 0);
-      else if (type === 'gas') this.gasTotalReading.set(Number(existingData.consumptionInput) || 0);
+      else if (type === 'agua') this.aguaTotalReading.set(parsePtBrNumber(existingData.consumptionInput));
+      else if (type === 'gas') this.gasTotalReading.set(parsePtBrNumber(existingData.consumptionInput));
 
-      if (type === 'luz') this.luzAC.set(Number(existingData.acInput) || 0);
-      else if (type === 'agua') this.aguaAC.set(Number(existingData.acInput) || 0);
+      if (type === 'luz') this.luzAC.set(parsePtBrNumber(existingData.acInput));
+      else if (type === 'agua') this.aguaAC.set(parsePtBrNumber(existingData.acInput));
 
       // Load Readings
       const map = new Map<string, StoreReading>();
@@ -3814,7 +3819,7 @@ export class BillCalculatorComponent implements OnDestroy {
   updateItemValue(id: string, newValue: number) {
     if (!this.authService.canConfigureBill()) return;
     const type = this.utilityType();
-    const safeVal = Number(newValue) || 0;
+    const safeVal = parsePtBrNumber(newValue);
     const updater = (items: CostItem[]) => items.map(item => item.id === id ? { ...item, value: safeVal } : item);
     if (type === 'luz') this.luzCostItems.update(updater);
     else if (type === 'agua') this.aguaCostItems.update(updater);
@@ -3892,16 +3897,16 @@ export class BillCalculatorComponent implements OnDestroy {
   }
 
   totalBillAmount = computed(() => {
-    return (this.currentCostItems() || []).reduce((acc, item) => acc + (Number(item?.value) || 0), 0);
+    return (this.currentCostItems() || []).reduce((acc, item) => acc + parsePtBrNumber(item?.value), 0);
   });
 
   totalConsumption = computed(() => {
     if (this.utilityType() === 'luz') {
       const c = this.luzConsumption() || { bss1: 0, bss2: 0, bss3: 0, bss4: 0 };
-      return (Number(c.bss1) || 0) + (Number(c.bss2) || 0) + (Number(c.bss3) || 0) + (Number(c.bss4) || 0);
+      return parsePtBrNumber(c.bss1) + parsePtBrNumber(c.bss2) + parsePtBrNumber(c.bss3) + parsePtBrNumber(c.bss4);
     }
-    if (this.utilityType() === 'agua') return Number(this.aguaTotalReading()) || 0;
-    if (this.utilityType() === 'gas') return Number(this.gasTotalReading()) || 0;
+    if (this.utilityType() === 'agua') return parsePtBrNumber(this.aguaTotalReading());
+    if (this.utilityType() === 'gas') return parsePtBrNumber(this.gasTotalReading());
     return 0;
   });
 
@@ -4127,8 +4132,17 @@ export class BillCalculatorComponent implements OnDestroy {
       const storeMap = readingsStore[type] as Map<string, StoreReading>;
       stores.forEach(s => {
         const d = storeMap.get(s.id) || this.createDefaultReading();
-        const p = prevReadings.get(s.id) || { reading: 0, consumption: 0 };
-        const hasVirtual = d.virtual !== undefined && d.virtual !== null && !isNaN(Number(d.virtual));
+        const nLuc = s.luc ? normalizeLuc(s.luc) : '';
+        const nContrato = s.contrato ? normalizeContract(s.contrato) : '';
+        const nName = s.name ? normalizeStoreName(s.name) : '';
+        const p = prevReadings.get(s.id)
+          || (nLuc && nContrato ? prevReadings.get(`luc_contrato:${nLuc}_${nContrato}`) : undefined)
+          || (nLuc && nName ? prevReadings.get(`luc_name:${nLuc}_${nName}`) : undefined)
+          || (nLuc ? prevReadings.get(`luc:${nLuc}`) : undefined)
+          || (nContrato ? prevReadings.get(`contrato:${nContrato}`) : undefined)
+          || (nName ? prevReadings.get(`name:${nName}`) : undefined)
+          || { reading: 0, consumption: 0 };
+        const hasVirtual = d.virtual !== undefined && d.virtual !== null && (d.virtual as any) !== '' && !isNaN(Number(d.virtual));
         if (hasVirtual) {
           totalRawGas += Number(d.virtual);
         } else {
@@ -4733,7 +4747,7 @@ export class BillCalculatorComponent implements OnDestroy {
   });
 
   stepReadCount = computed(() => {
-    return this.tableData().filter(s => s.isRead).length;
+    return this.tableData().filter(s => s.isRead || s.isJustified).length;
   });
 
   stepProgressPercent = computed(() => {
@@ -4786,7 +4800,7 @@ export class BillCalculatorComponent implements OnDestroy {
       this.stepIndex.set(curr + 1);
     } else {
       // Chegou ao fim da rota: verifica se há alguma loja pendente para trás
-      const pendingIdx = list.findIndex(item => !item.isRead);
+      const pendingIdx = list.findIndex(item => !item.isRead && !item.isJustified);
       if (pendingIdx !== -1) {
         this.stepIndex.set(pendingIdx);
         this.indexedDb.showToast(`🏁 Fim da rota! Saltando para pendente: ${list[pendingIdx].luc}`);
@@ -4806,20 +4820,20 @@ export class BillCalculatorComponent implements OnDestroy {
     const list = this.tableData();
     const current = this.stepIndex();
     // Search ahead
-    const nextIdx = list.findIndex((item, idx) => idx > current && !item.isRead);
+    const nextIdx = list.findIndex((item, idx) => idx > current && !item.isRead && !item.isJustified);
     if (nextIdx !== -1) {
       this.stepIndex.set(nextIdx);
       return;
     }
     // Search from start
-    const wrapIdx = list.findIndex(item => !item.isRead);
+    const wrapIdx = list.findIndex(item => !item.isRead && !item.isJustified);
     if (wrapIdx !== -1) {
       this.stepIndex.set(wrapIdx);
     }
   }
 
   setStepIndex(idx: number) {
-    this.stepIndex.set(idx);
+    this.stepIndex.set(Number(idx) || 0);
   }
 
   // --- PREVIOUS MONTH CONTINUITY AUDIT HELPERS ---
@@ -5002,21 +5016,7 @@ export class BillCalculatorComponent implements OnDestroy {
 
     let cleanValue = value;
     if (field === 'reading') {
-      if (typeof value === 'string') {
-        const str = value.trim();
-        if (/^\d{1,3}\.\d{3}$/.test(str)) {
-          cleanValue = parseInt(str.replace('.', ''), 10);
-        } else if (str.includes('.') && str.includes(',')) {
-          cleanValue = parseFloat(str.replace(/\./g, '').replace(',', '.'));
-        } else if (str.includes(',')) {
-          cleanValue = parseFloat(str.replace(',', '.'));
-        } else {
-          cleanValue = parseFloat(str);
-        }
-      }
-      if (cleanValue === null || cleanValue === undefined || isNaN(cleanValue)) {
-        cleanValue = 0;
-      }
+      cleanValue = parsePtBrNumber(value);
     }
 
     if (field === 'virtual') {
@@ -5027,45 +5027,28 @@ export class BillCalculatorComponent implements OnDestroy {
         if (str === '' || str === '-' || str === '—') {
           cleanValue = undefined;
         } else {
-          const parsed = typeof value === 'number' ? value : parseFloat(str.replace(',', '.'));
-          cleanValue = isNaN(parsed) ? undefined : parsed;
+          cleanValue = parsePtBrNumber(value);
         }
       }
     }
 
     if (field === 'adjustment') {
-      if (value === null || value === undefined || value === '' || isNaN(Number(value))) {
-        cleanValue = this.utilityType() === 'gas' ? 1.347 : 1;
-      } else {
-        const num = Number(value);
-        cleanValue = num <= 0 ? (this.utilityType() === 'gas' ? 1.347 : 1) : num;
-      }
+      const num = parsePtBrNumber(value);
+      cleanValue = num <= 0 ? (this.utilityType() === 'gas' ? 1.347 : 1) : num;
     }
 
     if (field === 'fcm') {
-      if (value === null || value === undefined || value === '' || isNaN(Number(value))) {
-        cleanValue = 1.0727;
-      } else {
-        const num = Number(value);
-        cleanValue = num <= 0 ? 1.0727 : num;
-      }
+      const num = parsePtBrNumber(value);
+      cleanValue = num <= 0 ? 1.0727 : num;
     }
 
     if (field === 'constant') {
-      if (value === null || value === undefined || value === '' || isNaN(Number(value))) {
-        cleanValue = 1;
-      } else {
-        const num = Number(value);
-        cleanValue = num <= 0 ? 1 : num;
-      }
+      const num = parsePtBrNumber(value);
+      cleanValue = num <= 0 ? 1 : num;
     }
 
     if (field === 'adjustmentAdd' || field === 'fluxoCost') {
-      if (value === null || value === undefined || value === '' || isNaN(Number(value))) {
-        cleanValue = 0;
-      } else {
-        cleanValue = Number(value);
-      }
+      cleanValue = parsePtBrNumber(value);
     }
 
     const type = this.utilityType();
@@ -5179,7 +5162,7 @@ export class BillCalculatorComponent implements OnDestroy {
   }
 
   toggleExcludeFromBill(storeId: string) {
-    if (!this.canEdit()) return;
+    if (!this.canConfigure()) return;
     const type = this.utilityType();
     this.readings.update(curr => {
       const map = new Map(curr[type] as Map<string, StoreReading>);
@@ -5475,6 +5458,7 @@ export class BillCalculatorComponent implements OnDestroy {
   }
 
   async runOcrOnPhoto(storeId: string, forceProvider?: 'qwen' | 'gemini') {
+    const effectiveProvider = (forceProvider as any) === 'auto' ? undefined : forceProvider;
     const photo = this.meterPhotos()[storeId];
     if (!photo) return;
 
@@ -5495,13 +5479,13 @@ export class BillCalculatorComponent implements OnDestroy {
     }
 
     const ocrCtx = this.buildOcrContext(storeId);
-    const smartProvider = forceProvider || getRecommendedProvider(this.ocrFeedbackService.entries(), this.utilityType(), ocrCtx?.meterType);
+    const smartProvider = effectiveProvider || getRecommendedProvider(this.ocrFeedbackService.entries(), this.utilityType(), ocrCtx?.meterType);
 
     this.isReadingOcr.set(storeId);
     this.ocrCurrentModelLabel.set(
-      forceProvider === 'gemini'
+      effectiveProvider === 'gemini'
         ? 'Gemini 3.8 Flash'
-        : forceProvider === 'qwen'
+        : effectiveProvider === 'qwen'
           ? 'Qwen 3.8 27B (Groq)'
           : smartProvider === 'gemini'
             ? 'Gemini 3.8 Flash (Recomendado)'
@@ -5510,11 +5494,11 @@ export class BillCalculatorComponent implements OnDestroy {
 
     try {
       // Se não forçar provedor estrito, executa com dupla checagem (consenso)
-      const ocrResult = forceProvider
+      const ocrResult = effectiveProvider
         ? await this.geminiService.extractMeterReading(
             photo.photoDataUrl,
             this.utilityType(),
-            forceProvider,
+            effectiveProvider,
             ocrCtx
           )
         : await this.geminiService.extractWithDualCheck(
@@ -5992,21 +5976,7 @@ export class BillCalculatorComponent implements OnDestroy {
           }
           if (cellStr === '') return;
 
-          // Parse Brazilian/international numbers correctly:
-          // Handles thousand separators "." and decimal commas ","
-          let cleanVal = cellStr;
-          if (cellStr.includes(',') && cellStr.includes('.')) {
-            // e.g., "1.234,56" -> "1234.56"
-            cleanVal = cellStr.replace(/\./g, '').replace(',', '.');
-          } else if (/^\d{1,3}\.\d{3}$/.test(cellStr)) {
-            // e.g., "1.510" (milhar brasileiro sem decimais) -> "1510"
-            cleanVal = cellStr.replace(/\./g, '');
-          } else if (cellStr.includes(',')) {
-            // e.g., "1234,56" -> "1234.56"
-            cleanVal = cellStr.replace(',', '.');
-          }
-
-          const numVal = parseFloat(cleanVal);
+          const numVal = parsePtBrNumber(cellStr);
           if (!isNaN(numVal)) {
             const newData: StoreReading = { ...currentData, [field]: numVal };
             map.set(targetStoreId, newData);

@@ -393,7 +393,7 @@ import { UserRole, AppView, AppView as View } from './models';
   </main>
 
   <!-- Mobile Bottom Navigation Bar (Barra Rápida para o Técnico em Campo) -->
-  <nav class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 text-white shadow-2xl flex items-center justify-around py-1.5 px-2 relative transition-opacity"
+  <nav class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 text-white shadow-2xl flex items-center justify-around py-1.5 px-2 transition-opacity"
        [class.pointer-events-none]="navService.isRecentlyLocked()">
     
     <!-- Transparent Ghost-Click & Tap-Through Absorber Overlay (Bloqueia cliques vazados ao fechar a câmera nativa) -->
@@ -680,6 +680,9 @@ export class AppComponent {
       // Mudanças normais (para TEC ou VIS) não pedem senha
       this.authService.setRole(role);
       this.previousRole = role;
+      if (role === 'TEC' && this.currentView() === 'stores') {
+        this.setView('calculator');
+      }
     }
   }
 

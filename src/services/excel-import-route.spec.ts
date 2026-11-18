@@ -205,4 +205,36 @@ describe('Excel Import Modal: Route Ordering & Intelligent Template Import', () 
     expect(sheetData[0]).toHaveProperty('Leitura Anterior');
     expect(sheetData[0]).toHaveProperty('Leitura Atual');
   });
+
+  it('Scenario 7: Importing 5-column template uses Leitura Anterior fallback and does not overwrite constant/adjustment', () => {
+    const comp = new ExcelImportModalComponent();
+    comp.activeStores = mockStores;
+    comp.previousReadings = new Map(); // Sem leitura anterior no histórico em memória
+    comp.utilityType = 'luz';
+
+    const rows = [
+      {
+        'LUC': 'LUC-100',
+        'Nome da Loja': 'Farmácia Raia',
+        'Contrato': 'CTR-100',
+        'Leitura Anterior': '1.200',
+        'Leitura Atual': '1.500'
+      }
+    ];
+
+    comp.processImportedJsonData(rows);
+    const preview = comp.importPreviewList();
+    expect(preview.length).toBe(1);
+    expect(preview[0].prevReading).toBe(1200);
+    expect(preview[0].reading).toBe(1500);
+    expect(preview[0].consumptionPreview).toBe(300);
+
+    let emittedEvent: any = null;
+    comp.importSuccess.subscribe(ev => { emittedEvent = ev; });
+    comp.confirmAndApplyImport();
+
+    expect(emittedEvent).not.toBeNull();
+    expect(emittedEvent.updatedReadings[0].constant).toBeUndefined();
+    expect(emittedEvent.updatedReadings[0].adjustment).toBeUndefined();
+  });
 });

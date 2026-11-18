@@ -407,6 +407,7 @@ export class ExcelImportModalComponent {
     storeName: '',
     contrato: '',
     meterNumber: '',
+    prevReading: '',
     reading: '',
     constant: '',
     adjustment: '',
@@ -524,7 +525,8 @@ export class ExcelImportModalComponent {
           prevData = prevReadings.get(`name:${nName}`)!;
         }
       }
-      const prevReading = prevData ? prevData.reading : 0;
+      const sheetPrevReading = mappings.prevReading ? this.parseExcelNumber(rawRow[mappings.prevReading]) : 0;
+      const prevReading = (prevData && prevData.reading > 0) ? prevData.reading : sheetPrevReading;
       const diff = calculateReadingDifference(reading, prevReading, false);
 
       const rawConst = mappings.constant ? this.parseExcelNumber(rawRow[mappings.constant]) : 1;
@@ -762,6 +764,7 @@ export class ExcelImportModalComponent {
       storeName: '',
       contrato: '',
       meterNumber: '',
+      prevReading: '',
       reading: '',
       constant: '',
       adjustment: '',
@@ -793,9 +796,13 @@ export class ExcelImportModalComponent {
       if (!mappings.meterNumber && (nh.includes('medidor') || nh.includes('hidrometro') || nh.includes('relogio') || nh.includes('serie'))) {
         mappings.meterNumber = h;
       }
+      // Leitura Anterior:
+      if (!mappings.prevReading && (nh.includes('leitura anterior') || nh.includes('leit. ant') || nh.includes('leit ant') || nh === 'anterior')) {
+        mappings.prevReading = h;
+      }
       // Leitura Atual (Preenchida pelo técnico): NUNCA deve capturar "Leitura Anterior"
       if (!mappings.reading && !nh.includes('anterior') && !nh.includes('ant') &&
-          (nh.includes('leitura atual') || nh.includes('preencher') || nh.includes('medicao atual') || nh.includes('valor medido') || nh === 'leitura' || nh.includes('leitura'))) {
+          (nh.includes('leitura atual') || nh.includes('preencher') || nh.includes('medicao atual') || nh.includes('valor medido') || nh === 'leitura' || nh.includes('leitura') || nh === 'atual')) {
         mappings.reading = h;
       }
       if (!mappings.constant && (nh.includes('const') || nh.includes('constante'))) {
@@ -833,17 +840,18 @@ export class ExcelImportModalComponent {
       return;
     }
 
+    const m = this.columnMappings();
     const updatedReadings = matchedItems.map(item => ({
       storeId: item.matchedStore!.id,
       reading: item.reading,
       calculatedConsumption: item.consumptionPreview,
-      constant: item.constant,
-      adjustment: item.adjustment,
-      virtual: this.columnMappings().virtual ? item.virtual : undefined,
-      adjustmentAdd: item.adjustmentAdd,
-      fcm: item.fcm,
-      fluxoCost: item.fluxoCost,
-      note: item.note
+      constant: m.constant ? item.constant : undefined,
+      adjustment: m.adjustment ? item.adjustment : undefined,
+      virtual: m.virtual ? item.virtual : undefined,
+      adjustmentAdd: m.adjustmentAdd ? item.adjustmentAdd : undefined,
+      fcm: m.fcm ? item.fcm : undefined,
+      fluxoCost: m.fluxoCost ? item.fluxoCost : undefined,
+      note: m.note ? item.note : undefined
     }));
 
     this.importSuccess.emit({ updatedReadings });
@@ -852,12 +860,19 @@ export class ExcelImportModalComponent {
   private parseExcelNumber(val: any): number {
     if (val === undefined || val === null || val === '') return 0;
     if (typeof val === 'number') return isNaN(val) ? 0 : val;
-    let str = String(val).trim();
-    if (!str) return 0;
+    let str = String(val).trim().replace(/[^\d.,-]/g, '');
+    if (!str || str === '-') return 0;
     if (str.includes(',') && str.includes('.')) {
-      str = str.replace(/\./g, '').replace(',', '.');
-    } else if (/^\d{1,3}(\.\d{3})+$/.test(str)) {
-      str = str.replace(/\./g, '');
+      if (str.lastIndexOf(',') > str.lastIndexOf('.')) {
+        str = str.replace(/\./g, '').replace(',', '.');
+      } else {
+        str = str.replace(/,/g, '');
+      }
+    } else if (/^-?\d{1,3}(\.\d{3})+$/.test(str)) {
+      const firstPart = str.split('.')[0].replace('-', '');
+      if (firstPart !== '0') {
+        str = str.replace(/\./g, '');
+      }
     } else if (str.includes(',')) {
       str = str.replace(',', '.');
     }
@@ -867,13 +882,21 @@ export class ExcelImportModalComponent {
 
   private parseExcelOptionalNumber(val: any): number | undefined {
     if (val === undefined || val === null) return undefined;
-    const str = String(val).trim();
-    if (str === '' || str === '-' || str === '—') return undefined;
-    let clean = str;
+    const rawStr = String(val).trim();
+    if (rawStr === '' || rawStr === '-' || rawStr === '—') return undefined;
+    let clean = rawStr.replace(/[^\d.,-]/g, '');
+    if (!clean || clean === '-') return undefined;
     if (clean.includes(',') && clean.includes('.')) {
-      clean = clean.replace(/\./g, '').replace(',', '.');
-    } else if (/^\d{1,3}(\.\d{3})+$/.test(clean)) {
-      clean = clean.replace(/\./g, '');
+      if (clean.lastIndexOf(',') > clean.lastIndexOf('.')) {
+        clean = clean.replace(/\./g, '').replace(',', '.');
+      } else {
+        clean = clean.replace(/,/g, '');
+      }
+    } else if (/^-?\d{1,3}(\.\d{3})+$/.test(clean)) {
+      const firstPart = clean.split('.')[0].replace('-', '');
+      if (firstPart !== '0') {
+        clean = clean.replace(/\./g, '');
+      }
     } else if (clean.includes(',')) {
       clean = clean.replace(',', '.');
     }
