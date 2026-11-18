@@ -9,6 +9,8 @@ import {
   calculateCommonArea,
   calculateVariationPct,
   evaluateAlertSeverity,
+  parsePtBrNumber,
+  formatPtBrInput,
   ApportionmentEngineService
 } from './apportionment-engine.service';
 
@@ -431,6 +433,41 @@ describe('ApportionmentEngineService - Cálculos Matemáticos de Rateio', () => 
       const totalReconciled = totalDistributedCost + acCost + commonArea.cost;
       expect(totalReconciled).toBe(totalBill);
       expect(totalConcessionariaM3 - (totalDistributedConsumption + acConsumption + commonArea.consumption)).toBe(0);
+    });
+  });
+
+  describe('8. Parse e Formatação Numérica pt-BR (Entrada kWh / Milhar)', () => {
+    it('deve interpretar pontos de milhar corretamente (ex: BSS1..BSS4 da fatura de energia)', () => {
+      const bss1 = parsePtBrNumber('994.683');
+      const bss2 = parsePtBrNumber('56.890');
+      const bss3 = parsePtBrNumber('44.316');
+      const bss4 = parsePtBrNumber('18.880');
+
+      expect(bss1).toBe(994683);
+      expect(bss2).toBe(56890);
+      expect(bss3).toBe(44316);
+      expect(bss4).toBe(18880);
+
+      const totalKwh = bss1 + bss2 + bss3 + bss4;
+      expect(totalKwh).toBe(1114769);
+
+      const unitPrice = calculateUnitPrice(786793.13, totalKwh);
+      expect(unitPrice).toBeCloseTo(0.705790, 5);
+    });
+
+    it('deve interpretar múltiplos pontos de milhar e vírgula decimal corretamente', () => {
+      expect(parsePtBrNumber('1.114.768')).toBe(1114768);
+      expect(parsePtBrNumber('786.793,13')).toBe(786793.13);
+      expect(parsePtBrNumber('162.000')).toBe(162000);
+      expect(parsePtBrNumber('12,34')).toBe(12.34);
+      expect(parsePtBrNumber('12.5')).toBe(12.5);
+      expect(parsePtBrNumber('')).toBe(0);
+    });
+
+    it('deve formatar números para exibição pt-BR no input', () => {
+      expect(formatPtBrInput(994683)).toBe('994.683');
+      expect(formatPtBrInput(56890)).toBe('56.890');
+      expect(formatPtBrInput(0)).toBe('0');
     });
   });
 

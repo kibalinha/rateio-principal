@@ -46,6 +46,48 @@ export interface RateioSummaryResult {
  * Funções puras de cálculo matemático de rateio (desacopladas do Angular para fácil testabilidade)
  */
 
+/**
+ * Converte string numérica no padrão pt-BR (ex: "994.683", "1.114.768,50", "56,89") para number.
+ * Trata ponto seguido de 3 dígitos (ex: "994.683", "56.890") ou múltiplos pontos como separador de milhar.
+ */
+export function parsePtBrNumber(raw: string | number | null | undefined): number {
+  if (raw === null || raw === undefined) return 0;
+  if (typeof raw === 'number') return isNaN(raw) ? 0 : raw;
+
+  const cleaned = String(raw).trim().replace(/[^\d.,-]/g, '');
+  if (!cleaned || cleaned === '-') return 0;
+
+  const hasComma = cleaned.includes(',');
+  const hasDot = cleaned.includes('.');
+
+  let normalized = cleaned;
+  if (hasComma) {
+    // No padrão pt-BR, se há vírgula, pontos são separadores de milhar e vírgula é decimal
+    normalized = cleaned.replace(/\./g, '').replace(',', '.');
+  } else if (hasDot) {
+    const parts = cleaned.split('.');
+    // Múltiplos pontos (ex: 1.114.768) ou ponto único seguido de exatamente 3 dígitos (ex: 994.683, 56.890)
+    if (parts.length > 2 || (parts.length === 2 && parts[1].length === 3)) {
+      normalized = cleaned.replace(/\./g, '');
+    }
+  }
+
+  const parsed = parseFloat(normalized);
+  return isNaN(parsed) ? 0 : parsed;
+}
+
+/**
+ * Formata número para exibição em input pt-BR (ex: 994683 -> "994.683", 1234.5 -> "1.234,5").
+ */
+export function formatPtBrInput(value: number | null | undefined, maxDecimals: number = 4): string {
+  const num = Number(value);
+  if (isNaN(num) || num === 0) return '0';
+  return num.toLocaleString('pt-BR', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: maxDecimals,
+  });
+}
+
 export function calculateUnitPrice(totalBillAmount: number, totalConsumption: number): number {
   if (!totalBillAmount || !totalConsumption || totalConsumption <= 0 || totalBillAmount <= 0) return 0;
   return totalBillAmount / totalConsumption;

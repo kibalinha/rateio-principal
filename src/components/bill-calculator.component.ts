@@ -13,7 +13,7 @@ import { analyzeAndEnhanceBase64Image } from '../services/ocr-image-processor';
 import { getRecommendedProvider } from '../services/ocr-stats';
 import { SupabaseService } from '../services/supabase.service';
 import * as XLSX from 'xlsx';
-import { ApportionmentEngineService } from '../services/apportionment-engine.service';
+import { ApportionmentEngineService, parsePtBrNumber, formatPtBrInput } from '../services/apportionment-engine.service';
 
 import {
   Store,
@@ -486,8 +486,10 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                       @for (key of ['bss1', 'bss2', 'bss3', 'bss4']; track key) {
                         <div class="flex items-center gap-2">
                            <label class="text-xs text-slate-600 dark:text-slate-300 w-1/2 uppercase">{{ key }}</label>
-                           <input type="number" step="0.0001" [disabled]="!canConfigure()" 
-                           [ngModel]="luzConsumption()[key]" (ngModelChange)="updateLuzCons(key, $event)" 
+                           <input type="text" inputmode="decimal" [disabled]="!canConfigure()" 
+                           [value]="formatPtBr(luzConsumption()[key])"
+                           (input)="onLuzConsInput(key, $event)"
+                           (blur)="onLuzConsBlur(key, $event)"
                            class="w-1/2 px-2 py-1 text-sm border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded text-right font-mono focus:ring-1 focus:ring-warning disabled:bg-slate-100 dark:disabled:bg-slate-900" placeholder="0">
                         </div>
                       }
@@ -495,9 +497,10 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                   } @else if (utilityType() === 'agua') {
                     <div class="flex items-center gap-2">
                       <label class="text-xs text-slate-600 dark:text-slate-300 w-1/2">Total Hidrômetro (m³)</label>
-                      <input type="number" step="0.0001" [disabled]="!canConfigure()" 
-                      [ngModel]="aguaTotalReading()" 
-                      (ngModelChange)="aguaTotalReading.set($event)" 
+                      <input type="text" inputmode="decimal" [disabled]="!canConfigure()" 
+                      [value]="formatPtBr(aguaTotalReading())"
+                      (input)="onTotalReadingInput('agua', $event)"
+                      (blur)="onTotalReadingBlur('agua', $event)"
                       class="w-1/2 px-2 py-1 text-sm border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded text-right font-mono focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 dark:disabled:bg-slate-900" placeholder="0">
                     </div>
                   } @else {
@@ -505,9 +508,10 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                     <div class="space-y-3">
                       <div class="flex items-center gap-2">
                         <label class="text-xs font-semibold text-slate-700 dark:text-slate-300 w-1/2">Fatura Concessionária (m³)</label>
-                        <input type="number" step="0.0001" [disabled]="!canConfigure()" 
-                        [ngModel]="gasTotalReading()" 
-                        (ngModelChange)="gasTotalReading.set($event)" 
+                        <input type="text" inputmode="decimal" [disabled]="!canConfigure()" 
+                        [value]="formatPtBr(gasTotalReading())"
+                        (input)="onTotalReadingInput('gas', $event)"
+                        (blur)="onTotalReadingBlur('gas', $event)"
                         class="w-1/2 px-2 py-1 text-sm border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded text-right font-mono font-bold focus:ring-1 focus:ring-red-500 disabled:bg-slate-100 dark:disabled:bg-slate-900" placeholder="0">
                       </div>
 
@@ -2608,12 +2612,12 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                       <div class="md:col-span-3 text-right pl-4 border-l border-orange-300 dark:border-orange-900">
                         <div class="flex items-center justify-end gap-2">
                           <label class="text-[10px] uppercase font-bold opacity-60">Consumo:</label>
-                          <input type="number" 
-                              step="0.0001"
-                              [ngModel]="currentACConsumption()" 
-                              (ngModelChange)="setAirConditioning($event)"
+                          <input type="text" inputmode="decimal"
+                              [value]="formatPtBr(currentACConsumption())"
+                              (input)="onAcInput($event)"
+                              (blur)="onAcBlur($event)"
                               [disabled]="!canConfigure()"
-                              class="w-24 px-2 py-1 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-white border border-orange-300 dark:border-orange-800 rounded text-right font-mono focus:ring-1 focus:ring-orange-500 disabled:bg-transparent disabled:border-transparent"
+                              class="w-28 px-2 py-1 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-white border border-orange-300 dark:border-orange-800 rounded text-right font-mono focus:ring-1 focus:ring-orange-500 disabled:bg-transparent disabled:border-transparent"
                               placeholder="0">
                             <span class="text-xs font-mono">{{ getUnit() }}</span>
                         </div>
@@ -3829,6 +3833,54 @@ export class BillCalculatorComponent implements OnDestroy {
   updateLuzCons(field: keyof ReturnType<typeof this.luzConsumption>, value: number) {
     if (!this.authService.canConfigureBill()) return;
     this.luzConsumption.update(current => ({ ...current, [field]: Number(value) || 0 }));
+  }
+
+  formatPtBr(value: number | null | undefined): string {
+    return formatPtBrInput(value, 4);
+  }
+
+  onLuzConsInput(field: keyof ReturnType<typeof this.luzConsumption>, event: Event) {
+    if (!this.authService.canConfigureBill()) return;
+    const raw = (event.target as HTMLInputElement).value;
+    this.updateLuzCons(field, parsePtBrNumber(raw));
+  }
+
+  onLuzConsBlur(field: keyof ReturnType<typeof this.luzConsumption>, event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (this.authService.canConfigureBill()) {
+      this.updateLuzCons(field, parsePtBrNumber(input.value));
+    }
+    input.value = this.formatPtBr(this.luzConsumption()[field]);
+  }
+
+  onTotalReadingInput(type: 'agua' | 'gas', event: Event) {
+    if (!this.authService.canConfigureBill()) return;
+    const parsed = parsePtBrNumber((event.target as HTMLInputElement).value);
+    if (type === 'agua') this.aguaTotalReading.set(parsed);
+    else this.gasTotalReading.set(parsed);
+  }
+
+  onTotalReadingBlur(type: 'agua' | 'gas', event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (this.authService.canConfigureBill()) {
+      const parsed = parsePtBrNumber(input.value);
+      if (type === 'agua') this.aguaTotalReading.set(parsed);
+      else this.gasTotalReading.set(parsed);
+    }
+    input.value = this.formatPtBr(type === 'agua' ? this.aguaTotalReading() : this.gasTotalReading());
+  }
+
+  onAcInput(event: Event) {
+    if (!this.authService.canConfigureBill()) return;
+    this.setAirConditioning(parsePtBrNumber((event.target as HTMLInputElement).value));
+  }
+
+  onAcBlur(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (this.authService.canConfigureBill()) {
+      this.setAirConditioning(parsePtBrNumber(input.value));
+    }
+    input.value = this.formatPtBr(this.currentACConsumption());
   }
 
   getUnit() {
