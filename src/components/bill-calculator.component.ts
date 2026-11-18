@@ -1486,7 +1486,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                       <td class="p-3 border-r border-slate-800 text-center text-slate-500 text-[10px]">—</td>
                     }
                     <td class="p-3 text-right font-black border-r border-slate-800 text-slate-100 tabular-nums">
-                      {{ totalConsumption() | number:'1.0-4' }}
+                      {{ totalDistributedConsumption() | number:'1.0-4' }}
                     </td>
                     <td class="p-3 text-right border-r border-slate-800 text-slate-500 text-[10px]">—</td>
                     @if (utilityType() === 'gas') {
@@ -3583,19 +3583,35 @@ export class BillCalculatorComponent implements OnDestroy {
       this.lockedAt.set(existingData.lockedAt || null);
       this.lockedBy.set(existingData.lockedBy || null);
 
-      if (type === 'luz') this.luzCostItems.set(existingData.costItems);
-      else if (type === 'agua') this.aguaCostItems.set(existingData.costItems);
+      const normalizedCostItems = Array.isArray(existingData.costItems)
+        ? existingData.costItems.map((item: any) => ({ ...item, value: Number(item?.value) || 0 }))
+        : [];
+
+      if (type === 'luz') this.luzCostItems.set(normalizedCostItems);
+      else if (type === 'agua') this.aguaCostItems.set(normalizedCostItems);
       else if (type === 'gas') {
-        this.gasCostItems.set(existingData.costItems);
+        this.gasCostItems.set(normalizedCostItems);
         this.gasAutoDistribute.set(existingData.gasAutoDistribute !== undefined ? existingData.gasAutoDistribute : true);
       }
 
-      if (type === 'luz') this.luzConsumption.set(existingData.consumptionInput);
-      else if (type === 'agua') this.aguaTotalReading.set(existingData.consumptionInput);
-      else if (type === 'gas') this.gasTotalReading.set(existingData.consumptionInput);
+      if (type === 'luz') {
+        const ci = existingData.consumptionInput;
+        if (ci && typeof ci === 'object') {
+          this.luzConsumption.set({
+            bss1: Number(ci.bss1) || 0,
+            bss2: Number(ci.bss2) || 0,
+            bss3: Number(ci.bss3) || 0,
+            bss4: Number(ci.bss4) || 0,
+          });
+        } else {
+          this.luzConsumption.set({ bss1: Number(ci) || 0, bss2: 0, bss3: 0, bss4: 0 });
+        }
+      }
+      else if (type === 'agua') this.aguaTotalReading.set(Number(existingData.consumptionInput) || 0);
+      else if (type === 'gas') this.gasTotalReading.set(Number(existingData.consumptionInput) || 0);
 
-      if (type === 'luz') this.luzAC.set(existingData.acInput);
-      else if (type === 'agua') this.aguaAC.set(existingData.acInput);
+      if (type === 'luz') this.luzAC.set(Number(existingData.acInput) || 0);
+      else if (type === 'agua') this.aguaAC.set(Number(existingData.acInput) || 0);
 
       // Load Readings
       const map = new Map<string, StoreReading>();
@@ -3790,7 +3806,8 @@ export class BillCalculatorComponent implements OnDestroy {
   updateItemValue(id: string, newValue: number) {
     if (!this.authService.canConfigureBill()) return;
     const type = this.utilityType();
-    const updater = (items: CostItem[]) => items.map(item => item.id === id ? { ...item, value: newValue } : item);
+    const safeVal = Number(newValue) || 0;
+    const updater = (items: CostItem[]) => items.map(item => item.id === id ? { ...item, value: safeVal } : item);
     if (type === 'luz') this.luzCostItems.update(updater);
     else if (type === 'agua') this.aguaCostItems.update(updater);
     else if (type === 'gas') this.gasCostItems.update(updater);
@@ -3807,7 +3824,7 @@ export class BillCalculatorComponent implements OnDestroy {
 
   updateLuzCons(field: keyof ReturnType<typeof this.luzConsumption>, value: number) {
     if (!this.authService.canConfigureBill()) return;
-    this.luzConsumption.update(current => ({ ...current, [field]: value }));
+    this.luzConsumption.update(current => ({ ...current, [field]: Number(value) || 0 }));
   }
 
   getUnit() {
@@ -3819,16 +3836,16 @@ export class BillCalculatorComponent implements OnDestroy {
   }
 
   totalBillAmount = computed(() => {
-    return this.currentCostItems().reduce((acc, item) => acc + (item.value || 0), 0);
+    return (this.currentCostItems() || []).reduce((acc, item) => acc + (Number(item?.value) || 0), 0);
   });
 
   totalConsumption = computed(() => {
     if (this.utilityType() === 'luz') {
-      const c = this.luzConsumption();
-      return (c.bss1 || 0) + (c.bss2 || 0) + (c.bss3 || 0) + (c.bss4 || 0);
+      const c = this.luzConsumption() || { bss1: 0, bss2: 0, bss3: 0, bss4: 0 };
+      return (Number(c.bss1) || 0) + (Number(c.bss2) || 0) + (Number(c.bss3) || 0) + (Number(c.bss4) || 0);
     }
-    if (this.utilityType() === 'agua') return this.aguaTotalReading();
-    if (this.utilityType() === 'gas') return this.gasTotalReading();
+    if (this.utilityType() === 'agua') return Number(this.aguaTotalReading()) || 0;
+    if (this.utilityType() === 'gas') return Number(this.gasTotalReading()) || 0;
     return 0;
   });
 
