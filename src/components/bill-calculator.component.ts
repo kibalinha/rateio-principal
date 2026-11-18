@@ -579,7 +579,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                   </div>
                   <span class="font-black text-lg font-mono tabular-nums"
                         [class]="utilityType() === 'luz' ? 'text-amber-400' : (utilityType() === 'gas' ? 'text-orange-400' : 'text-teal-300')">
-                    {{ calculatedUnitPrice() | currency:'BRL':'symbol':'1.4-4' }}
+                    {{ calculatedUnitPrice() | currency:'BRL':'symbol':'1.6-6' }}
                   </span>
                 </div>
               </div>
@@ -2567,7 +2567,8 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                 }
                 <div class="flex justify-between items-center text-sm pt-2 border-t border-orange-200/60 dark:border-orange-900/40">
                    <div>
-                     <span class="font-bold text-orange-900 dark:text-orange-200">Valor SAP (Lojas)</span>
+                     <span class="font-bold text-orange-900 dark:text-orange-200">Valor SAP (Lojistas)</span>
+                     <span class="text-[10px] text-orange-700 dark:text-orange-400 font-mono block">{{ totalDistributedConsumption() | number:'1.0-4' }} {{ getUnit() }} ({{ getPercentage(totalDistributedCost()) }}%)</span>
                      @if (excludedSapCost() > 0) {
                        <span class="text-[10px] text-amber-700 dark:text-amber-400 block font-semibold">
                          ({{ excludedSapCount() }} loja(s) fora do SAP transferidas para Área Comum: {{ excludedSapCost() | currency:'BRL' }})
@@ -2623,7 +2624,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                 <!-- 3. Valor SAP Row -->
                 <div class="bg-orange-700 text-white grid grid-cols-1 md:grid-cols-12 items-center p-3 border-b border-orange-800">
                     <div class="md:col-span-6 text-right pr-4">
-                      <div class="font-bold text-sm uppercase tracking-wide">Valor SAP</div>
+                      <div class="font-bold text-sm uppercase tracking-wide">Valor SAP — Incorridos (Lojistas)</div>
                       @if (excludedSapCost() > 0) {
                         <div class="text-[11px] text-orange-200">
                           {{ excludedSapCount() }} loja(s) fora do SAP transferidas para Área Comum ({{ excludedSapCost() | currency:'BRL' }})
@@ -2632,8 +2633,11 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                     </div>
                     <div class="md:col-span-3 text-right pr-4">
                       <div class="font-mono font-bold text-xl leading-tight text-white">{{ totalDistributedCost() | currency:'BRL' }}</div>
+                      <div class="text-xs opacity-80">{{ getPercentage(totalDistributedCost()) }}%</div>
                     </div>
-                    <div class="md:col-span-3 bg-orange-800/20 h-full"></div>
+                    <div class="md:col-span-3 text-right font-mono text-sm pl-4 border-l border-orange-600">
+                      {{ totalDistributedConsumption() | number:'1.0-4' }} {{ getUnit() }}
+                    </div>
                 </div>
              </div>
           </div>
