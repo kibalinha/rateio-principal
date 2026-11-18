@@ -15,18 +15,12 @@ export class AuthService {
   readonly firebaseUser = computed(() => this.user());
   readonly isAuthLoading = signal<boolean>(false);
 
-  // Helper para ler papel salvo localmente ou padrão 'ADM'
+  // O sistema sempre inicia no modo Técnico ('TEC') ao abrir/recarregar
   private getInitialRole(): UserRole {
-    try {
-      const saved = localStorage.getItem('shop_rateio_user_role') as UserRole;
-      if (saved && (saved === 'ADM' || saved === 'TEC' || saved === 'VIS')) {
-        return saved;
-      }
-    } catch { }
-    return 'ADM';
+    return 'TEC';
   }
 
-  // Estado do papel atual (Padrão: ADM persistido ou configurado)
+  // Estado do papel atual (sempre inicia como 'TEC')
   currentUserRole = signal<UserRole>(this.getInitialRole());
 
   // Computed helpers para usar nos templates
@@ -53,16 +47,13 @@ export class AuthService {
       client.auth.getSession().then(({ data: { session } }) => {
         if (session?.user) {
           this.user.set(session.user);
-          if (session.user.email === 'herrypotterluizfelipe95@gmail.com' || session.user.email?.includes('admin')) {
-            this.setRole('ADM');
-          }
         }
       }).catch(() => { });
 
-      client.auth.onAuthStateChange((_event, session) => {
+      client.auth.onAuthStateChange((event, session) => {
         const u = session?.user || null;
         this.user.set(u);
-        if (u && (u.email === 'herrypotterluizfelipe95@gmail.com' || u.email?.includes('admin'))) {
+        if (event === 'SIGNED_IN' && u && (u.email === 'herrypotterluizfelipe95@gmail.com' || u.email?.includes('admin'))) {
           this.setRole('ADM');
         }
       });
@@ -86,7 +77,7 @@ export class AuthService {
       const client = this.supabase.getClient();
       await client.auth.signOut();
       this.user.set(null);
-      this.setRole('ADM');
+      this.setRole('TEC');
     } catch (error) {
       console.error('Erro ao sair:', error);
     }
@@ -94,9 +85,6 @@ export class AuthService {
 
   setRole(role: UserRole) {
     this.currentUserRole.set(role);
-    try {
-      localStorage.setItem('shop_rateio_user_role', role);
-    } catch { }
   }
 
   validateAdminPassword(password: string): boolean {
