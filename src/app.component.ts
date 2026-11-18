@@ -357,6 +357,12 @@ import { UserRole, AppView, AppView as View } from './models';
             <span class="animate-spin text-teal-500">⏳</span>
             <span class="text-xs font-bold">Carregando Painel Geral...</span>
           </div>
+        } @error {
+          <div class="flex flex-col items-center justify-center p-12 text-center gap-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
+            <span class="text-2xl">⚠️</span>
+            <p class="text-sm font-bold text-slate-700 dark:text-slate-200">Não foi possível carregar o Painel Geral (nova versão disponível ou falha de rede).</p>
+            <button type="button" (click)="reloadPage()" class="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-lg cursor-pointer">🔄 Recarregar Página</button>
+          </div>
         }
       }
       @case ('report') {
@@ -366,6 +372,12 @@ import { UserRole, AppView, AppView as View } from './models';
           <div class="flex items-center justify-center p-12 text-slate-400 gap-2">
             <span class="animate-spin text-teal-500">⏳</span>
             <span class="text-xs font-bold">Carregando Relatórios por Loja...</span>
+          </div>
+        } @error {
+          <div class="flex flex-col items-center justify-center p-12 text-center gap-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
+            <span class="text-2xl">⚠️</span>
+            <p class="text-sm font-bold text-slate-700 dark:text-slate-200">Não foi possível carregar os Relatórios (nova versão disponível ou falha de rede).</p>
+            <button type="button" (click)="reloadPage()" class="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-lg cursor-pointer">🔄 Recarregar Página</button>
           </div>
         }
       }
@@ -377,6 +389,12 @@ import { UserRole, AppView, AppView as View } from './models';
             <span class="animate-spin text-teal-500">⏳</span>
             <span class="text-xs font-bold">Carregando Calculadora de Rateio...</span>
           </div>
+        } @error {
+          <div class="flex flex-col items-center justify-center p-12 text-center gap-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
+            <span class="text-2xl">⚠️</span>
+            <p class="text-sm font-bold text-slate-700 dark:text-slate-200">Não foi possível carregar a Calculadora (nova versão disponível ou falha de rede).</p>
+            <button type="button" (click)="reloadPage()" class="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-lg cursor-pointer">🔄 Recarregar Página</button>
+          </div>
         }
       }
       @case ('stores') {
@@ -386,6 +404,12 @@ import { UserRole, AppView, AppView as View } from './models';
           <div class="flex items-center justify-center p-12 text-slate-400 gap-2">
             <span class="animate-spin text-teal-500">⏳</span>
             <span class="text-xs font-bold">Carregando Gestão de Lojas...</span>
+          </div>
+        } @error {
+          <div class="flex flex-col items-center justify-center p-12 text-center gap-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
+            <span class="text-2xl">⚠️</span>
+            <p class="text-sm font-bold text-slate-700 dark:text-slate-200">Não foi possível carregar a Gestão de Lojas (nova versão disponível ou falha de rede).</p>
+            <button type="button" (click)="reloadPage()" class="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-lg cursor-pointer">🔄 Recarregar Página</button>
           </div>
         }
       }
@@ -655,6 +679,12 @@ export class AppComponent {
     const changed = this.navService.setView(view);
     if (changed) {
       this.isMobileMenuOpen.set(false); // Close menu on navigation
+    }
+  }
+
+  reloadPage() {
+    if (typeof window !== 'undefined') {
+      window.location.reload();
     }
   }
 

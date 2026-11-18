@@ -3389,16 +3389,34 @@ export class BillCalculatorComponent implements OnDestroy {
 
   setUtility(type: 'luz' | 'agua' | 'gas') {
     if (this.utilityType() === type) return;
+    if (this.autoSaveTimer) {
+      clearTimeout(this.autoSaveTimer);
+      this.autoSaveTimer = null;
+      this.internalSave();
+    }
     this.isProgrammaticLoading = true;
     this.saveStatus.set('saved');
-    this.utilityType.set(type);
+    this.stepIndex.set(0);
+    this.showPhotoModal.set(false);
+    this.activePhotoRecord.set(null);
+    this.activeAnomalyModal.set(null);
     this.showExcelImportModal.set(false);
+    this.utilityType.set(type);
   }
 
   onMonthChange(newMonth: string) {
     if (this.selectedMonth() === newMonth) return;
+    if (this.autoSaveTimer) {
+      clearTimeout(this.autoSaveTimer);
+      this.autoSaveTimer = null;
+      this.internalSave();
+    }
     this.isProgrammaticLoading = true;
     this.saveStatus.set('saved');
+    this.stepIndex.set(0);
+    this.showPhotoModal.set(false);
+    this.activePhotoRecord.set(null);
+    this.activeAnomalyModal.set(null);
     this.selectedMonth.set(newMonth);
   }
 
@@ -3613,6 +3631,8 @@ export class BillCalculatorComponent implements OnDestroy {
     }
     const type = this.utilityType();
     const month = this.selectedMonth();
+    this.meterPhotos.set({});
+    this.prevMonthPhotos.set({});
 
     // 1. Load Current Month Data
     const existingData = this.historyService.getBill(type, month);
@@ -3686,10 +3706,12 @@ export class BillCalculatorComponent implements OnDestroy {
 
     // 3. Load Meter Photos from IndexedDB (com merge e detecção de exclusões da nuvem)
     this.indexedDb.getMeterPhotosForMonth(type, month).then(async photos => {
+      if (this.utilityType() !== type || this.selectedMonth() !== month) return;
       let combined = { ...photos };
       if (this.indexedDb.isOnline()) {
         try {
           const cloudPhotos = await this.supabaseService.fetchMeterPhotos(type, month);
+          if (this.utilityType() !== type || this.selectedMonth() !== month) return;
           if (cloudPhotos !== null) {
             combined = { ...cloudPhotos };
             // Preserva apenas fotos locais que ainda estão pendentes de sincronização (!synced)
@@ -3699,8 +3721,10 @@ export class BillCalculatorComponent implements OnDestroy {
               } else if (p.synced && !cloudPhotos[sId]) {
                 // A foto foi excluída na nuvem! Limpa do IndexedDB local para não ressuscitar a foto
                 await this.indexedDb.deleteMeterPhoto(type, month, sId);
-                this.updateDetailedReading(sId, 'hasPhoto', false);
-                this.updateDetailedReading(sId, 'photoTimestamp', undefined);
+                if (this.utilityType() === type && this.selectedMonth() === month) {
+                  this.updateDetailedReading(sId, 'hasPhoto', false);
+                  this.updateDetailedReading(sId, 'photoTimestamp', undefined);
+                }
               }
             }
             // Salva em cache local do IndexedDB as fotos válidas da nuvem
@@ -3714,6 +3738,7 @@ export class BillCalculatorComponent implements OnDestroy {
           console.warn('Erro ao carregar fotos da nuvem:', e);
         }
       }
+      if (this.utilityType() !== type || this.selectedMonth() !== month) return;
       this.meterPhotos.set(combined);
 
       // Reconcilia apenas metadados visuais de evidência (hasPhoto e photoTimestamp) sem sobrescrever valores numéricos de leitura
@@ -3772,9 +3797,12 @@ export class BillCalculatorComponent implements OnDestroy {
         }
       }
 
+      if (this.utilityType() !== type || this.selectedMonth() !== month) return;
       this.prevMonthPhotos.set(combinedPrev);
     }).catch(() => {
-      this.prevMonthPhotos.set({});
+      if (this.utilityType() === type && this.selectedMonth() === month) {
+        this.prevMonthPhotos.set({});
+      }
     });
 
     this.saveStatus.set('saved');

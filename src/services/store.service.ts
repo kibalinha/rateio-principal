@@ -626,13 +626,63 @@ export class StoreService {
     }
   }
 
-  // Alterna o status ativo/inativo de uma loja
-  toggleStoreActive(id: string, referenceMonth?: string, reason?: string) {
-    let newStatus = false;
+  // Alterna o status ativo/inativo de uma loja (com isolamento por utilidade quando utilityType é informado)
+  toggleStoreActive(id: string, referenceMonth?: string, reason?: string, utilityType?: 'luz' | 'agua' | 'gas') {
+    const targetStore = this.storesSignal().find(s => s.id === id);
+    if (!targetStore) return;
+
+    const lists = this.monthlyStoreListsSignal();
+    const isCurrentlyActive = (referenceMonth && utilityType)
+      ? ((lists[`${utilityType}_${referenceMonth}`]?.includes(id) ?? false) && isStoreActiveInMonth(targetStore, referenceMonth, false))
+      : targetStore.active !== false;
+    const newStatus = !isCurrentlyActive;
+
+    // Se um utilityType específico e referenceMonth foram informados, preserva a independência entre Luz/Água/Gás
+    if (referenceMonth && utilityType) {
+      if (newStatus) {
+        this.addStoreToMonth(utilityType, referenceMonth, id);
+        if (targetStore.active === false) {
+          this.storesSignal.update(list => {
+            const updated = list.map(s => s.id === id ? { ...s, active: true, deactivatedAt: undefined, deactivationReason: undefined } : s);
+            this.persistStores(updated);
+            return updated;
+          });
+        }
+      } else {
+        this.monthlyStoreListsSignal.update(current => {
+          const updated = { ...current };
+          const key = `${utilityType}_${referenceMonth}`;
+          if (updated[key]) {
+            updated[key] = updated[key].filter(sId => sId !== id);
+          }
+          this.persistMonthlyStoreLists(updated);
+          return updated;
+        });
+
+        // Só marca globalmente como inativa se não participar mais de nenhuma outra utilidade ativa
+        const usesOtherActive =
+          (utilityType !== 'luz' && targetStore.usesLuz) ||
+          (utilityType !== 'agua' && targetStore.usesAgua) ||
+          (utilityType !== 'gas' && targetStore.usesGas);
+        if (!usesOtherActive) {
+          this.storesSignal.update(list => {
+            const updated = list.map(s => s.id === id ? {
+              ...s,
+              active: false,
+              deactivatedAt: referenceMonth,
+              deactivationReason: reason || `Inativada em ${utilityType.toUpperCase()} (${referenceMonth})`
+            } : s);
+            this.persistStores(updated);
+            return updated;
+          });
+        }
+      }
+      return;
+    }
+
     this.storesSignal.update(list => {
       const updated = list.map(store => {
         if (store.id !== id) return store;
-        newStatus = !store.active;
         return {
           ...store,
           active: newStatus,

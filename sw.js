@@ -1,4 +1,4 @@
-const CACHE_NAME = 'shoprateio-v5-live';
+const CACHE_NAME = 'shoprateio-v6-live';
 const ASSETS = [
   '/',
   '/index.html',

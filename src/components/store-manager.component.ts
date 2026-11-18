@@ -1115,11 +1115,13 @@ export class StoreManagerComponent {
   storeToDelete = signal<Store | null>(null);
 
   inactivateStore(store: Store) {
-    this.storeService.toggleStoreActive(store.id, this.consultationMonth(), 'Inativada manualmente');
+    const util = this.viewMode() === 'month' ? this.activeTab() : undefined;
+    this.storeService.toggleStoreActive(store.id, this.consultationMonth(), 'Inativada manualmente', util);
   }
 
   reactivateStore(store: Store) {
-    this.storeService.toggleStoreActive(store.id, this.consultationMonth());
+    const util = this.viewMode() === 'month' ? this.activeTab() : undefined;
+    this.storeService.toggleStoreActive(store.id, this.consultationMonth(), undefined, util);
   }
 
   confirmRemoveStore(store: Store) {
