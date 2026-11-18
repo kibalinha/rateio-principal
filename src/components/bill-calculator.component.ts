@@ -980,6 +980,20 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                         </span>
                       </button>
                     }
+
+                    @if (authService.canConfigureBill() && hiddenFromTechCount() > 0) {
+                      <button type="button"
+                        (click)="statusFilter.set(statusFilter() === 'hidden_tech' ? 'all' : 'hidden_tech')"
+                        [class]="statusFilter() === 'hidden_tech' ? 'bg-purple-600 text-white font-extrabold shadow-xs ring-2 ring-purple-400/50' : 'bg-purple-50 dark:bg-purple-950/40 text-purple-800 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-950/70 border border-purple-200 dark:border-purple-800'"
+                        class="px-3 py-1.5 rounded-xl text-xs whitespace-nowrap transition-all cursor-pointer font-medium flex items-center gap-1.5"
+                        title="Lojas ocultas para o Técnico em Campo (visíveis apenas para ADM e incluídas no SAP)">
+                        <span>🙈 Só ADM (Ocultas p/ Téc.)</span>
+                        <span class="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold"
+                              [class]="statusFilter() === 'hidden_tech' ? 'bg-purple-800 text-white' : 'bg-purple-200/80 dark:bg-purple-900 text-purple-900 dark:text-purple-200'">
+                          {{ hiddenFromTechCount() }}
+                        </span>
+                      </button>
+                    }
                   </div>
                 </div>
               </div>
@@ -1205,13 +1219,25 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                             }
                             <button type="button" 
                               (click)="toggleExcludeFromBill(item.storeId)" 
+                              [disabled]="!canConfigure()"
                               [title]="item.excludedFromBill ? 'Esta loja está FORA DO SAP (seu consumo e custo vão para a Área Comum). Clique para incluir no SAP.' : 'Esta loja entra no Valor SAP. Clique para transferir seu valor para a Área Comum (Fora do SAP).'" 
-                              class="text-[10px] font-bold px-1.5 py-0.5 rounded cursor-pointer flex items-center gap-1 transition-all border shadow-2xs"
+                              class="text-[10px] font-bold px-1.5 py-0.5 rounded cursor-pointer flex items-center gap-1 transition-all border shadow-2xs disabled:opacity-60 disabled:cursor-default"
                               [class]="item.excludedFromBill 
                                 ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-700' 
                                 : 'bg-slate-50 dark:bg-slate-800 text-slate-500 hover:text-slate-700 dark:text-slate-400 border-slate-200 dark:border-slate-700'">
                               <span>{{ item.excludedFromBill ? '🚫 Fora do SAP' : '✓ No SAP' }}</span>
                             </button>
+                            @if (authService.canConfigureBill()) {
+                              <button type="button"
+                                (click)="toggleHideFromTech(item.storeId)"
+                                [title]="item.hiddenFromTech ? 'Esta loja está OCULTA para o Técnico em Campo (aparece apenas para ADM / SAP). Clique para mostrar novamente ao técnico.' : 'Visível para o Técnico em Campo. Clique para ocultar do técnico sem excluir do rateio/SAP.'"
+                                class="text-[10px] font-bold px-1.5 py-0.5 rounded cursor-pointer flex items-center gap-1 transition-all border shadow-2xs"
+                                [class]="item.hiddenFromTech
+                                  ? 'bg-purple-100 dark:bg-purple-950/80 text-purple-800 dark:text-purple-200 border-purple-300 dark:border-purple-700'
+                                  : 'bg-slate-50 dark:bg-slate-800 text-slate-500 hover:text-purple-700 dark:text-slate-400 border-slate-200 dark:border-slate-700'">
+                                <span>{{ item.hiddenFromTech ? '🙈 Só ADM' : '👁️ Téc.' }}</span>
+                              </button>
+                            }
                             <button type="button" (click)="openStoreVoucher(item)" title="Gerar espelho do lojista" class="ml-auto text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer flex items-center gap-0.5"><span>📲</span><span>Espelho</span></button>
                           </div>
                       </td>
@@ -1999,7 +2025,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                               📍 Rota #{{ stepStore.routeOrder || (stepIndex() + 1) }}
                             </span>
                             <span class="text-xs font-bold px-2.5 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-full font-mono">
-                              Loja {{ stepIndex() + 1 }} de {{ tableData().length }}
+                              Loja {{ stepIndex() + 1 }} de {{ fieldTableData().length }}
                             </span>
                             @if (stepStore.isRead) {
                               <span class="text-xs font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1 bg-emerald-50 dark:bg-emerald-950/70 px-2.5 py-1 rounded-full border border-emerald-300 dark:border-emerald-800 shadow-2xs">
@@ -2026,7 +2052,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                         <!-- Barra de Progresso Visual da Meta de Coleta -->
                         <div class="space-y-1">
                           <div class="flex justify-between items-center text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                            <span>Progresso da Rota: {{ stepReadCount() }} de {{ tableData().length }} lojas</span>
+                            <span>Progresso da Rota: {{ stepReadCount() }} de {{ fieldTableData().length }} lojas</span>
                             <span class="font-mono text-teal-600 dark:text-teal-400">{{ stepProgressPercent() }}%</span>
                           </div>
                           <div class="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-200/50 dark:border-slate-700/50">
@@ -2045,7 +2071,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                             [ngModel]="stepIndex()" 
                             (ngModelChange)="setStepIndex($event)"
                             class="w-full text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl p-2 font-mono text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-teal-500">
-                            @for (st of tableData(); track st.storeId; let sIdx = $index) {
+                            @for (st of fieldTableData(); track st.storeId; let sIdx = $index) {
                               <option [ngValue]="sIdx">
                                 {{ st.routeOrder ? '#' + st.routeOrder + ' ' : '' }}{{ st.luc }} - {{ st.storeName }} {{ st.isRead ? '✓ (' + st.currentReading + ')' : '⏳' }}
                               </option>
@@ -2528,7 +2554,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
 
                           <button type="button" 
                             (click)="nextStep()" 
-                            [disabled]="stepIndex() >= tableData().length - 1"
+                            [disabled]="stepIndex() >= fieldTableData().length - 1"
                             class="flex-1 py-3 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 disabled:opacity-30 text-slate-800 dark:text-slate-200 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer border border-slate-300 dark:border-slate-600 active:scale-95">
                             <span>Pular ▶</span>
                           </button>
@@ -2943,7 +2969,7 @@ export class BillCalculatorComponent implements OnDestroy {
 
   // --- FIELD / MOBILE ENHANCED STATE ---
   searchQuery = signal<string>('');
-  statusFilter = signal<'all' | 'pending' | 'completed' | 'alert' | 'prev_missing'>('all');
+  statusFilter = signal<'all' | 'pending' | 'completed' | 'alert' | 'prev_missing' | 'hidden_tech'>('all');
   sortBy = signal<string>('route');
   sortDirection = signal<'asc' | 'desc'>('asc');
   mobileViewMode = signal<'cards' | 'step'>('cards');
@@ -4372,6 +4398,7 @@ export class BillCalculatorComponent implements OnDestroy {
         cost,
         originalCost: rawCost,
         excludedFromBill,
+        hiddenFromTech: !!store.hiddenFromTech,
         prevReading,
         prevConsumption,
         prevCost,
@@ -4443,10 +4470,23 @@ export class BillCalculatorComponent implements OnDestroy {
   });
 
   // --- FIELD COMPUTED FILTERS & STATS ---
+  // Lojas visíveis para coleta em campo (oculta lojas marcadas como "hiddenFromTech" apenas para o Técnico TEC)
+  fieldTableData = computed(() => {
+    const all = this.tableData();
+    if (this.authService.isTech()) {
+      return all.filter(item => !item.hiddenFromTech);
+    }
+    return all;
+  });
+
+  hiddenFromTechCount = computed(() => {
+    return this.tableData().filter(item => item.hiddenFromTech).length;
+  });
+
   fieldStats = computed(() => {
-    const list = this.tableData();
+    const list = this.fieldTableData();
     const total = list.length;
-    const completed = list.filter(item => item.isRead).length;
+    const completed = list.filter(item => item.isRead || item.isJustified).length;
     const pending = total - completed;
     const alerts = list.filter(item => item.hasSuspiciousAlert).length;
     const progressPct = total > 0 ? Math.round((completed / total) * 100) : 0;
@@ -4455,7 +4495,7 @@ export class BillCalculatorComponent implements OnDestroy {
 
   // --- PREVIOUS MONTH CONTINUITY AUDIT COMPUTED (CONFERÊNCIA DE LEITURAS HISTÓRICAS) ---
   prevMonthAudit = computed(() => {
-    const list = this.tableData();
+    const list = this.fieldTableData();
     // Lojas presentes na tabela deste mês que tinham leitura ou consumo no mês anterior
     const measuredLastMonth = list.filter(item => 
       (item.prevReading > 0 || item.prevConsumption > 0 || (item.prevCost && item.prevCost > 0)) &&
@@ -4587,7 +4627,7 @@ export class BillCalculatorComponent implements OnDestroy {
   });
 
   filteredTableData = computed(() => {
-    let list = this.tableData();
+    let list = this.fieldTableData();
     const filter = this.statusFilter();
     const q = this.searchQuery().trim().toLowerCase();
     const sortCol = this.sortBy();
@@ -4599,6 +4639,8 @@ export class BillCalculatorComponent implements OnDestroy {
       list = list.filter(item => item.isRead || item.isJustified);
     } else if (filter === 'alert') {
       list = list.filter(item => item.hasSuspiciousAlert);
+    } else if (filter === 'hidden_tech') {
+      list = list.filter(item => item.hiddenFromTech);
     } else if (filter === 'prev_missing') {
       list = list.filter(item => 
         (item.prevReading > 0 || item.prevConsumption > 0 || (item.prevCost && item.prevCost > 0)) &&
@@ -4731,14 +4773,14 @@ export class BillCalculatorComponent implements OnDestroy {
   }
 
   currentStepStore = computed(() => {
-    const list = this.tableData();
+    const list = this.fieldTableData();
     if (list.length === 0) return null;
     const idx = Math.min(Math.max(0, this.stepIndex()), list.length - 1);
     return list[idx];
   });
 
   nextStepStore = computed(() => {
-    const list = this.tableData();
+    const list = this.fieldTableData();
     const curr = this.stepIndex();
     if (curr < list.length - 1) {
       return list[curr + 1];
@@ -4747,11 +4789,11 @@ export class BillCalculatorComponent implements OnDestroy {
   });
 
   stepReadCount = computed(() => {
-    return this.tableData().filter(s => s.isRead || s.isJustified).length;
+    return this.fieldTableData().filter(s => s.isRead || s.isJustified).length;
   });
 
   stepProgressPercent = computed(() => {
-    const total = this.tableData().length;
+    const total = this.fieldTableData().length;
     if (total === 0) return 0;
     return Math.round((this.stepReadCount() / total) * 100);
   });
@@ -4774,7 +4816,7 @@ export class BillCalculatorComponent implements OnDestroy {
 
   // Step Navigation Helpers (Modo Foco em Campo)
   nextStep() {
-    const total = this.tableData().length;
+    const total = this.fieldTableData().length;
     if (this.stepIndex() < total - 1) {
       this.stepIndex.update(i => i + 1);
     }
@@ -4794,7 +4836,7 @@ export class BillCalculatorComponent implements OnDestroy {
     this.internalSave();
     this.indexedDb.showToast(`✓ Salvo: ${stepStore.luc} - ${stepStore.storeName}`);
 
-    const list = this.tableData();
+    const list = this.fieldTableData();
     const curr = this.stepIndex();
     if (curr < list.length - 1) {
       this.stepIndex.set(curr + 1);
@@ -4817,7 +4859,7 @@ export class BillCalculatorComponent implements OnDestroy {
   }
 
   jumpToNextPending() {
-    const list = this.tableData();
+    const list = this.fieldTableData();
     const current = this.stepIndex();
     // Search ahead
     const nextIdx = list.findIndex((item, idx) => idx > current && !item.isRead && !item.isJustified);
@@ -5174,6 +5216,20 @@ export class BillCalculatorComponent implements OnDestroy {
       map.set(storeId, updated);
       return { ...curr, [type]: map };
     });
+  }
+
+  toggleHideFromTech(storeId: string) {
+    if (!this.authService.canConfigureBill()) return;
+    const store = this.storeService.stores().find(s => s.id === storeId);
+    const willHide = !store?.hiddenFromTech;
+    this.storeService.toggleHiddenFromTech(storeId);
+    if (store) {
+      this.indexedDb.showToast(
+        willHide
+          ? `🙈 ${store.luc} - ${store.name} ocultada para o Técnico (mantida no SAP/ADM)`
+          : `👁️ ${store.luc} - ${store.name} visível novamente para o Técnico`
+      );
+    }
   }
 
   // --- MONTH CLOSING & AUDIT CHECKLIST METHODS (ETAPA 3) ---

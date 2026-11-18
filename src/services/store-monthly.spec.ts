@@ -306,6 +306,41 @@ describe('StoreService - Monthly Store Isolation & Consultation', () => {
     expect(novActiveReactivated.some(s => s.id === storeB.id)).toBe(true);
   });
 
+  it('deve ocultar lojas para o Técnico (hiddenFromTech) sem excluir/inativar e preservar na reimportação SAP do mês seguinte', () => {
+    service.processMonthlyStoreImport([
+      { luc: '1001', contrato: 'C1', name: 'Loja Normal' },
+      { luc: 'DEP01', contrato: 'C2', name: 'DEPÓSITO KFC' },
+      { luc: 'DEP02', contrato: 'C3', name: 'DEPÓSITO PANVEL' }
+    ], 'luz', '2026-10', false);
+
+    const octStores = service.getStoresForMonth('luz', '2026-10', false);
+    const dep1 = octStores.find(s => s.luc === 'DEP01')!;
+    const dep2 = octStores.find(s => s.luc === 'DEP02')!;
+
+    // Oculta DEP01 individualmente e DEP02 em lote
+    service.toggleHiddenFromTech(dep1.id);
+    service.setHiddenFromTechBatch([dep2.id], true);
+
+    const afterHide = service.getStoresForMonth('luz', '2026-10', false);
+    expect(afterHide.length).toBe(3); // Todas continuam ativas no rateio/SAP!
+    expect(afterHide.find(s => s.luc === '1001')?.hiddenFromTech).toBeFalsy();
+    expect(afterHide.find(s => s.luc === 'DEP01')?.hiddenFromTech).toBe(true);
+    expect(afterHide.find(s => s.luc === 'DEP02')?.hiddenFromTech).toBe(true);
+
+    // Reimporta planilha SAP no mês seguinte (Novembro/2026)
+    service.processMonthlyStoreImport([
+      { luc: '1001', contrato: 'C1', name: 'Loja Normal' },
+      { luc: 'DEP01', contrato: 'C2', name: 'DEPÓSITO KFC' },
+      { luc: 'DEP02', contrato: 'C3', name: 'DEPÓSITO PANVEL' }
+    ], 'luz', '2026-11', false);
+
+    const novStores = service.getStoresForMonth('luz', '2026-11', false);
+    expect(novStores.length).toBe(3);
+    expect(novStores.find(s => s.luc === 'DEP01')?.hiddenFromTech).toBe(true);
+    expect(novStores.find(s => s.luc === 'DEP02')?.hiddenFromTech).toBe(true);
+    expect(novStores.find(s => s.luc === '1001')?.hiddenFromTech).toBeFalsy();
+  });
+
   it('generateUUID deve gerar identificador único válido com ou sem suporte nativo', () => {
     const id1 = generateUUID();
     const id2 = generateUUID();

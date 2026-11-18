@@ -171,6 +171,21 @@ export class StoreService {
           this.supabase.syncStores(finalStores).catch(() => {});
         }
 
+        // Mescla configuração de lojas ocultas do técnico (armazenada em bills/__hidden_from_tech_v1__)
+        const localHiddenIds = new Set(local.filter(s => s.hiddenFromTech).map(s => String(s.id)));
+        const localHiddenLucs = new Set(local.filter(s => s.hiddenFromTech).map(s => normalizeLuc(s.luc)).filter(Boolean));
+        let remoteHidden: { hiddenIds: string[]; hiddenLucs: string[] } | null = null;
+        if (typeof this.supabase?.fetchHiddenFromTech === 'function') {
+          remoteHidden = await this.supabase.fetchHiddenFromTech();
+        }
+        const hiddenIdSet = remoteHidden !== null ? new Set(remoteHidden.hiddenIds.map(String)) : localHiddenIds;
+        const hiddenLucSet = remoteHidden !== null ? new Set(remoteHidden.hiddenLucs.map(normalizeLuc).filter(Boolean)) : localHiddenLucs;
+
+        finalStores = finalStores.map(s => {
+          const isHidden = hiddenIdSet.has(String(s.id)) || (!!s.luc && hiddenLucSet.has(normalizeLuc(s.luc)));
+          return isHidden ? { ...s, hiddenFromTech: true } : { ...s, hiddenFromTech: false };
+        });
+
         this.storesSignal.set(finalStores);
         if (typeof localStorage !== 'undefined') {
           localStorage.setItem(this.STORAGE_KEY, JSON.stringify(finalStores));
@@ -331,10 +346,48 @@ export class StoreService {
         console.error('Error saving stores to localStorage', e);
       }
     }
-    this.indexedDb.saveStores(list).catch(() => {});
+    this.indexedDb?.saveStores?.(list)?.catch?.(() => {});
     if (list.length > 0) {
-      this.supabase.syncStores(list).catch(() => {});
+      this.supabase?.syncStores?.(list)?.catch?.(() => {});
     }
+  }
+
+  private syncHiddenFromTechConfig(list: Store[]) {
+    const hiddenStores = list.filter(s => s.hiddenFromTech === true);
+    const hiddenIds = hiddenStores.map(s => s.id);
+    const hiddenLucs = Array.from(new Set(hiddenStores.map(s => normalizeLuc(s.luc)).filter(Boolean)));
+    this.supabase?.syncHiddenFromTech?.(hiddenIds, hiddenLucs)?.catch?.(() => {});
+  }
+
+  /**
+   * Alterna se uma loja fica oculta para o Técnico em Campo (TEC).
+   * A loja continua 100% ativa no rateio, cálculos e exportação SAP para ADM.
+   */
+  toggleHiddenFromTech(id: string) {
+    this.storesSignal.update(stores => {
+      const updated = stores.map(s =>
+        s.id === id ? { ...s, hiddenFromTech: !s.hiddenFromTech } : s
+      );
+      this.persistStores(updated);
+      this.syncHiddenFromTechConfig(updated);
+      return updated;
+    });
+  }
+
+  /**
+   * Define em lote a visibilidade de múltiplas lojas para o Técnico em Campo (TEC).
+   */
+  setHiddenFromTechBatch(ids: string[], hidden: boolean) {
+    if (!ids || ids.length === 0) return;
+    const idSet = new Set(ids);
+    this.storesSignal.update(stores => {
+      const updated = stores.map(s =>
+        idSet.has(s.id) ? { ...s, hiddenFromTech: hidden } : s
+      );
+      this.persistStores(updated);
+      this.syncHiddenFromTechConfig(updated);
+      return updated;
+    });
   }
 
   /**
@@ -782,7 +835,8 @@ export class StoreService {
             processedStoreIds.add(reactivatedStore.id);
             result.maintainedCount++;
           } else {
-            // Caso 3: Loja completamente NOVA no shopping
+            // Caso 3: Loja completamente NOVA no shopping (preserva ocultação do técnico caso o mesmo LUC já estivesse oculto)
+            const wasLucHidden = list.some(s => normalizeLuc(s.luc) === normLuc && s.hiddenFromTech === true);
             const newStore: Store = {
               id: generateUUID(),
               luc: cleanLuc,
@@ -791,7 +845,8 @@ export class StoreService {
               active: true,
               usesLuz: type === 'luz',
               usesAgua: type === 'agua',
-              usesGas: type === 'gas'
+              usesGas: type === 'gas',
+              hiddenFromTech: wasLucHidden ? true : undefined
             };
             list.push(newStore);
             processedStoreIds.add(newStore.id);

@@ -125,6 +125,12 @@ import {
                  class="flex-1 sm:flex-none px-3 py-1.5 rounded-md transition-all">
                  Todas ({{ totalUtilityCount() }})
                </button>
+               <button (click)="statusFilter.set('hidden_tech')"
+                 [class]="statusFilter() === 'hidden_tech' ? 'bg-purple-600 text-white shadow-xs' : 'text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/50'"
+                 class="flex-1 sm:flex-none px-3 py-1.5 rounded-md transition-all"
+                 title="Lojas ocultas para o Técnico em Campo (permanecem ativas para ADM / SAP)">
+                 🙈 Só ADM ({{ hiddenFromTechCount() }})
+               </button>
              </div>
 
              <!-- Busca Rápida -->
@@ -144,6 +150,25 @@ import {
              </div>
            </div>
         </div>
+
+        <!-- Ação em Lote: Ocultar/Exibir lojas filtradas do Técnico em Campo -->
+        @if (authService.canManageStores() && searchTerm().trim() && filteredStores().length > 0) {
+          <div class="mb-4 p-3 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/70 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs animate-fade-in">
+            <span class="text-purple-900 dark:text-purple-200 font-medium">
+              <strong>{{ filteredStores().length }}</strong> loja(s) encontrada(s) para "{{ searchTerm() }}". Deseja ocultar do Técnico em Campo (mantendo no SAP/ADM)?
+            </span>
+            <div class="flex items-center gap-2">
+              <button type="button" (click)="setFilteredHiddenFromTech(true)"
+                class="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold transition-colors cursor-pointer shadow-xs">
+                🙈 Ocultar {{ filteredStores().length }} do Técnico
+              </button>
+              <button type="button" (click)="setFilteredHiddenFromTech(false)"
+                class="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-purple-800 dark:text-purple-200 border border-purple-300 dark:border-purple-700 font-bold transition-colors cursor-pointer">
+                👁️ Mostrar para o Técnico
+              </button>
+            </div>
+          </div>
+        }
 
         <!-- SELETOR DE MÊS PARA CONSULTA MENSAL DE LOJAS -->
         <div class="mb-5 p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs">
@@ -533,8 +558,13 @@ import {
                     }
                   </td>
                   <td class="p-3.5">
-                    <div class="font-medium" [class.text-slate-800]="store.active !== false" [class.dark:text-slate-100]="store.active !== false" [class.text-slate-400]="store.active === false" [class.dark:text-slate-500]="store.active === false">
-                      {{ store.name }}
+                    <div class="font-medium flex items-center gap-2 flex-wrap" [class.text-slate-800]="store.active !== false" [class.dark:text-slate-100]="store.active !== false" [class.text-slate-400]="store.active === false" [class.dark:text-slate-500]="store.active === false">
+                      <span>{{ store.name }}</span>
+                      @if (store.hiddenFromTech) {
+                        <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 dark:bg-purple-950/70 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-800" title="Oculta para o Técnico em Campo — mantida no rateio e SAP para ADM">
+                          🙈 Só ADM
+                        </span>
+                      }
                     </div>
                     @if (store.active === false && store.deactivationReason) {
                       <div class="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
@@ -574,7 +604,16 @@ import {
                   
                   @if (authService.canManageStores()) {
                     <td class="p-3.5 pr-4 text-right">
-                      <div class="flex justify-end items-center gap-1.5">
+                      <div class="flex justify-end items-center gap-1.5 flex-wrap">
+                        <button (click)="toggleHideFromTech(store)"
+                          [title]="store.hiddenFromTech ? 'Oculta para o Técnico em Campo (ativa no SAP/ADM). Clique para mostrar novamente ao técnico.' : 'Visível para o Técnico em Campo. Clique para ocultar do técnico sem excluir do rateio/SAP.'"
+                          class="px-2 py-1 rounded-md transition-colors text-xs font-semibold border cursor-pointer"
+                          [class]="store.hiddenFromTech
+                            ? 'bg-purple-100 dark:bg-purple-950/70 text-purple-800 dark:text-purple-200 border-purple-300 dark:border-purple-700 hover:bg-purple-200 dark:hover:bg-purple-900/70'
+                            : 'text-slate-600 dark:text-slate-300 hover:text-purple-700 hover:bg-purple-50 dark:hover:bg-purple-950/30 border-slate-200 dark:border-slate-700'">
+                          {{ store.hiddenFromTech ? '🙈 Só ADM' : '👁️ Téc.' }}
+                        </button>
+
                         <button (click)="editStore(store)" class="px-2.5 py-1 text-slate-600 dark:text-slate-300 hover:text-accent hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors text-xs font-semibold border border-slate-200 dark:border-slate-700">
                           Editar
                         </button>
@@ -598,7 +637,7 @@ import {
                 </tr>
               } @empty {
                 <tr>
-                  <td colspan="6" class="p-10 text-center">
+                  <td [attr.colspan]="authService.canManageStores() ? 7 : 6" class="p-10 text-center">
                     <div class="max-w-md mx-auto space-y-3">
                       <div class="text-3xl">🏬</div>
                       <p class="font-bold text-slate-700 dark:text-slate-200 text-sm">
@@ -714,7 +753,7 @@ export class StoreManagerComponent {
   indexedDb = inject(IndexedDbService);
   
   activeTab = signal<TabType>('luz');
-  statusFilter = signal<StatusFilter>('active');
+  statusFilter = signal<StatusFilter | 'hidden_tech'>('active');
   searchTerm = signal('');
 
   // Manual Form State
@@ -840,6 +879,33 @@ export class StoreManagerComponent {
     return this.allTabStores().length;
   });
 
+  hiddenFromTechCount = computed(() => {
+    return this.allTabStores().filter(s => s.hiddenFromTech === true).length;
+  });
+
+  toggleHideFromTech(store: Store) {
+    if (!this.authService.canManageStores()) return;
+    const willHide = !store.hiddenFromTech;
+    this.storeService.toggleHiddenFromTech(store.id);
+    this.indexedDb.showToast(
+      willHide
+        ? `🙈 ${store.luc} - ${store.name} ocultada para o Técnico (mantida no SAP/ADM)`
+        : `👁️ ${store.luc} - ${store.name} visível novamente para o Técnico`
+    );
+  }
+
+  setFilteredHiddenFromTech(hidden: boolean) {
+    if (!this.authService.canManageStores()) return;
+    const targets = this.filteredStores();
+    if (targets.length === 0) return;
+    this.storeService.setHiddenFromTechBatch(targets.map(s => s.id), hidden);
+    this.indexedDb.showToast(
+      hidden
+        ? `🙈 ${targets.length} loja(s) ocultada(s) para o Técnico em Campo (mantidas no SAP/ADM)`
+        : `👁️ ${targets.length} loja(s) exibida(s) novamente para o Técnico em Campo`
+    );
+  }
+
   filteredStores = computed(() => {
      let list = this.allTabStores();
      const filter = this.statusFilter();
@@ -850,6 +916,8 @@ export class StoreManagerComponent {
        list = list.filter(s => isMonthView ? isStoreActiveInMonth(s, m, false) : s.active !== false);
      } else if (filter === 'inactive') {
        list = list.filter(s => isMonthView ? !isStoreActiveInMonth(s, m, false) : s.active === false);
+     } else if (filter === 'hidden_tech') {
+       list = list.filter(s => s.hiddenFromTech === true);
      }
 
      const query = this.searchTerm().trim().toLowerCase();

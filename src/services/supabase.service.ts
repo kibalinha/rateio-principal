@@ -836,6 +836,49 @@ FOR ALL USING (bucket_id = 'meter-photos') WITH CHECK (bucket_id = 'meter-photos
     }
   }
 
+  /**
+   * Sincroniza os IDs/LUCs de lojas ocultas para o Técnico em Campo (TEC) no Supabase.
+   */
+  async syncHiddenFromTech(hiddenIds: string[], hiddenLucs: string[] = []): Promise<boolean> {
+    try {
+      const client = this.getClient();
+      const { error } = await client.from('bills').upsert({
+        id: '__hidden_from_tech_v1__',
+        type: 'config',
+        month: 'global',
+        data: { hiddenIds, hiddenLucs },
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id' });
+      return !error;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Busca os IDs/LUCs de lojas ocultas para o Técnico em Campo (TEC) no Supabase.
+   */
+  async fetchHiddenFromTech(): Promise<{ hiddenIds: string[]; hiddenLucs: string[] } | null> {
+    try {
+      const client = this.getClient();
+      const { data, error } = await client
+        .from('bills')
+        .select('data')
+        .eq('id', '__hidden_from_tech_v1__')
+        .maybeSingle();
+
+      if (!error && data && data.data) {
+        return {
+          hiddenIds: Array.isArray(data.data.hiddenIds) ? data.data.hiddenIds : [],
+          hiddenLucs: Array.isArray(data.data.hiddenLucs) ? data.data.hiddenLucs : [],
+        };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
   private addLog(entry: string) {
     const time = new Date().toLocaleTimeString('pt-BR');
     this.syncLog.update(prev => [`[${time}] ${entry}`, ...prev.slice(0, 49)]);

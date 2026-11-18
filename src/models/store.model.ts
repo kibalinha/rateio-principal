@@ -16,6 +16,9 @@ export interface Store {
   usesAgua: boolean;
   usesGas: boolean;
 
+  // Visibilidade em Campo (Oculta apenas para o perfil Técnico TEC; permanece ativa no rateio/SAP para ADM)
+  hiddenFromTech?: boolean;
+
   // Controle de sincronização offline
   _offlineCreated?: boolean;
 }
