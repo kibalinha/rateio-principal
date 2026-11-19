@@ -199,7 +199,7 @@ export class StoreService {
             this.monthlyStoreListsSignal.update(curr => {
               const merged: Record<string, string[]> = { ...curr };
               for (const [key, remoteList] of Object.entries(remoteLists)) {
-                if (!merged[key] || (Array.isArray(remoteList) && remoteList.length >= merged[key].length)) {
+                if (Array.isArray(remoteList) && (remoteList.length > 0 || !(key in merged))) {
                   merged[key] = remoteList;
                 }
               }
@@ -228,7 +228,7 @@ export class StoreService {
           this.monthlyStoreListsSignal.update(curr => {
             const merged: Record<string, string[]> = { ...curr };
             for (const [key, remoteList] of Object.entries(remoteLists)) {
-              if (!merged[key] || (Array.isArray(remoteList) && remoteList.length >= merged[key].length)) {
+              if (Array.isArray(remoteList) && (remoteList.length > 0 || !(key in merged))) {
                 merged[key] = remoteList;
               }
             }
@@ -772,6 +772,12 @@ export class StoreService {
 
         if (existingActiveIndex > -1) {
           const existingStore = list[existingActiveIndex];
+
+          // Se este ID já foi processado nesta mesma importação (linha duplicada na planilha), ignora duplicata
+          if (processedStoreIds.has(existingStore.id)) {
+            continue;
+          }
+
           const existingContrato = (existingStore.contrato || '').trim();
           const existingNormContrato = normalizeContract(existingContrato);
           const existingNormName = normalizeStoreName(existingStore.name || '');
@@ -832,12 +838,14 @@ export class StoreService {
             };
             list[existingActiveIndex] = deactivatedOldStore;
 
-            // Criamos a nova loja ativa com novo ID
+            // Criamos a nova loja ativa com novo ID, herdando posição na rota e visibilidade do técnico do mesmo LUC
             const newStore: Store = {
               id: generateUUID(),
               luc: cleanLuc,
               contrato: cleanContrato,
               name: cleanName,
+              routeOrder: existingStore.routeOrder,
+              hiddenFromTech: existingStore.hiddenFromTech,
               active: true,
               usesLuz: type === 'luz' || existingStore.usesLuz,
               usesAgua: type === 'agua' || existingStore.usesAgua,
