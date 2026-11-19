@@ -34,6 +34,7 @@
     "./index.tsx"
   ],
   "angularCompilerOptions": {
-    "disableTypeScriptVersionCheck": true
+    "disableTypeScriptVersionCheck": true,
+    "strictTemplates": true
   }
 }

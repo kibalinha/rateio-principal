@@ -498,7 +498,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
                   
                   @if (utilityType() === 'luz') {
                     <div class="grid grid-cols-1 gap-2">
-                      @for (key of ['bss1', 'bss2', 'bss3', 'bss4']; track key) {
+                      @for (key of luzBssKeys; track key) {
                         <div class="flex items-center gap-2">
                            <label class="text-xs text-slate-600 dark:text-slate-300 w-1/2 uppercase">{{ key }}</label>
                            <input type="text" inputmode="decimal" [disabled]="!canConfigure()" 
@@ -1275,7 +1275,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
         (close)="closePhotoViewer()"
         (download)="downloadActivePhoto()"
         (syncPhoto)="syncSinglePhoto($event)"
-        (runOcr)="runOcrOnPhoto($event.storeId, $event.provider)"
+        (runOcr)="runOcrOnPhoto($event.storeId, $event.provider === 'auto' ? undefined : $event.provider)"
         (openVoucher)="openStoreVoucherByStoreId($event)"
         (replacePhoto)="onPhotoCaptured($event.event, $event.photo.storeId, $event.photo.storeName, $event.photo.luc, $event.photo.readingValue)"
         (deletePhoto)="removePhoto($event.storeId)"
@@ -1637,6 +1637,8 @@ export class BillCalculatorComponent implements OnDestroy {
     { id: '17', name: 'Fluxo de caixa', value: 0 },
     { id: '18', name: 'Guia judicial', value: 0 }
   ]);
+
+  readonly luzBssKeys = ['bss1', 'bss2', 'bss3', 'bss4'] as const;
 
   luzConsumption = signal({
     bss1: 0,
