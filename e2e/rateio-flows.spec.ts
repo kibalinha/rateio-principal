@@ -181,6 +181,12 @@ test.describe('ShopRateio - Fluxos Reais (TEC, ADM, pt-BR kWh, Lojas e Subcompon
       await plusOneBtn.click();
       await expect(readingInput).toHaveValue(String(beforeVal + 1));
 
+      // Caso o mês carregue leitura anterior maior do Supabase, fecha o modal legítimo de anomalia antes de avançar
+      const anomalyDismiss = page.locator('app-anomaly-modal').getByRole('button', { name: /Conferir Relógio|✕/i }).first();
+      if (await anomalyDismiss.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await anomalyDismiss.click();
+      }
+
       // Testa evento @Output() nextStep (Pular) se houver 2+ lojas na rota
       const optionCount = await routeSelect.locator('option').count();
       if (optionCount > 1) {
