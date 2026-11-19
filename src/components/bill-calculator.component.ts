@@ -1,39 +1,47 @@
 import { Component, inject, signal, computed, effect, untracked, OnDestroy, HostListener } from '@angular/core';
 import { CommonModule, DecimalPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { StoreService, normalizeLuc, normalizeContract, normalizeStoreName, generateUUID } from '../services/store.service';
+import { StoreService, normalizeLuc, generateUUID } from '../services/store.service';
 import { HistoryService } from '../services/history.service';
 import { AuthService } from '../services/auth.service';
 import { ReportExportService } from '../services/report-export.service';
 import { IndexedDbService } from '../services/indexed-db.service';
 import { GeminiService } from '../services/gemini.service';
 import { OcrFeedbackService } from '../services/ocr-feedback.service';
-import { buildReadingContext } from '../services/ocr-context';
-import { analyzeAndEnhanceBase64Image } from '../services/ocr-image-processor';
-import { getRecommendedProvider } from '../services/ocr-stats';
 import {
   computeHistoricalStats,
   computeZeroConsumptionLearning,
-  evaluateReadingAnomaly,
   HistoricalStoreStats,
   ZeroConsumptionLearning
 } from '../services/bill-audit.helpers';
 import { SupabaseService } from '../services/supabase.service';
-import * as XLSX from 'xlsx';
 import { ApportionmentEngineService, parsePtBrNumber, formatPtBrInput } from '../services/apportionment-engine.service';
+import { BillOcrPhotoFacade } from '../services/bill-ocr-photo.facade';
+import { BillExportFacade } from '../services/bill-export.facade';
+import {
+  applySpreadsheetPasteToReadings,
+  BillStatusFilter,
+  buildBillTableRows,
+  computeClosingChecklist,
+  computeGasDistributionStats,
+  computePrevMonthAudit,
+  createDefaultCostItems,
+  createDefaultReading,
+  filterAndSortBillRows,
+  getPreviousMonthString,
+  sanitizeReadingFieldValue
+} from '../services/bill-table.helpers';
 
 import {
   Store,
   BillData,
   StoreReading,
-  StoreVoucherData,
   MeterPhotoRecord,
-  MeterOcrResult,
-  OcrPendingConfirmation,
   CostItem,
   ExcelImportRowPreview,
   AnomalyModalData
 } from '../models';
+import { BillTableRow } from './bill-subcomponents.types';
 
 import { AnomalyModalComponent } from './anomaly-modal.component';
 import { MeterPhotoModalComponent } from './meter-photo-modal.component';
@@ -55,6 +63,7 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
 @Component({
   selector: 'app-bill-calculator',
   standalone: true,
+  providers: [BillOcrPhotoFacade, BillExportFacade],
   imports: [
     CommonModule,
     FormsModule,
@@ -1425,7 +1434,6 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
   `
 })
 export class BillCalculatorComponent implements OnDestroy {
-  private photoSubscriptionUnsubscribe: (() => void) | null = null;
   storeService = inject(StoreService);
   historyService = inject(HistoryService);
   authService = inject(AuthService); // Inject Auth
@@ -1435,21 +1443,15 @@ export class BillCalculatorComponent implements OnDestroy {
   ocrFeedbackService = inject(OcrFeedbackService);
   supabaseService = inject(SupabaseService);
   apportionmentEngine = inject(ApportionmentEngineService);
+  ocrPhotoFacade = inject(BillOcrPhotoFacade);
+  billExportFacade = inject(BillExportFacade);
 
   utilityType = signal<'luz' | 'agua' | 'gas'>('luz');
 
   // Date State
   selectedMonth = signal<string>(new Date().toISOString().substring(0, 7)); // YYYY-MM
-  
-  selectedMonthFormatted = computed(() => {
-    const m = this.selectedMonth();
-    if (!m || !m.includes('-')) return m;
-    const [yearStr, monthStr] = m.split('-');
-    const monthNum = parseInt(monthStr, 10);
-    const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-    const name = months[monthNum - 1] || monthStr;
-    return `${name} de ${yearStr}`;
-  });
+
+  selectedMonthFormatted = computed(() => this.billExportFacade.formatMonthLong(this.selectedMonth()));
 
   isCurrentMonth = computed(() => {
     const now = new Date();
@@ -1489,16 +1491,16 @@ export class BillCalculatorComponent implements OnDestroy {
     }
   }
 
-  // Export State
-  isExportingExcel = signal(false);
-  isExportingZip = signal(false);
+  // Export State (delegado ao BillExportFacade)
+  isExportingExcel = this.billExportFacade.isExportingExcel;
+  isExportingZip = this.billExportFacade.isExportingZip;
 
   // UI State for Mobile
   isConfigOpen = signal(false); // Default collapsed on mobile/tech, open on desktop
 
   // --- FIELD / MOBILE ENHANCED STATE ---
   searchQuery = signal<string>('');
-  statusFilter = signal<'all' | 'pending' | 'completed' | 'alert' | 'prev_missing' | 'hidden_tech'>('all');
+  statusFilter = signal<BillStatusFilter>('all');
   sortBy = signal<string>('route');
   sortDirection = signal<'asc' | 'desc'>('asc');
   mobileViewMode = signal<'cards' | 'step'>('cards');
@@ -1511,13 +1513,13 @@ export class BillCalculatorComponent implements OnDestroy {
   showQuickJustifyModal = signal<boolean>(false);
   activeJustifyStore = signal<any | null>(null);
 
-  // --- METER PHOTO EVIDENCE (EVIDÊNCIA FOTOGRÁFICA DO MEDIDOR) ---
-  meterPhotos = signal<Record<string, MeterPhotoRecord>>({});
-  prevMonthPhotos = signal<Record<string, MeterPhotoRecord>>({});
-  activePhotoRecord = signal<MeterPhotoRecord | null>(null);
-  showPhotoModal = signal<boolean>(false);
-  isCapturingPhoto = signal<string | null>(null);
-  isConfirmingPhotoDelete = signal<boolean>(false);
+  // --- METER PHOTO EVIDENCE (delegado ao BillOcrPhotoFacade) ---
+  meterPhotos = this.ocrPhotoFacade.meterPhotos;
+  prevMonthPhotos = this.ocrPhotoFacade.prevMonthPhotos;
+  activePhotoRecord = this.ocrPhotoFacade.activePhotoRecord;
+  showPhotoModal = this.ocrPhotoFacade.showPhotoModal;
+  isCapturingPhoto = this.ocrPhotoFacade.isCapturingPhoto;
+  isConfirmingPhotoDelete = this.ocrPhotoFacade.isConfirmingPhotoDelete;
 
   // --- LOCK / MONTH CONSOLIDATION STATE ---
   isLocked = signal<boolean>(false);
@@ -1526,15 +1528,15 @@ export class BillCalculatorComponent implements OnDestroy {
   canEdit = computed(() => !this.isLocked() && this.authService.canEditReadings());
   canConfigure = computed(() => !this.isLocked() && this.authService.canConfigureBill());
 
-  // --- AI API KEY CONFIGURATION MODAL ---
-  showAiKeyModal = signal<boolean>(false);
-  groqInputKey = signal<string>('');
-  geminiInputKey = signal<string>('');
-  pendingOcrStoreId = signal<string | null>(null);
+  // --- AI API KEY CONFIGURATION MODAL (delegado ao BillOcrPhotoFacade) ---
+  showAiKeyModal = this.ocrPhotoFacade.showAiKeyModal;
+  groqInputKey = this.ocrPhotoFacade.groqInputKey;
+  geminiInputKey = this.ocrPhotoFacade.geminiInputKey;
+  pendingOcrStoreId = this.ocrPhotoFacade.pendingOcrStoreId;
 
-  // --- STORE VOUCHER / ESPELHO DO LOJISTA STATE ---
-  showVoucherModal = signal<boolean>(false);
-  selectedVoucherData = signal<StoreVoucherData | null>(null);
+  // --- STORE VOUCHER / ESPELHO DO LOJISTA STATE (delegado ao BillExportFacade) ---
+  showVoucherModal = this.billExportFacade.showVoucherModal;
+  selectedVoucherData = this.billExportFacade.selectedVoucherData;
 
   // --- ANOMALY AUDIT MODAL (ETAPA 1: ALERTA INTELIGENTE E ANTI-ERRO) ---
   activeAnomalyModal = signal<AnomalyModalData | null>(null);
@@ -1542,29 +1544,11 @@ export class BillCalculatorComponent implements OnDestroy {
   // --- MONTH CLOSING & AUDIT CHECKLIST (ETAPA 3: FECHAMENTO CONTÁBIL E CONGELAMENTO) ---
   showClosingChecklistModal = signal<boolean>(false);
 
-  // --- BATCH OCR QUEUE STATE ---
-  showBatchOcrModal = signal<boolean>(false);
-  isBatchOcrRunning = signal<boolean>(false);
-  cancelBatchOcrRequested = signal<boolean>(false);
-  batchOcrProgress = signal<{
-    current: number;
-    total: number;
-    progressPct: number;
-    currentStoreName: string;
-    currentLuc: string;
-    successCount: number;
-    failCount: number;
-    currentModel: string;
-  }>({
-    current: 0,
-    total: 0,
-    progressPct: 0,
-    currentStoreName: '',
-    currentLuc: '',
-    successCount: 0,
-    failCount: 0,
-    currentModel: ''
-  });
+  // --- BATCH OCR QUEUE STATE (delegado ao BillOcrPhotoFacade) ---
+  showBatchOcrModal = this.ocrPhotoFacade.showBatchOcrModal;
+  isBatchOcrRunning = this.ocrPhotoFacade.isBatchOcrRunning;
+  cancelBatchOcrRequested = this.ocrPhotoFacade.cancelBatchOcrRequested;
+  batchOcrProgress = this.ocrPhotoFacade.batchOcrProgress;
 
   pendingOcrCount = computed(() => {
     return this.tableData().filter(s => s.hasPhoto && (!s.isRead || s.currentReading === 0)).length;
@@ -1574,22 +1558,12 @@ export class BillCalculatorComponent implements OnDestroy {
     return this.tableData().filter(s => s.hasPhoto).length;
   });
 
-  // --- OCR DUAL-ENGINE STATE (QWEN 3.8 27B GROQ + GEMINI 3.8 FLASH FALLBACK) ---
-  isReadingOcr = signal<string | null>(null); // storeId sendo analisado
-  ocrCurrentModelLabel = signal<string>('Qwen 3.8 27B (Groq)');
-  ocrFeedback = signal<Record<string, {
-    success: boolean;
-    message: string;
-    reading?: number | null;
-    confidence?: string;
-    explanation?: string;
-    provider?: 'qwen' | 'gemini' | 'none';
-    modelName?: string;
-    fallbackUsed?: boolean;
-  }>>({});
-  // Leituras sugeridas pela IA aguardando conferência do técnico (por storeId)
-  ocrPending = signal<Record<string, OcrPendingConfirmation>>({});
-  showOcrQuality = signal(false);
+  // --- OCR DUAL-ENGINE STATE (delegado ao BillOcrPhotoFacade) ---
+  isReadingOcr = this.ocrPhotoFacade.isReadingOcr;
+  ocrCurrentModelLabel = this.ocrPhotoFacade.ocrCurrentModelLabel;
+  ocrFeedback = this.ocrPhotoFacade.ocrFeedback;
+  ocrPending = this.ocrPhotoFacade.ocrPending;
+  showOcrQuality = this.ocrPhotoFacade.showOcrQuality;
 
   // Utility counts for header badges:
   utilityStats = computed(() => {
@@ -1617,26 +1591,7 @@ export class BillCalculatorComponent implements OnDestroy {
   });
 
   // -- Detailed Mode State (Luz) --
-  luzCostItems = signal<CostItem[]>([
-    { id: '1', name: 'Conta CEEE BSS-1 (UC 72207914)', value: 0 },
-    { id: '2', name: 'Valor conta CEMIG BSS-1', value: 0 },
-    { id: '3', name: 'Valor ENEVA', value: 0 },
-    { id: '4', name: 'Contribuição-1 associativa CCEE', value: 0 },
-    { id: '5', name: 'Contabilização energia reserva - RES005', value: 0 },
-    { id: '6', name: 'Tarifa bancária Bradesco', value: 0 },
-    { id: '7', name: 'Diferenças convertidas no rateio (ajustes)', value: 0 },
-    { id: '8', name: 'Sumário (liq. Financeira) - SUM001', value: 0 },
-    { id: '9', name: 'Automação CAG - Microblau', value: 0 },
-    { id: '10', name: 'Valor conta CEEE BSS-2 (UC 68203772)', value: 0 },
-    { id: '11', name: 'Valor conta CEMIG BSS-2', value: 0 },
-    { id: '12', name: 'Valor conta CEEE BSS-3 (UC 64550214)', value: 0 },
-    { id: '13', name: 'Valor conta CEEE BSS-4 (UC 54031443)', value: 0 },
-    { id: '14', name: 'Valor Siclo - Consultoria', value: 0 },
-    { id: '15', name: 'Valor Agroenergia - Consultoria', value: 0 },
-    { id: '16', name: 'Gestão Mercado Livre (Versa)', value: 0 },
-    { id: '17', name: 'Fluxo de caixa', value: 0 },
-    { id: '18', name: 'Guia judicial', value: 0 }
-  ]);
+  luzCostItems = signal<CostItem[]>(createDefaultCostItems('luz'));
 
   readonly luzBssKeys = ['bss1', 'bss2', 'bss3', 'bss4'] as const;
 
@@ -1650,21 +1605,13 @@ export class BillCalculatorComponent implements OnDestroy {
   luzAC = signal<number>(0);
 
   // -- Detailed Mode State (Agua) --
-  aguaCostItems = signal<CostItem[]>([
-    { id: 'w1', name: 'Valor conta', value: 0 },
-    { id: 'w2', name: 'Enviro Tools', value: 0 },
-    { id: 'w3', name: 'Fluxo de caixa', value: 0 },
-  ]);
+  aguaCostItems = signal<CostItem[]>(createDefaultCostItems('agua'));
 
   aguaTotalReading = signal<number>(0); // Total from Bill
   aguaAC = signal<number>(0);
 
   // -- Detailed Mode State (Gas) --
-  gasCostItems = signal<CostItem[]>([
-    { id: 'g1', name: 'Valor conta', value: 0 },
-    { id: 'g2', name: 'Enviro Tools', value: 0 },
-    { id: 'g3', name: 'Fluxo de caixa', value: 0 },
-  ]);
+  gasCostItems = signal<CostItem[]>(createDefaultCostItems('gas'));
   gasTotalReading = signal<number>(0);
   gasAutoDistribute = signal<boolean>(true); // Rateio 100% Proporcional Automático (Concessionária vs Campo)
 
@@ -1774,18 +1721,21 @@ export class BillCalculatorComponent implements OnDestroy {
   });
 
   constructor() {
+    this.ocrPhotoFacade.bindHost({
+      getUtilityType: () => this.utilityType(),
+      getSelectedMonth: () => this.selectedMonth(),
+      isLocked: () => this.isLocked(),
+      getTableData: () => this.tableData(),
+      getReadingsForUtility: (type) => this.readings()[type],
+      replaceReadingsForUtility: (type, updatedMap) => {
+        this.readings.update(curr => ({ ...curr, [type]: updatedMap }));
+      },
+      updateDetailedReading: (storeId, field, value) => this.updateDetailedReading(storeId, field, value),
+      saveBill: () => this.internalSave()
+    });
+
     // Sincronização inteligente de chaves de IA (Desktop <-> Celular)
-    const localGroq = this.geminiService.getSavedGroqKey();
-    const localGemini = this.geminiService.getSavedGeminiKey();
-    if (localGroq || localGemini) {
-      this.supabaseService.syncSystemAiKeys(localGroq, localGemini).catch(() => { });
-    } else {
-      this.supabaseService.fetchSystemAiKeys().then(cloudKeys => {
-        if (cloudKeys) {
-          this.geminiService.setCloudApiKeys(cloudKeys.groqKey, cloudKeys.geminiKey);
-        }
-      }).catch(() => { });
-    }
+    this.ocrPhotoFacade.initAiKeysSync();
 
     // 1. Data Loader Effect (dispara quando o usuário altera aba ou mês)
     effect(() => {
@@ -1853,47 +1803,8 @@ export class BillCalculatorComponent implements OnDestroy {
       });
     });
 
-    // 5. Inscrição em tempo real para fotos de medidores do Supabase (inserção, edição e exclusão)
-    this.photoSubscriptionUnsubscribe = this.supabaseService.subscribeToPhotos(async (payload) => {
-      const type = this.utilityType();
-      const month = this.selectedMonth();
-
-      // Se foi um evento DELETE direto no Supabase emitido por outro dispositivo (PC ou Mobile)
-      if (payload?.eventType === 'DELETE' && payload.old) {
-        const deletedId = String(payload.old.id || '');
-        const deletedStoreId = payload.old.store_id || (deletedId ? deletedId.split('_')[2] : null);
-        if (deletedStoreId) {
-          this.meterPhotos.update(prev => {
-            const copy = { ...prev };
-            delete copy[deletedStoreId];
-            return copy;
-          });
-          await this.indexedDb.deleteMeterPhoto(type, month, deletedStoreId);
-          this.updateDetailedReading(deletedStoreId, 'hasPhoto', false);
-          this.updateDetailedReading(deletedStoreId, 'photoTimestamp', undefined);
-        }
-      }
-
-      // Re-sincroniza fotos da nuvem mantendo apenas fotos locais ainda não sincronizadas
-      const cloudPhotos = await this.supabaseService.fetchMeterPhotos(type, month);
-      if (cloudPhotos !== null) {
-        const currentLocal = this.meterPhotos();
-        const nextPhotos: Record<string, MeterPhotoRecord> = { ...cloudPhotos };
-
-        for (const [storeId, p] of Object.entries(currentLocal)) {
-          if (!p.synced && !cloudPhotos[storeId]) {
-            nextPhotos[storeId] = p;
-          } else if (p.synced && !cloudPhotos[storeId]) {
-            // Foi excluída na nuvem por outro dispositivo! Exclui do IndexedDB local também:
-            await this.indexedDb.deleteMeterPhoto(type, month, storeId);
-            this.updateDetailedReading(storeId, 'hasPhoto', false);
-            this.updateDetailedReading(storeId, 'photoTimestamp', undefined);
-          }
-        }
-
-        this.meterPhotos.set(nextPhotos);
-      }
-    });
+    // 5. Inscrição em tempo real para fotos de medidores do Supabase (delegado ao facade)
+    this.ocrPhotoFacade.subscribeToRealtimePhotos();
   }
 
   ngOnDestroy() {
@@ -1901,12 +1812,7 @@ export class BillCalculatorComponent implements OnDestroy {
       clearTimeout(this.autoSaveTimer);
       this.autoSaveTimer = null;
     }
-    if (this.photoSubscriptionUnsubscribe) {
-      try {
-        this.photoSubscriptionUnsubscribe();
-      } catch { }
-      this.photoSubscriptionUnsubscribe = null;
-    }
+    this.ocrPhotoFacade.destroy();
   }
 
   isMobile() {
@@ -1974,7 +1880,7 @@ export class BillCalculatorComponent implements OnDestroy {
   }
 
   createDefaultReading(): StoreReading {
-    return { reading: 0, constant: 1, virtual: undefined, adjustment: 1, calculatedConsumption: 0, excludedFromBill: false };
+    return createDefaultReading();
   }
 
   // --- IMPORTAÇÃO INTELIGENTE DE PLANILHA EXCEL ---
@@ -2232,109 +2138,10 @@ export class BillCalculatorComponent implements OnDestroy {
       this.lockedBy.set(null);
     }
 
-    // 2. Load Previous Month Data
+    // 2. Load Previous Month Data & Meter Photos (com merge, nuvem e guardas de corrida no facade)
     const prevMonth = this.getPreviousMonth(month);
-
-    // 3. Load Meter Photos from IndexedDB (com merge e detecção de exclusões da nuvem)
-    this.indexedDb.getMeterPhotosForMonth(type, month).then(async photos => {
-      if (this.utilityType() !== type || this.selectedMonth() !== month) return;
-      let combined = { ...photos };
-      if (this.indexedDb.isOnline()) {
-        try {
-          const cloudPhotos = await this.supabaseService.fetchMeterPhotos(type, month);
-          if (this.utilityType() !== type || this.selectedMonth() !== month) return;
-          if (cloudPhotos !== null) {
-            combined = { ...cloudPhotos };
-            // Preserva apenas fotos locais que ainda estão pendentes de sincronização (!synced)
-            for (const [sId, p] of Object.entries(photos)) {
-              if (!p.synced && !cloudPhotos[sId]) {
-                combined[sId] = p;
-              } else if (p.synced && !cloudPhotos[sId]) {
-                // A foto foi excluída na nuvem! Limpa do IndexedDB local para não ressuscitar a foto
-                await this.indexedDb.deleteMeterPhoto(type, month, sId);
-                if (this.utilityType() === type && this.selectedMonth() === month) {
-                  this.updateDetailedReading(sId, 'hasPhoto', false);
-                  this.updateDetailedReading(sId, 'photoTimestamp', undefined);
-                }
-              }
-            }
-            // Salva em cache local do IndexedDB as fotos válidas da nuvem
-            for (const cp of Object.values(cloudPhotos)) {
-              if (!photos[cp.storeId]) {
-                await this.indexedDb.saveMeterPhoto({ ...cp, synced: true });
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('Erro ao carregar fotos da nuvem:', e);
-        }
-      }
-      if (this.utilityType() !== type || this.selectedMonth() !== month) return;
-      this.meterPhotos.set(combined);
-
-      // Reconcilia apenas metadados visuais de evidência (hasPhoto e photoTimestamp) sem sobrescrever valores numéricos de leitura
-      const currentReadings = this.readings()[type] as Map<string, StoreReading>;
-      let metaUpdated = false;
-      const updatedMap = new Map(currentReadings);
-
-      for (const [sId, p] of Object.entries(combined)) {
-        const curReading = updatedMap.get(sId);
-        if (curReading && (!curReading.hasPhoto || curReading.photoTimestamp !== p.capturedAt)) {
-          updatedMap.set(sId, {
-            ...curReading,
-            hasPhoto: true,
-            photoTimestamp: p.capturedAt
-          });
-          metaUpdated = true;
-        }
-      }
-
-      if (metaUpdated) {
-        this.readings.update(curr => ({ ...curr, [type]: updatedMap }));
-      }
-    }).catch(() => {
-      this.meterPhotos.set({});
-    });
-
-    // 2. Leituras Anteriores são computadas reativamente via computed signal previousReadings
     const prevMap = this.previousReadings();
-
-    // Carrega fotos do mês anterior (e fotos dos meses retroativos das lojas desativadas) para comparação visual
-    this.indexedDb.getMeterPhotosForMonth(type, prevMonth).then(async prevPhotos => {
-      let combinedPrev: Record<string, MeterPhotoRecord> = { ...prevPhotos };
-      if (this.indexedDb.isOnline()) {
-        try {
-          const cloudPrev = await this.supabaseService.fetchMeterPhotos(type, prevMonth);
-          if (cloudPrev) {
-            combinedPrev = { ...cloudPrev, ...combinedPrev };
-          }
-        } catch { }
-      }
-
-      // Se alguma loja teve a última medição em mês mais antigo, tenta buscar a foto daquele mês também
-      for (const [storeId, prevInfo] of prevMap.entries()) {
-        if (prevInfo.month && prevInfo.month !== prevMonth && !combinedPrev[storeId]) {
-          try {
-            const olderPhoto = await this.indexedDb.getMeterPhoto(type, prevInfo.month, storeId);
-            if (olderPhoto) {
-              combinedPrev[storeId] = olderPhoto;
-            } else if (this.indexedDb.isOnline()) {
-              const cloudPhotosOlder = await this.supabaseService.fetchMeterPhotos(type, prevInfo.month);
-              if (cloudPhotosOlder && cloudPhotosOlder[storeId]) {
-                combinedPrev[storeId] = cloudPhotosOlder[storeId];
-              }
-            }
-          } catch { }
-        }
-      }
-
-      if (this.utilityType() !== type || this.selectedMonth() !== month) return;
-      this.prevMonthPhotos.set(combinedPrev);
-    }).catch(() => {
-      if (this.utilityType() === type && this.selectedMonth() === month) {
-        this.prevMonthPhotos.set({});
-      }
-    });
+    void this.ocrPhotoFacade.loadPhotosForSelection(type, month, prevMonth, prevMap);
 
     this.saveStatus.set('saved');
 
@@ -2345,9 +2152,7 @@ export class BillCalculatorComponent implements OnDestroy {
   }
 
   getPreviousMonth(currentMonth: string): string {
-    const [year, month] = currentMonth.split('-').map(Number);
-    const date = new Date(year, month - 1 - 1, 1);
-    return date.toISOString().substring(0, 7);
+    return getPreviousMonthString(currentMonth);
   }
 
   resetFormValues(type: 'luz' | 'agua' | 'gas') {
@@ -2474,11 +2279,7 @@ export class BillCalculatorComponent implements OnDestroy {
   }
 
   getUnit() {
-    switch (this.utilityType()) {
-      case 'luz': return 'kWh';
-      case 'agua': return 'm³';
-      case 'gas': return 'm³';
-    }
+    return this.billExportFacade.getUnit(this.utilityType());
   }
 
   totalBillAmount = computed(() => {
@@ -2527,258 +2328,35 @@ export class BillCalculatorComponent implements OnDestroy {
     });
   });
 
-  // --- TABLE DATA CALCULATION ---
-  tableData = computed(() => {
-    const stores = this.activeStores();
-    const price = this.calculatedUnitPrice();
+  // --- TABLE DATA CALCULATION (delegado ao bill-table.helpers) ---
+  tableData = computed<BillTableRow[]>(() => {
     const type = this.utilityType();
-    const unit = type === 'luz' ? 'kWh' : 'm³';
-
-    const readingsStore = this.readings();
-    const prevReadings = this.previousReadings();
-    const histAvgMap = this.historicalStats();
-    const zeroLearningMap = this.zeroConsumptionLearning();
-
-    // Se for Gás, pré-calculamos a soma bruta do consumo medido em campo para todas as lojas
-    let totalRawGas = 0;
-    if (type === 'gas') {
-      const storeMap = readingsStore[type] as Map<string, StoreReading>;
-      stores.forEach(s => {
-        const d = storeMap.get(s.id) || this.createDefaultReading();
-        const nLuc = s.luc ? normalizeLuc(s.luc) : '';
-        const nContrato = s.contrato ? normalizeContract(s.contrato) : '';
-        const nName = s.name ? normalizeStoreName(s.name) : '';
-        const p = prevReadings.get(s.id)
-          || (nLuc && nContrato ? prevReadings.get(`luc_contrato:${nLuc}_${nContrato}`) : undefined)
-          || (nLuc && nName ? prevReadings.get(`luc_name:${nLuc}_${nName}`) : undefined)
-          || (nLuc ? prevReadings.get(`luc:${nLuc}`) : undefined)
-          || (nContrato ? prevReadings.get(`contrato:${nContrato}`) : undefined)
-          || (nName ? prevReadings.get(`name:${nName}`) : undefined)
-          || { reading: 0, consumption: 0 };
-        const hasVirtual = d.virtual !== undefined && d.virtual !== null && (d.virtual as any) !== '' && !isNaN(Number(d.virtual));
-        if (hasVirtual) {
-          totalRawGas += Number(d.virtual);
-        } else {
-          const diff = this.apportionmentEngine.calculateReadingDifference(d.reading || 0, p.reading || 0, !!d.isRollover);
-          const adjNum = Number(d.adjustment);
-          const adj = (!isNaN(adjNum) && adjNum > 0) ? adjNum : 1.347;
-          const fcmNum = Number(d.fcm);
-          const mfcm = (!isNaN(fcmNum) && fcmNum > 0) ? fcmNum : 1.0727;
-          totalRawGas += (diff * adj) * mfcm;
-        }
-      });
-    }
-
-    const gasConcessionaria = this.gasTotalReading() || 0;
-    const isGasAuto = this.gasAutoDistribute();
-    const gasFactor = (type === 'gas' && isGasAuto && gasConcessionaria > 0 && totalRawGas > 0)
-      ? (gasConcessionaria / totalRawGas)
-      : 1.0;
-
-    return stores.map(store => {
-      let consumption = 0;
-      let rawConsumption = 0;
-      let cost = 0;
-
-      let prevReading = 0;
-      let currentReading = 0;
-      let constant = 1;
-      let virtual: number | undefined = undefined;
-      let adjustment = 1;
-      let variation = 0;
-      let adjustmentAdd = 0;
-      let fcm = 1;
-      let fluxoCost = 0;
-
-      const storeMap = readingsStore[type] as Map<string, StoreReading>;
-      const data = storeMap.get(store.id) || this.createDefaultReading();
-      const normLuc = store.luc ? normalizeLuc(store.luc) : '';
-      const normContrato = store.contrato ? normalizeContract(store.contrato) : '';
-      const normName = store.name ? normalizeStoreName(store.name) : '';
-      const prevData = prevReadings.get(store.id) 
-        || (normLuc && normContrato ? prevReadings.get(`luc_contrato:${normLuc}_${normContrato}`) : undefined)
-        || (normLuc && normName ? prevReadings.get(`luc_name:${normLuc}_${normName}`) : undefined)
-        || (normLuc ? prevReadings.get(`luc:${normLuc}`) : undefined) 
-        || (normContrato ? prevReadings.get(`contrato:${normContrato}`) : undefined)
-        || (normName ? prevReadings.get(`name:${normName}`) : undefined)
-        || { reading: 0, consumption: 0 };
-
-      currentReading = data.reading;
-      prevReading = prevData.reading;
-      const prevConsumption = prevData.consumption || 0;
-      const prevCost = (prevData as any).cost || 0;
-      const prevReadingMonth = (prevData as any).month || null;
-      const constNum = Number(data.constant);
-      constant = (!isNaN(constNum) && constNum > 0) ? constNum : 1;
-      if (data.virtual !== undefined && data.virtual !== null && !isNaN(Number(data.virtual))) {
-        virtual = Number(data.virtual);
-      }
-      const isConfirmed = !!data.anomalyConfirmed;
-      const isRollover = !!data.isRollover;
-
-      if (type === 'gas') {
-        const adjNum = Number(data.adjustment);
-        adjustment = (!isNaN(adjNum) && adjNum > 0) ? adjNum : 1.347;
-        adjustmentAdd = Number(data.adjustmentAdd) || 0;
-        const fcmNum = Number(data.fcm);
-        fcm = (!isNaN(fcmNum) && fcmNum > 0) ? fcmNum : 1.0727;
-        fluxoCost = Number(data.fluxoCost) || 0;
-      } else {
-        const adjNum = Number(data.adjustment);
-        adjustment = (!isNaN(adjNum) && adjNum > 0) ? adjNum : 1;
-      }
-
-      // CALCULATION LOGIC: Medição bruta de campo (com suporte a virada de relógio)
-      // Se virtual estiver preenchido (inclusive 0), usa como override. Caso vazio, calcula pela leitura normal.
-      if (virtual !== undefined) {
-        rawConsumption = virtual;
-      } else {
-        const diff = this.apportionmentEngine.calculateReadingDifference(currentReading, prevReading, isRollover);
-
-        if (type === 'gas') {
-          const initial = diff * adjustment;
-          rawConsumption = initial * fcm;
-        } else {
-          rawConsumption = diff * constant * adjustment;
-        }
-      }
-
-      // Distribuição Proporcional Automática no Gás (100% Rateável)
-      if (type === 'gas' && isGasAuto && gasConcessionaria > 0 && totalRawGas > 0) {
-        consumption = rawConsumption * gasFactor;
-      } else {
-        consumption = rawConsumption;
-      }
-
-      if (prevData.consumption > 0) {
-        variation = ((consumption - prevData.consumption) / prevData.consumption) * 100;
-      }
-
-      let rawCost = consumption * price;
-
-      if (type === 'gas') {
-        rawCost += fluxoCost + adjustmentAdd;
-      }
-
-      const excludedFromBill = !!data.excludedFromBill;
-      cost = excludedFromBill ? 0 : rawCost;
-
-      const note = data.note || '';
-      const photoRec = this.meterPhotos()[store.id];
-      const hasPhoto = !!data.hasPhoto || !!photoRec;
-      const photoTimestamp = data.photoTimestamp || photoRec?.capturedAt || '';
-      const isRead = currentReading > 0;
-      const readingDiff = isRead ? (currentReading - prevReading) : 0;
-
-      const isJustified = !!data.isJustified || (!!note && note.includes('[JUSTIFICADO]'));
-      const justificationReason = data.justificationReason || (note && note.includes('[JUSTIFICADO]') ? note.replace('[JUSTIFICADO]', '').trim() : '');
-      const learnedZero = zeroLearningMap.get(store.id);
-      const isFrequentZero = !!learnedZero?.isFrequentZero;
-      const consecutiveZeroMonths = learnedZero?.consecutiveZeroMonths || 0;
-      const learnedReason = learnedZero?.learnedReason || 'Loja Fechada / Vaga';
-
-      // --- MOTOR DE AUDITORIA INTELIGENTE & ANTI-ERRO (ETAPA 1) ---
-      const histData = histAvgMap.get(store.id);
-      const anomalyEval = evaluateReadingAnomaly({
-        isRead,
-        storeActive: store.active !== false,
-        currentReading,
-        prevReading,
-        consumption,
-        prevConsumption: prevData.consumption,
-        histAvgConsumption: histData?.avgConsumption || 0,
-        prevMonthZero: histData?.prevMonthZero === true,
-        isRollover,
-        isConfirmed,
-        hasVirtualOverride: virtual !== undefined,
-        unit
-      });
-
-      return {
-        storeId: store.id,
-        luc: store.luc,
-        contrato: store.contrato || '',
-        storeName: store.name,
-        routeOrder: store.routeOrder,
-        meterNumber: store.meterNumber || '',
-        active: store.active !== false,
-        consumption,
-        rawConsumption,
-        gasFactor,
-        isGasDistributed: type === 'gas' && isGasAuto && gasConcessionaria > 0 && totalRawGas > 0 && Math.abs(gasFactor - 1) > 0.0001,
-        cost,
-        originalCost: rawCost,
-        excludedFromBill,
-        hiddenFromTech: !!store.hiddenFromTech,
-        prevReading,
-        prevConsumption,
-        prevCost,
-        prevReadingMonth,
-        currentReading,
-        constant,
-        virtual,
-        adjustment,
-        adjustmentAdd,
-        fcm,
-        fluxoCost,
-        variation,
-        note,
-        hasPhoto,
-        photoTimestamp,
-        isRead,
-        isJustified,
-        justificationReason,
-        isFrequentZero,
-        consecutiveZeroMonths,
-        learnedReason,
-        isNegative: anomalyEval.isNegative,
-        isZeroActive: anomalyEval.isZeroActive,
-        isHugeTypoJump: anomalyEval.isExtremeJump,
-        isAtypicalJump: anomalyEval.is3xJump,
-        hasSuspiciousAlert: anomalyEval.hasUnconfirmedAlert,
-        anomalyConfirmed: isConfirmed,
-        isRollover,
-        alertSeverity: anomalyEval.alertSeverity,
-        validationAlert: anomalyEval.validationAlert,
-        readingDiff
-      };
-    }).sort((a, b) => {
-      const orderA = a.routeOrder !== undefined && a.routeOrder !== null ? a.routeOrder : 9999;
-      const orderB = b.routeOrder !== undefined && b.routeOrder !== null ? b.routeOrder : 9999;
-      if (orderA !== orderB) return orderA - orderB;
-      return a.luc.localeCompare(b.luc, undefined, { numeric: true });
+    return buildBillTableRows({
+      stores: this.activeStores(),
+      utilityType: type,
+      unitPrice: this.calculatedUnitPrice(),
+      readingsMap: this.readings()[type],
+      prevReadings: this.previousReadings(),
+      historicalStats: this.historicalStats(),
+      zeroLearningMap: this.zeroConsumptionLearning(),
+      meterPhotos: this.meterPhotos(),
+      gasTotalReading: this.gasTotalReading() || 0,
+      gasAutoDistribute: this.gasAutoDistribute(),
+      apportionmentEngine: this.apportionmentEngine
     });
   });
 
   // --- GAS DISTRIBUTION SUMMARY & BALANCING STATS ---
-  gasDistributionStats = computed(() => {
-    if (this.utilityType() !== 'gas') return null;
-    const concessionaria = this.gasTotalReading() || 0;
-    const table = this.tableData();
-    const rawTotal = table.reduce((acc, item) => acc + (item.rawConsumption !== undefined ? item.rawConsumption : item.consumption), 0);
-    const distributedTotal = table.reduce((acc, item) => acc + item.consumption, 0);
-    const diffM3 = concessionaria - rawTotal;
-    const diffPct = rawTotal > 0 ? ((concessionaria - rawTotal) / rawTotal) * 100 : 0;
-    const factor = (concessionaria > 0 && rawTotal > 0) ? (concessionaria / rawTotal) : 1.0;
-    const isEnabled = this.gasAutoDistribute();
-    const totalBill = this.totalBillAmount();
-    const totalDistributedCost = this.totalDistributedCost();
-    const costDiff = totalBill - totalDistributedCost;
-
-    return {
-      concessionaria,
-      rawTotal,
-      distributedTotal,
-      diffM3,
-      diffPct,
-      factor,
-      isEnabled,
-      isBalanced: Math.abs(concessionaria - distributedTotal) < 0.01 && concessionaria > 0,
-      totalBill,
-      totalDistributedCost,
-      costDiff
-    };
-  });
+  gasDistributionStats = computed(() =>
+    computeGasDistributionStats({
+      utilityType: this.utilityType(),
+      gasTotalReading: this.gasTotalReading() || 0,
+      gasAutoDistribute: this.gasAutoDistribute(),
+      tableData: this.tableData(),
+      totalBillAmount: this.totalBillAmount(),
+      totalDistributedCost: this.totalDistributedCost()
+    })
+  );
 
   // --- FIELD COMPUTED FILTERS & STATS ---
   // Lojas visíveis para coleta em campo (oculta lojas marcadas como "hiddenFromTech" apenas para o Técnico TEC)
@@ -2805,255 +2383,34 @@ export class BillCalculatorComponent implements OnDestroy {
   });
 
   // --- PREVIOUS MONTH CONTINUITY AUDIT COMPUTED (CONFERÊNCIA DE LEITURAS HISTÓRICAS) ---
-  prevMonthAudit = computed(() => {
-    const list = this.fieldTableData();
-    // Lojas presentes na tabela deste mês que tinham leitura ou consumo no mês anterior
-    const measuredLastMonth = list.filter(item => 
-      (item.prevReading > 0 || item.prevConsumption > 0 || (item.prevCost && item.prevCost > 0)) &&
-      !item.excludedFromBill
-    );
-    
-    // Uma loja é considerada pendente se não foi lida e NÃO foi justificada pelo técnico
-    const pendingStores = measuredLastMonth.filter(item => !item.isRead && !item.isJustified);
-    const completedStores = measuredLastMonth.filter(item => item.isRead || item.isJustified);
-
-    // Ordenação estrita pela rota física de caminhada do shopping (routeOrder)
-    const sortByRoute = (a: any, b: any) => {
-      const orderA = a.routeOrder !== undefined && a.routeOrder !== null ? a.routeOrder : 9999;
-      const orderB = b.routeOrder !== undefined && b.routeOrder !== null ? b.routeOrder : 9999;
-      if (orderA !== orderB) return orderA - orderB;
-      return (a.luc || '').localeCompare(b.luc || '', undefined, { numeric: true });
-    };
-    pendingStores.sort(sortByRoute);
-    completedStores.sort(sortByRoute);
-
-    // Lojas pendentes que têm histórico de consumo zero aprendido
-    const frequentZeroPending = pendingStores.filter(item => item.isFrequentZero);
-
-    const totalCount = measuredLastMonth.length;
-    const pendingCount = pendingStores.length;
-    const completedCount = completedStores.length;
-    const isAllDone = totalCount > 0 && pendingCount === 0;
-
-    return {
-      totalCount,
-      pendingCount,
-      completedCount,
-      pendingStores,
-      completedStores,
-      frequentZeroPending,
-      isAllDone,
-      hasPreviousData: totalCount > 0
-    };
-  });
+  prevMonthAudit = computed(() => computePrevMonthAudit(this.fieldTableData()));
 
   // --- MONTH CLOSING & AUDIT CHECKLIST COMPUTED (PASSO 3) ---
-  closingChecklist = computed(() => {
-    const list = this.tableData();
-    const totalStores = list.length;
-    const readStores = list.filter(item => item.isRead || item.isJustified).length;
-    const pendingStores = totalStores - readStores;
-    const isComplete = totalStores > 0 && pendingStores === 0;
+  closingChecklist = computed(() =>
+    computeClosingChecklist({
+      tableData: this.tableData(),
+      prevAudit: this.prevMonthAudit(),
+      totalBillAmount: this.totalBillAmount() || 0,
+      totalDistributedCost: this.totalDistributedCost() || 0,
+      airConditioningCost: this.airConditioningCost() || 0,
+      commonAreaCost: this.commonAreaCost() || 0,
+      gasTotalReading: this.gasTotalReading() || 0,
+      gasAutoDistribute: this.gasAutoDistribute(),
+      isLocked: this.isLocked(),
+      lockedAt: this.lockedAt(),
+      lockedBy: this.lockedBy()
+    })
+  );
 
-    // 2. Inconsistências / Alertas não auditados
-    const uninspectedAnomalies = list.filter(item => item.validationAlert.hasAlert && !item.anomalyConfirmed && item.isRead);
-    const hasZeroAnomalies = uninspectedAnomalies.length === 0;
-
-    // 3. Auditoria de Continuidade vs Mês Anterior (Conferência de Lojas Esquecidas)
-    const prevAudit = this.prevMonthAudit();
-    const prevMonthPending = prevAudit.pendingCount;
-    const isContinuityComplete = prevAudit.hasPreviousData ? (prevMonthPending === 0) : true;
-
-    // 4. Conciliação com Concessionária & Balanço Financeiro
-    const type = this.utilityType();
-    const billAmount = this.totalBillAmount() || 0;
-    const distributed = this.totalDistributedCost() || 0;
-    const acCost = this.airConditioningCost() || 0;
-    const commonArea = this.commonAreaCost() || 0;
-    const totalReconciled = distributed + acCost + commonArea;
-    const diffFinancial = Math.abs(totalReconciled - billAmount);
-    // Tolerância de até R$ 0.50 para centavos de arredondamento fiscal
-    const isReconciled = billAmount > 0 ? (diffFinancial <= 0.50) : true;
-
-    // Dados específicos para gás
-    const gasConcessionaria = this.gasTotalReading() || 0;
-    const isGasAuto = this.gasAutoDistribute();
-    const totalRawGas = list.reduce((acc, row) => acc + (row.rawConsumption || 0), 0);
-    const gasDiff = Math.abs(gasConcessionaria - totalRawGas);
-
-    const isLocked = this.isLocked();
-    const canFreeze = isComplete && hasZeroAnomalies && isContinuityComplete;
-    const allPassed = isComplete && hasZeroAnomalies && isContinuityComplete && isReconciled && isLocked;
-
-    return {
-      readings: {
-        passed: isComplete,
-        totalStores,
-        readStores,
-        pendingStores,
-        pendingList: list.filter(i => !i.isRead && !i.isJustified).map(i => ({ id: i.storeId, luc: i.luc, name: i.storeName, routeOrder: i.routeOrder }))
-      },
-      continuity: {
-        passed: isContinuityComplete,
-        totalCount: prevAudit.totalCount,
-        completedCount: prevAudit.completedCount,
-        pendingCount: prevMonthPending,
-        hasPreviousData: prevAudit.hasPreviousData,
-        pendingStores: prevAudit.pendingStores,
-        frequentZeroPending: prevAudit.frequentZeroPending
-      },
-      anomalies: {
-        passed: hasZeroAnomalies,
-        uninspectedCount: uninspectedAnomalies.length,
-        uninspectedList: uninspectedAnomalies.map(i => ({
-          id: i.storeId,
-          luc: i.luc,
-          name: i.storeName,
-          type: i.validationAlert.type,
-          badge: i.validationAlert.badgeLabel,
-          currentReading: i.currentReading,
-          prevReading: i.prevReading,
-          consumption: i.consumption,
-          avgConsumption: i.validationAlert.avgConsumption
-        }))
-      },
-      reconciliation: {
-        passed: isReconciled,
-        billAmount,
-        totalReconciled,
-        diffFinancial,
-        isGasAuto,
-        gasConcessionaria,
-        totalRawGas,
-        gasDiff
-      },
-      lock: {
-        passed: isLocked,
-        lockedAt: this.lockedAt(),
-        lockedBy: this.lockedBy()
-      },
-      canFreeze,
-      allPassed
-    };
-  });
-
-  filteredTableData = computed(() => {
-    let list = this.fieldTableData();
-    const filter = this.statusFilter();
-    const q = this.searchQuery().trim().toLowerCase();
-    const sortCol = this.sortBy();
-    const sortDir = this.sortDirection();
-
-    if (filter === 'pending') {
-      list = list.filter(item => !item.isRead && !item.isJustified);
-    } else if (filter === 'completed') {
-      list = list.filter(item => item.isRead || item.isJustified);
-    } else if (filter === 'alert') {
-      list = list.filter(item => item.hasSuspiciousAlert);
-    } else if (filter === 'hidden_tech') {
-      list = list.filter(item => item.hiddenFromTech);
-    } else if (filter === 'prev_missing') {
-      list = list.filter(item => 
-        (item.prevReading > 0 || item.prevConsumption > 0 || (item.prevCost && item.prevCost > 0)) &&
-        !item.isRead &&
-        !item.isJustified &&
-        !item.excludedFromBill
-      );
-    }
-
-    if (q) {
-      list = list.filter(item =>
-        item.storeName.toLowerCase().includes(q) ||
-        item.luc.toLowerCase().includes(q) ||
-        (item.contrato && item.contrato.toLowerCase().includes(q))
-      );
-    }
-
-    const sorted = [...list];
-    sorted.sort((a, b) => {
-      let diff = 0;
-      switch (sortCol) {
-        case 'route': {
-          const orderA = a.routeOrder !== undefined && a.routeOrder !== null ? a.routeOrder : 9999;
-          const orderB = b.routeOrder !== undefined && b.routeOrder !== null ? b.routeOrder : 9999;
-          diff = orderA - orderB;
-          break;
-        }
-        case 'luc':
-          diff = a.luc.localeCompare(b.luc, undefined, { numeric: true });
-          break;
-        case 'name':
-        case 'storeName':
-          diff = a.storeName.localeCompare(b.storeName);
-          break;
-        case 'prevReading':
-          diff = (a.prevReading || 0) - (b.prevReading || 0);
-          break;
-        case 'prevConsumption':
-          diff = (a.prevConsumption || 0) - (b.prevConsumption || 0);
-          break;
-        case 'prevCost':
-          diff = (a.prevCost || 0) - (b.prevCost || 0);
-          break;
-        case 'currentReading':
-        case 'reading':
-          diff = (a.currentReading || 0) - (b.currentReading || 0);
-          break;
-        case 'constant':
-          diff = (a.constant || 1) - (b.constant || 1);
-          break;
-        case 'virtual':
-          diff = (a.virtual ?? 0) - (b.virtual ?? 0);
-          break;
-        case 'adjustment':
-          diff = (a.adjustment ?? 0) - (b.adjustment ?? 0);
-          break;
-        case 'adjustmentAdd':
-          diff = (a.adjustmentAdd ?? 0) - (b.adjustmentAdd ?? 0);
-          break;
-        case 'fcm':
-          diff = (a.fcm ?? 0) - (b.fcm ?? 0);
-          break;
-        case 'consumption':
-          diff = (a.consumption || 0) - (b.consumption || 0);
-          break;
-        case 'variation':
-          diff = (a.variation || 0) - (b.variation || 0);
-          break;
-        case 'fluxoCost':
-          diff = (a.fluxoCost || 0) - (b.fluxoCost || 0);
-          break;
-        case 'note':
-          diff = (a.note || '').localeCompare(b.note || '');
-          break;
-        case 'hasPhoto':
-        case 'photo':
-          diff = (a.hasPhoto ? 1 : 0) - (b.hasPhoto ? 1 : 0);
-          break;
-        case 'cost':
-          diff = (a.cost || 0) - (b.cost || 0);
-          break;
-        default: {
-          const orderA = a.routeOrder !== undefined && a.routeOrder !== null ? a.routeOrder : 9999;
-          const orderB = b.routeOrder !== undefined && b.routeOrder !== null ? b.routeOrder : 9999;
-          diff = orderA - orderB;
-          break;
-        }
-      }
-
-      if (diff !== 0) {
-        return sortDir === 'asc' ? diff : -diff;
-      }
-
-      // Tiebreaker determinístico para evitar instabilidade na visualização
-      const orderA = a.routeOrder !== undefined && a.routeOrder !== null ? a.routeOrder : 9999;
-      const orderB = b.routeOrder !== undefined && b.routeOrder !== null ? b.routeOrder : 9999;
-      if (orderA !== orderB) return orderA - orderB;
-      return a.luc.localeCompare(b.luc, undefined, { numeric: true });
-    });
-
-    return sorted;
-  });
+  filteredTableData = computed(() =>
+    filterAndSortBillRows({
+      rows: this.fieldTableData(),
+      statusFilter: this.statusFilter(),
+      searchQuery: this.searchQuery(),
+      sortBy: this.sortBy(),
+      sortDirection: this.sortDirection()
+    })
+  );
 
   toggleSort(col: string) {
     const isCurrent = this.sortBy() === col || (col === 'storeName' && this.sortBy() === 'name');
@@ -3367,44 +2724,8 @@ export class BillCalculatorComponent implements OnDestroy {
 
     this.dataLoaded.set(true);
 
-    let cleanValue = value;
-    if (field === 'reading') {
-      cleanValue = parsePtBrNumber(value);
-    }
-
-    if (field === 'virtual') {
-      if (value === null || value === undefined || value === '') {
-        cleanValue = undefined;
-      } else {
-        const str = String(value).trim();
-        if (str === '' || str === '-' || str === '—') {
-          cleanValue = undefined;
-        } else {
-          cleanValue = parsePtBrNumber(value);
-        }
-      }
-    }
-
-    if (field === 'adjustment') {
-      const num = parsePtBrNumber(value);
-      cleanValue = num <= 0 ? (this.utilityType() === 'gas' ? 1.347 : 1) : num;
-    }
-
-    if (field === 'fcm') {
-      const num = parsePtBrNumber(value);
-      cleanValue = num <= 0 ? 1.0727 : num;
-    }
-
-    if (field === 'constant') {
-      const num = parsePtBrNumber(value);
-      cleanValue = num <= 0 ? 1 : num;
-    }
-
-    if (field === 'adjustmentAdd' || field === 'fluxoCost') {
-      cleanValue = parsePtBrNumber(value);
-    }
-
     const type = this.utilityType();
+    const cleanValue = sanitizeReadingFieldValue(field, value, type);
 
     this.readings.update(curr => {
       const map = new Map(curr[type] as Map<string, StoreReading>);
@@ -3416,18 +2737,7 @@ export class BillCalculatorComponent implements OnDestroy {
         newData.anomalyConfirmed = false;
         newData.isRollover = false;
         // Mantém a foto associada sincronizada com o valor editado ou apagado pelo usuário
-        const photo = this.meterPhotos()[storeId];
-        if (photo && photo.readingValue !== cleanValue) {
-          photo.readingValue = cleanValue;
-          this.meterPhotos.update(prev => ({
-            ...prev,
-            [storeId]: { ...photo, readingValue: cleanValue }
-          }));
-          this.indexedDb.saveMeterPhoto(photo).catch(() => {});
-          if (this.indexedDb.isOnline()) {
-            this.supabaseService.syncMeterPhoto(photo).catch(() => {});
-          }
-        }
+        this.ocrPhotoFacade.syncPhotoReadingValue(storeId, cleanValue);
       }
 
       map.set(storeId, newData);
@@ -3585,721 +2895,81 @@ export class BillCalculatorComponent implements OnDestroy {
     this.indexedDb.showToast(`🔓 Rateio reaberto para edições.`);
   }
 
-  // --- PHOTO EVIDENCE METHODS (FOTO DO MEDIDOR OFFLINE NO INDEXEDDB + NUVEM) ---
-  async onPhotoCaptured(event: Event, storeId: string, storeName: string, luc: string, currentReading: number) {
-    const input = event.target as HTMLInputElement;
-    if (!input.files || input.files.length === 0) return;
-    const file = input.files[0];
-    input.value = '';
-
-    this.isCapturingPhoto.set(storeId);
-
-    try {
-      const type = this.utilityType();
-      const month = this.selectedMonth();
-      const utilLabel = type === 'luz' ? 'Luz' : type === 'agua' ? 'Água' : 'Gás';
-      const watermark = `${luc} • ${storeName} • ${utilLabel} • Leitura: ${currentReading || 0}`;
-
-      const compressedBase64 = await this.indexedDb.compressImage(file, {
-        maxWidth: 1200,
-        maxHeight: 1200,
-        quality: 0.72,
-        watermarkText: watermark
-      });
-
-      // 🔍 Análise de Qualidade da Foto (iluminação / reflexo) & Realce de Contraste para OCR
-      const { enhancedDataUrl, quality } = await analyzeAndEnhanceBase64Image(compressedBase64);
-      if (quality.warningMessage) {
-        this.indexedDb.showToast(quality.warningMessage);
-      }
-
-      const record: MeterPhotoRecord = {
-        id: `${type}_${month}_${storeId}`,
-        type,
-        month,
-        storeId,
-        storeName,
-        luc,
-        readingValue: currentReading || 0,
-        photoDataUrl: compressedBase64,
-        capturedAt: new Date().toISOString(),
-        synced: false
-      };
-
-      // 1. Salva sempre no IndexedDB local primeiro (garantia offline)
-      await this.indexedDb.saveMeterPhoto(record);
-
-      // 2. Se online, tenta enviar imediatamente para o Supabase
-      if (this.indexedDb.isOnline()) {
-        try {
-          const ok = await this.supabaseService.syncMeterPhoto(record);
-          if (ok) {
-            record.synced = true;
-            await this.indexedDb.saveMeterPhoto(record);
-          }
-        } catch (syncErr) {
-          console.warn('Envio imediato ao Supabase pendente (será enviado na reconexão):', syncErr);
-        }
-      }
-
-      await this.indexedDb.refreshPendingCount();
-
-      this.meterPhotos.update(prev => ({
-        ...prev,
-        [storeId]: { ...record }
-      }));
-
-      if (this.activePhotoRecord()?.storeId === storeId) {
-        this.activePhotoRecord.set({ ...record });
-      }
-
-      this.updateDetailedReading(storeId, 'hasPhoto', true);
-      this.updateDetailedReading(storeId, 'photoTimestamp', record.capturedAt);
-
-      // --- 🤖 LEITURA AUTOMÁTICA DO MEDIDOR POR FOTO COM SELEÇÃO INTELIGENTE E DUPLA CHECAGEM ---
-      const isOnline = (typeof navigator !== 'undefined' && navigator.onLine) || this.indexedDb.isOnline();
-      if (isOnline) {
-        // Se ainda não tiver chaves no dispositivo atual (comum em celular), busca as chaves compartilhadas na nuvem
-        if (!this.geminiService.hasConfiguredApiKey()) {
-          try {
-            const cloudKeys = await this.supabaseService.fetchSystemAiKeys();
-            if (cloudKeys) {
-              this.geminiService.setCloudApiKeys(cloudKeys.groqKey, cloudKeys.geminiKey);
-            }
-          } catch { }
-        }
-
-        if (!this.geminiService.hasConfiguredApiKey()) {
-          this.pendingOcrStoreId.set(storeId);
-          this.openAiKeyModal();
-          this.indexedDb.showToast('⚙️ Configure a chave Groq ou Gemini no ícone 🤖 para ativar a IA no celular.');
-          this.ocrFeedback.update(prev => ({
-            ...prev,
-            [storeId]: {
-              success: false,
-              message: 'Chave de IA não configurada. Configure a chave no ícone 🤖 no topo para ativar a leitura automática.',
-              confidence: 'low',
-              provider: 'none',
-              modelName: 'Sem chave configurada'
-            }
-          }));
-          return;
-        }
-
-        this.indexedDb.showToast('🤖 Lendo visor do medidor com IA...');
-        this.isReadingOcr.set(storeId);
-        const ocrCtx = this.buildOcrContext(storeId);
-        const smartProvider = getRecommendedProvider(this.ocrFeedbackService.entries(), type, ocrCtx?.meterType);
-        const initialLabel = smartProvider === 'gemini'
-          ? 'Gemini 3.8 Flash (Recomendado pelo Histórico)'
-          : smartProvider === 'qwen'
-            ? 'Qwen 3.8 27B (Groq)'
-            : 'Qwen 3.8 27B + Gemini Fallback';
-        this.ocrCurrentModelLabel.set(initialLabel);
-
-        try {
-          const ocrResult = await this.geminiService.extractWithDualCheck(
-            enhancedDataUrl,
-            type,
-            ocrCtx
-          );
-          if (ocrResult.success && ocrResult.reading !== null) {
-            // Preenche automaticamente o campo de leitura com o valor extraído pela IA
-            this.updateDetailedReading(storeId, 'reading', ocrResult.reading);
-            this.registerOcrPending(storeId, ocrResult);
-
-            // Atualiza também o registro fotográfico com a nova leitura
-            record.readingValue = ocrResult.reading;
-            await this.indexedDb.saveMeterPhoto(record);
-            if (this.indexedDb.isOnline()) {
-              this.supabaseService.syncMeterPhoto(record).catch(() => { });
-            }
-            if (this.activePhotoRecord()?.storeId === storeId) {
-              this.activePhotoRecord.set({ ...record });
-            }
-            this.meterPhotos.update(prev => ({ ...prev, [storeId]: { ...record } }));
-
-            // Salva a fatura imediatamente no banco e no navegador
-            this.internalSave();
-
-            const modelDesc = ocrResult.fallbackUsed
-              ? '🤖 Gemini 3.8 Flash (Fallback)'
-              : ocrResult.provider === 'qwen'
-                ? '⚡ Qwen 3.8 27B (Groq)'
-                : '🤖 Gemini 3.8 Flash';
-
-            this.ocrFeedback.update(prev => ({
-              ...prev,
-              [storeId]: {
-                success: true,
-                message: `${modelDesc}: Leitura ${ocrResult.reading} preenchida automaticamente!`,
-                reading: ocrResult.reading,
-                confidence: ocrResult.confidence,
-                explanation: ocrResult.explanation,
-                provider: ocrResult.provider,
-                modelName: ocrResult.modelName,
-                fallbackUsed: ocrResult.fallbackUsed
-              }
-            }));
-          } else {
-            this.ocrFeedback.update(prev => ({
-              ...prev,
-              [storeId]: {
-                success: false,
-                message: ocrResult.explanation || ocrResult.error || 'A IA não identificou com nitidez os números do visor. Você pode digitar manualmente.',
-                confidence: ocrResult.confidence,
-                provider: ocrResult.provider,
-                modelName: ocrResult.modelName
-              }
-            }));
-          }
-        } catch (ocrErr: any) {
-          console.error('Falha no pipeline de OCR do medidor:', ocrErr);
-        } finally {
-          this.isReadingOcr.set(null);
-        }
-      } else {
-        this.ocrFeedback.update(prev => ({
-          ...prev,
-          [storeId]: {
-            success: true,
-            message: 'Foto salva no IndexedDB! Em modo offline, digite a leitura manualmente.',
-            confidence: 'medium',
-            provider: 'none',
-            modelName: 'Offline IndexedDB'
-          }
-        }));
-      }
-
-    } catch (err) {
-      console.error('Erro ao processar foto:', err);
-    } finally {
-      this.isCapturingPhoto.set(null);
-      input.value = '';
-    }
+  // --- PHOTO EVIDENCE, OCR & AI KEYS METHODS (delegado ao BillOcrPhotoFacade) ---
+  onPhotoCaptured(event: Event, storeId: string, storeName: string, luc: string, currentReading: number) {
+    return this.ocrPhotoFacade.onPhotoCaptured(event, storeId, storeName, luc, currentReading);
   }
 
-  async openAiKeyModal() {
-    let groq = this.geminiService.getSavedGroqKey();
-    let gemini = this.geminiService.getSavedGeminiKey();
-    if (!groq && !gemini) {
-      try {
-        const cloud = await this.supabaseService.fetchSystemAiKeys();
-        if (cloud) {
-          groq = cloud.groqKey || '';
-          gemini = cloud.geminiKey || '';
-          this.geminiService.setCloudApiKeys(groq, gemini);
-        }
-      } catch { }
-    }
-    this.groqInputKey.set(groq);
-    this.geminiInputKey.set(gemini);
-    this.showAiKeyModal.set(true);
+  openAiKeyModal() {
+    return this.ocrPhotoFacade.openAiKeyModal();
   }
 
   onAiKeysSaved(keys: { groqKey: string; geminiKey: string }) {
-    this.groqInputKey.set(keys.groqKey);
-    this.geminiInputKey.set(keys.geminiKey);
-    this.saveAiKeysAndProceed();
+    this.ocrPhotoFacade.onAiKeysSaved(keys);
   }
 
   closeAiKeyModal() {
-    this.showAiKeyModal.set(false);
-    this.pendingOcrStoreId.set(null);
+    this.ocrPhotoFacade.closeAiKeyModal();
   }
 
   saveAiKeysAndProceed() {
-    try {
-      this.geminiService.saveApiKeys(this.groqInputKey(), this.geminiInputKey());
-      this.supabaseService.syncSystemAiKeys(this.groqInputKey(), this.geminiInputKey()).catch(() => { });
-      this.showAiKeyModal.set(false);
-      this.indexedDb.showToast('✓ Chaves de IA salvas com segurança e sincronizadas na nuvem!');
-      const pendingId = this.pendingOcrStoreId();
-      if (pendingId) {
-        this.pendingOcrStoreId.set(null);
-        this.runOcrOnPhoto(pendingId);
-      }
-    } catch (err: any) {
-      this.indexedDb.showToast(`⚠️ ${err.message || 'Erro ao validar formato de chaves'}`);
-    }
+    this.ocrPhotoFacade.saveAiKeysAndProceed();
   }
 
-  async runOcrOnPhoto(storeId: string, forceProvider?: 'qwen' | 'gemini') {
-    const effectiveProvider = (forceProvider as any) === 'auto' ? undefined : forceProvider;
-    const photo = this.meterPhotos()[storeId];
-    if (!photo) return;
-
-    if (!this.geminiService.hasConfiguredApiKey()) {
-      try {
-        const cloudKeys = await this.supabaseService.fetchSystemAiKeys();
-        if (cloudKeys) {
-          this.geminiService.setCloudApiKeys(cloudKeys.groqKey, cloudKeys.geminiKey);
-        }
-      } catch { }
-    }
-
-    if (!this.geminiService.hasConfiguredApiKey()) {
-      this.pendingOcrStoreId.set(storeId);
-      this.openAiKeyModal();
-      this.indexedDb.showToast('⚙️ Configure sua chave Groq ou Gemini para ativar a leitura por IA.');
-      return;
-    }
-
-    const ocrCtx = this.buildOcrContext(storeId);
-    const smartProvider = effectiveProvider || getRecommendedProvider(this.ocrFeedbackService.entries(), this.utilityType(), ocrCtx?.meterType);
-
-    this.isReadingOcr.set(storeId);
-    this.ocrCurrentModelLabel.set(
-      effectiveProvider === 'gemini'
-        ? 'Gemini 3.8 Flash'
-        : effectiveProvider === 'qwen'
-          ? 'Qwen 3.8 27B (Groq)'
-          : smartProvider === 'gemini'
-            ? 'Gemini 3.8 Flash (Recomendado)'
-            : 'Qwen 3.8 27B (Groq) + Gemini Fallback'
-    );
-
-    try {
-      // Se não forçar provedor estrito, executa com dupla checagem (consenso)
-      const ocrResult = effectiveProvider
-        ? await this.geminiService.extractMeterReading(
-            photo.photoDataUrl,
-            this.utilityType(),
-            effectiveProvider,
-            ocrCtx
-          )
-        : await this.geminiService.extractWithDualCheck(
-            photo.photoDataUrl,
-            this.utilityType(),
-            ocrCtx
-          );
-
-      if (ocrResult.success && ocrResult.reading !== null) {
-        this.updateDetailedReading(storeId, 'reading', ocrResult.reading);
-        this.registerOcrPending(storeId, ocrResult);
-        photo.readingValue = ocrResult.reading;
-        await this.indexedDb.saveMeterPhoto(photo);
-        if (this.indexedDb.isOnline()) {
-          this.supabaseService.syncMeterPhoto(photo).catch(() => { });
-        }
-        if (this.activePhotoRecord()?.storeId === storeId) {
-          this.activePhotoRecord.set({ ...photo });
-        }
-        this.meterPhotos.update(prev => ({ ...prev, [storeId]: { ...photo } }));
-
-        // Salva a fatura imediatamente no banco e no navegador
-        this.internalSave();
-
-        const modelLabel = ocrResult.fallbackUsed
-          ? '🤖 Gemini 3.8 Flash (Fallback)'
-          : ocrResult.provider === 'qwen'
-            ? '⚡ Qwen 3.8 27B (Groq)'
-            : '🤖 Gemini 3.8 Flash';
-
-        this.ocrFeedback.update(prev => ({
-          ...prev,
-          [storeId]: {
-            success: true,
-            message: `${modelLabel}: Leitura ${ocrResult.reading} detectada (${ocrResult.confidence === 'high' ? 'Alta Confiança' : 'Média'})!`,
-            reading: ocrResult.reading,
-            confidence: ocrResult.confidence,
-            explanation: ocrResult.explanation,
-            provider: ocrResult.provider,
-            modelName: ocrResult.modelName,
-            fallbackUsed: ocrResult.fallbackUsed
-          }
-        }));
-      } else {
-        this.ocrFeedback.update(prev => ({
-          ...prev,
-          [storeId]: {
-            success: false,
-            message: ocrResult.explanation || ocrResult.error || 'Não foi possível detectar os dígitos do mostrador nesta foto.',
-            confidence: ocrResult.confidence,
-            provider: ocrResult.provider,
-            modelName: ocrResult.modelName
-          }
-        }));
-      }
-    } catch (err: any) {
-      this.ocrFeedback.update(prev => ({
-        ...prev,
-        [storeId]: {
-          success: false,
-          message: 'Erro na comunicação com o serviço de IA para leitura.',
-          provider: 'none',
-          modelName: 'Error'
-        }
-      }));
-    } finally {
-      this.isReadingOcr.set(null);
-    }
+  runOcrOnPhoto(storeId: string, forceProvider?: 'auto' | 'qwen' | 'gemini') {
+    return this.ocrPhotoFacade.runOcrOnPhoto(storeId, forceProvider);
   }
 
-  /** Guarda a leitura da IA para o técnico conferir (passo 1 do aprendizado do OCR). */
-  private registerOcrPending(storeId: string, ocrResult: MeterOcrResult) {
-    if (ocrResult.reading === null) return;
-    this.ocrPending.update(prev => ({
-      ...prev,
-      [storeId]: {
-        ocrValue: ocrResult.reading as number,
-        detectedDigits: ocrResult.detectedDigits ?? null,
-        meterType: ocrResult.meterType,
-        confidence: ocrResult.confidence,
-        provider: ocrResult.provider,
-        modelName: ocrResult.modelName,
-        fallbackUsed: ocrResult.fallbackUsed,
-        dualCheck: ocrResult.dualCheck
-      }
-    }));
-  }
-
-  /** Contexto do medidor (leitura anterior + correções passadas) para melhorar a precisão do OCR. */
-  private buildOcrContext(storeId: string) {
-    const item = this.tableData().find(s => s.storeId === storeId);
-    return buildReadingContext(this.ocrFeedbackService.entries(), {
-      storeId,
-      utilityType: this.utilityType(),
-      previousReading: item?.prevReading ?? null
-    });
-  }
-
-  /** Relê a foto com o motor diferente do usado antes (útil quando a leitura falha na validação). */
   retryOcrWithOtherEngine(storeId: string) {
-    const pending = this.ocrPending()[storeId];
-    const next: 'qwen' | 'gemini' = pending?.provider === 'qwen' ? 'gemini' : 'qwen';
-    return this.runOcrOnPhoto(storeId, next);
+    return this.ocrPhotoFacade.retryOcrWithOtherEngine(storeId);
   }
 
-  /** Técnico confirma (ou corrige no campo) a leitura sugerida pela IA e a correção é registrada. */
   confirmOcrReading(storeId: string, currentValue: number | string | null | undefined) {
-    const pending = this.ocrPending()[storeId];
-    if (!pending) return;
-
-    const finalValue = Number(currentValue);
-    if (currentValue === null || currentValue === undefined || currentValue === '' || !Number.isFinite(finalValue)) {
-      this.indexedDb.showToast('⚠️ Informe a leitura antes de confirmar.');
-      return;
-    }
-
-    const store = this.storeService.stores().find(s => s.id === storeId);
-    const entry = this.ocrFeedbackService.record({
-      storeId,
-      storeName: store?.name || this.meterPhotos()[storeId]?.storeName || storeId,
-      utilityType: this.utilityType(),
-      month: this.selectedMonth(),
-      finalValue,
-      pending
-    });
-
-    // Mantém o registro fotográfico alinhado com o valor conferido
-    const photo = this.meterPhotos()[storeId];
-    if (photo && photo.readingValue !== finalValue) {
-      const updated = { ...photo, readingValue: finalValue };
-      this.indexedDb.saveMeterPhoto(updated).then(() => {
-        if (this.indexedDb.isOnline()) {
-          this.supabaseService.syncMeterPhoto(updated).catch(() => { });
-        }
-      });
-      this.meterPhotos.update(prev => ({ ...prev, [storeId]: updated }));
-      if (this.activePhotoRecord()?.storeId === storeId) {
-        this.activePhotoRecord.set(updated);
-      }
-    }
-
-    this.ocrPending.update(prev => {
-      const next = { ...prev };
-      delete next[storeId];
-      return next;
-    });
-    this.dismissOcrFeedback(storeId);
-    this.internalSave();
-    this.indexedDb.showToast(entry.wasCorrected
-      ? `✏️ Correção registrada: IA ${entry.ocrValue} → ${entry.finalValue}`
-      : '✓ Leitura confirmada!');
+    this.ocrPhotoFacade.confirmOcrReading(storeId, currentValue);
   }
 
   dismissOcrFeedback(storeId: string) {
-    this.ocrFeedback.update(prev => {
-      const next = { ...prev };
-      delete next[storeId];
-      return next;
-    });
+    this.ocrPhotoFacade.dismissOcrFeedback(storeId);
   }
 
-  // --- BATCH OCR QUEUE EXECUTION ---
-  async openBatchOcrModal() {
-    if (!this.geminiService.hasConfiguredApiKey()) {
-      try {
-        const cloudKeys = await this.supabaseService.fetchSystemAiKeys();
-        if (cloudKeys) {
-          this.geminiService.setCloudApiKeys(cloudKeys.groqKey, cloudKeys.geminiKey);
-        }
-      } catch { }
-    }
-    if (!this.geminiService.hasConfiguredApiKey()) {
-      this.openAiKeyModal();
-      this.indexedDb.showToast('⚙️ Configure sua chave Groq ou Gemini para ativar a leitura por IA.');
-      return;
-    }
-    const pending = this.pendingOcrCount();
-    const totalWithPhotos = this.totalPhotosCount();
-    if (totalWithPhotos === 0) {
-      this.indexedDb.showToast('Nenhuma foto capturada neste mês para processar.');
-      return;
-    }
-    this.batchOcrProgress.set({
-      current: 0,
-      total: pending > 0 ? pending : totalWithPhotos,
-      progressPct: 0,
-      currentStoreName: '',
-      currentLuc: '',
-      successCount: 0,
-      failCount: 0,
-      currentModel: 'Qwen 3.8 27B (Groq) + Gemini'
-    });
-    this.showBatchOcrModal.set(true);
+  openBatchOcrModal() {
+    return this.ocrPhotoFacade.openBatchOcrModal(this.pendingOcrCount(), this.totalPhotosCount());
   }
 
   closeBatchOcrModal() {
-    if (this.isBatchOcrRunning()) return;
-    this.showBatchOcrModal.set(false);
+    this.ocrPhotoFacade.closeBatchOcrModal();
   }
 
   cancelBatchOcr() {
-    this.cancelBatchOcrRequested.set(true);
+    this.ocrPhotoFacade.cancelBatchOcr();
   }
 
-  async executeBatchOcr(reprocessAll: boolean = false) {
-    if (!this.geminiService.hasConfiguredApiKey()) {
-      try {
-        const cloudKeys = await this.supabaseService.fetchSystemAiKeys();
-        if (cloudKeys) {
-          this.geminiService.setCloudApiKeys(cloudKeys.groqKey, cloudKeys.geminiKey);
-        }
-      } catch { }
-    }
-    if (!this.geminiService.hasConfiguredApiKey()) {
-      this.openAiKeyModal();
-      this.indexedDb.showToast('⚙️ Configure sua chave Groq ou Gemini para ativar a leitura por IA.');
-      return;
-    }
-
-    if (this.isLocked()) {
-      this.indexedDb.showToast('🔒 Mês bloqueado para edições.');
-      return;
-    }
-
-    const candidates = this.tableData().filter(s => {
-      if (!s.hasPhoto) return false;
-      if (reprocessAll) return true;
-      return !s.isRead || s.currentReading === 0;
-    });
-
-    if (candidates.length === 0) {
-      this.indexedDb.showToast('Nenhuma foto pendente encontrada para processamento.');
-      return;
-    }
-
-    this.isBatchOcrRunning.set(true);
-    this.cancelBatchOcrRequested.set(false);
-    this.showBatchOcrModal.set(true);
-
-    let success = 0;
-    let fail = 0;
-    const total = candidates.length;
-
-    this.batchOcrProgress.set({
-      current: 0,
-      total,
-      progressPct: 0,
-      currentStoreName: candidates[0]?.storeName || '',
-      currentLuc: candidates[0]?.luc || '',
-      successCount: 0,
-      failCount: 0,
-      currentModel: 'Qwen 3.8 27B / Gemini 3.8'
-    });
-
-    for (let i = 0; i < candidates.length; i++) {
-      if (this.cancelBatchOcrRequested()) {
-        this.indexedDb.showToast(`⏹️ Fila cancelada pelo usuário. (${success} leitura(s) salvas)`);
-        break;
-      }
-
-      const storeItem = candidates[i];
-      let photo = this.meterPhotos()[storeItem.storeId];
-
-      if (!photo) {
-        const type = this.utilityType();
-        const month = this.selectedMonth();
-        const diskRec = await this.indexedDb.getMeterPhoto(type, month, storeItem.storeId);
-        if (diskRec) {
-          photo = diskRec;
-          this.meterPhotos.update(prev => ({ ...prev, [storeItem.storeId]: diskRec }));
-        }
-      }
-
-      const pct = Math.round(((i + 1) / total) * 100);
-      this.batchOcrProgress.set({
-        current: i + 1,
-        total,
-        progressPct: pct,
-        currentStoreName: storeItem.storeName,
-        currentLuc: storeItem.luc,
-        successCount: success,
-        failCount: fail,
-        currentModel: 'Qwen 3.8 27B (Groq) + Gemini'
-      });
-
-      if (photo && photo.photoDataUrl) {
-        try {
-          const ocrResult = await this.geminiService.extractMeterReading(
-            photo.photoDataUrl,
-            this.utilityType(),
-            undefined,
-            this.buildOcrContext(storeItem.storeId)
-          );
-
-          if (ocrResult.success && ocrResult.reading !== null) {
-            this.updateDetailedReading(storeItem.storeId, 'reading', ocrResult.reading);
-            this.registerOcrPending(storeItem.storeId, ocrResult);
-            photo.readingValue = ocrResult.reading;
-            await this.indexedDb.saveMeterPhoto(photo);
-            if (this.indexedDb.isOnline()) {
-              this.supabaseService.syncMeterPhoto(photo).catch(() => { });
-            }
-            this.meterPhotos.update(prev => ({ ...prev, [storeItem.storeId]: { ...photo } }));
-            success++;
-          } else {
-            fail++;
-          }
-        } catch (e) {
-          fail++;
-        }
-      } else {
-        fail++;
-      }
-
-      this.batchOcrProgress.update(p => ({
-        ...p,
-        successCount: success,
-        failCount: fail
-      }));
-
-      // Pequeno intervalo para proteger contra limites de requisições de API (rate limit)
-      if (i < candidates.length - 1) {
-        await new Promise(r => setTimeout(r, 350));
-      }
-    }
-
-    this.isBatchOcrRunning.set(false);
-    this.internalSave();
-    this.indexedDb.showToast(`⚡ Fila finalizada: ${success} leitura(s) extraídas com sucesso, ${fail} não detectadas.`);
+  executeBatchOcr(reprocessAll: boolean = false) {
+    return this.ocrPhotoFacade.executeBatchOcr(reprocessAll);
   }
 
   openPhotoViewer(storeId: string, customRecord?: MeterPhotoRecord) {
-    if (customRecord) {
-      this.activePhotoRecord.set(customRecord);
-      this.showPhotoModal.set(true);
-      return;
-    }
-    const photo = this.meterPhotos()[storeId];
-    if (photo) {
-      this.activePhotoRecord.set(photo);
-      this.showPhotoModal.set(true);
-    } else {
-      const type = this.utilityType();
-      const month = this.selectedMonth();
-      this.indexedDb.getMeterPhoto(type, month, storeId).then(async rec => {
-        if (rec) {
-          this.meterPhotos.update(prev => ({ ...prev, [storeId]: rec }));
-          this.activePhotoRecord.set(rec);
-          this.showPhotoModal.set(true);
-        } else if (this.indexedDb.isOnline()) {
-          const cloudPhotos = await this.supabaseService.fetchMeterPhotos(type, month);
-          if (cloudPhotos && cloudPhotos[storeId]) {
-            const cloudPhoto = cloudPhotos[storeId];
-            this.meterPhotos.update(prev => ({ ...prev, [storeId]: cloudPhoto }));
-            this.activePhotoRecord.set(cloudPhoto);
-            this.showPhotoModal.set(true);
-            await this.indexedDb.saveMeterPhoto(cloudPhoto);
-          }
-        }
-      });
-    }
+    this.ocrPhotoFacade.openPhotoViewer(storeId, customRecord);
   }
 
-  async syncSinglePhoto(photo: MeterPhotoRecord) {
-    if (!this.indexedDb.isOnline()) {
-      this.indexedDb.showToast('⚠️ Sem conexão com a internet no momento.');
-      return;
-    }
-    const ok = await this.supabaseService.syncMeterPhoto(photo);
-    if (ok) {
-      photo.synced = true;
-      await this.indexedDb.saveMeterPhoto(photo);
-      this.meterPhotos.update(prev => ({ ...prev, [photo.storeId]: { ...photo } }));
-      if (this.activePhotoRecord()?.storeId === photo.storeId) {
-        this.activePhotoRecord.set({ ...photo });
-      }
-      await this.indexedDb.refreshPendingCount();
-      this.indexedDb.showToast(`☁️ Foto de ${photo.luc} enviada ao Supabase com sucesso!`);
-    } else {
-      this.indexedDb.showToast(`⚠️ Falha ao sincronizar foto de ${photo.luc} com Supabase.`);
-    }
+  syncSinglePhoto(photo: MeterPhotoRecord) {
+    return this.ocrPhotoFacade.syncSinglePhoto(photo);
   }
 
   closePhotoViewer() {
-    this.showPhotoModal.set(false);
-    this.activePhotoRecord.set(null);
-    this.isConfirmingPhotoDelete.set(false);
+    this.ocrPhotoFacade.closePhotoViewer();
   }
 
   confirmDeletePhoto(storeId: string, storeName?: string) {
-    const name = storeName || 'desta loja';
-    if (confirm(`Tem certeza que deseja excluir a foto do medidor de ${name}?`)) {
-      this.removePhoto(storeId);
-    }
+    this.ocrPhotoFacade.confirmDeletePhoto(storeId, storeName);
   }
 
-  async removePhoto(storeId: string) {
-    const type = this.utilityType();
-    const month = this.selectedMonth();
-
-    // 1. Fecha o visualizador de foto instantaneamente
-    this.closePhotoViewer();
-
-    // 2. Atualiza estado reativo local imediatamente
-    this.meterPhotos.update(prev => {
-      const copy = { ...prev };
-      delete copy[storeId];
-      return copy;
-    });
-
-    // 3. Limpa referências de foto na leitura da loja
-    this.updateDetailedReading(storeId, 'hasPhoto', false);
-    this.updateDetailedReading(storeId, 'photoTimestamp', undefined);
-
-    // 4. Salva a fatura no histórico e na nuvem
-    this.internalSave();
-
-    // 5. Exclui do IndexedDB local (que gerencia fila offline se sem internet) e do Supabase
-    await this.indexedDb.deleteMeterPhoto(type, month, storeId);
-    if (this.indexedDb.isOnline()) {
-      await this.supabaseService.deleteMeterPhoto(type, month, storeId).catch(() => { });
-    }
-
-    // 6. Notificação de confirmação imediata
-    this.indexedDb.showToast('🗑️ Foto excluída com sucesso do dispositivo e da nuvem!');
+  removePhoto(storeId: string) {
+    return this.ocrPhotoFacade.removePhoto(storeId);
   }
 
   downloadActivePhoto() {
-    const photo = this.activePhotoRecord();
-    if (!photo || typeof document === 'undefined') return;
-    const a = document.createElement('a');
-    a.href = photo.photoDataUrl;
-    a.download = `Evidencia_Medidor_${photo.type.toUpperCase()}_${photo.month}_${photo.luc}.jpg`;
-    a.click();
+    this.ocrPhotoFacade.downloadActivePhoto();
   }
 
   onPasteCell(event: ClipboardEvent, startStoreId: string, field: keyof StoreReading) {
@@ -4307,51 +2977,20 @@ export class BillCalculatorComponent implements OnDestroy {
     if (this.authService.isTech() && field !== 'reading') return;
 
     const text = event.clipboardData?.getData('text') || '';
+    if (!text.includes('\n') && !text.includes('\r')) return;
 
-    // If the text contains newlines, or multiple lines, it's a list from Excel/Sheets
-    if (text.includes('\n') || text.includes('\r')) {
-      event.preventDefault(); // Prevent pasting all rows into a single cell
+    event.preventDefault();
+    const type = this.utilityType();
+    const updatedMap = applySpreadsheetPasteToReadings({
+      clipboardText: text,
+      startStoreId,
+      field,
+      tableData: this.tableData(),
+      currentReadings: this.readings()[type]
+    });
 
-      // Convert into string array
-      const rawLines = text.split(/\r?\n/).map(line => line.trim());
-      // Filter out last line if it's empty, common on copy-paste
-      const valList = rawLines.filter((l, i) => l !== '' || i < rawLines.length - 1);
-      if (valList.length === 0) return;
-
-      const dataList = this.tableData();
-      const startIndex = dataList.findIndex(item => item.storeId === startStoreId);
-      if (startIndex === -1) return;
-
-      const type = this.utilityType();
-
-      this.readings.update(curr => {
-        const map = new Map(curr[type] as Map<string, StoreReading>);
-
-        valList.forEach((line, i) => {
-          const targetIndex = startIndex + i;
-          if (targetIndex >= dataList.length) return;
-
-          const targetStoreId = dataList[targetIndex].storeId;
-          const currentData = map.get(targetStoreId) || this.createDefaultReading();
-
-          // In case they copied a table, take the first column value
-          const cellStr = line.split('\t')[0]?.trim() || '';
-          if (field === 'virtual' && (cellStr === '' || cellStr === '-' || cellStr === '—')) {
-            const newData: StoreReading = { ...currentData, virtual: undefined };
-            map.set(targetStoreId, newData);
-            return;
-          }
-          if (cellStr === '') return;
-
-          const numVal = parsePtBrNumber(cellStr);
-          if (!isNaN(numVal)) {
-            const newData: StoreReading = { ...currentData, [field]: numVal };
-            map.set(targetStoreId, newData);
-          }
-        });
-
-        return { ...curr, [type]: map };
-      });
+    if (updatedMap) {
+      this.readings.update(curr => ({ ...curr, [type]: updatedMap }));
     }
   }
 
@@ -4421,165 +3060,72 @@ export class BillCalculatorComponent implements OnDestroy {
     return this.totalBillAmount() > 0 && this.totalDistributedConsumption() > 0;
   }
 
-  // --- EXCEL EXPORT (RATEIO COMPLETO PARA HISTÓRICO) ---
+  private buildExportSnapshot() {
+    const type = this.utilityType();
+    return {
+      utilityType: type,
+      month: this.selectedMonth(),
+      unitPrice: this.calculatedUnitPrice(),
+      totalBill: this.totalBillAmount(),
+      totalConsumption: this.totalConsumption(),
+      totalDistributedCost: this.totalDistributedCost(),
+      totalStoreConsumption: this.totalDistributedConsumption(),
+      airConditioningConsumption: this.airConditioningConsumption(),
+      airConditioningCost: this.airConditioningCost(),
+      commonAreaConsumption: this.commonAreaConsumption(),
+      commonAreaCost: this.commonAreaCost(),
+      costItems: this.currentCostItems(),
+      consumptionInput:
+        type === 'luz'
+          ? this.luzConsumption()
+          : type === 'agua'
+            ? this.aguaTotalReading()
+            : this.gasTotalReading(),
+      tableData: this.tableData()
+    };
+  }
+
+  private buildVoucherContext() {
+    return {
+      utilityType: this.utilityType(),
+      month: this.selectedMonth(),
+      unitPrice: this.calculatedUnitPrice() || 0,
+      meterPhotos: this.meterPhotos()
+    };
+  }
+
+  // --- EXCEL / CSV / ZIP EXPORT (delegado ao BillExportFacade) ---
   exportToExcel() {
-    this.isExportingExcel.set(true);
-    try {
-      const type = this.utilityType();
-      const label = type === 'luz' ? 'Luz' : type === 'agua' ? 'Agua' : 'Gas';
-      const inputCons = type === 'luz'
-        ? this.luzConsumption()
-        : (type === 'agua' ? this.aguaTotalReading() : this.gasTotalReading());
-
-      this.exportService.exportCalculatorToExcel({
-        utilityType: type,
-        utilityLabel: label,
-        unit: this.getUnit(),
-        month: this.selectedMonth(),
-        unitPrice: this.calculatedUnitPrice(),
-        totalBill: this.totalBillAmount(),
-        totalConsumption: this.totalConsumption(),
-        totalDistributedCost: this.totalDistributedCost(),
-        totalStoreConsumption: this.totalDistributedConsumption(),
-        airConditioningConsumption: this.airConditioningConsumption(),
-        airConditioningCost: this.airConditioningCost(),
-        commonAreaConsumption: this.commonAreaConsumption(),
-        commonAreaCost: this.commonAreaCost(),
-        costItems: this.currentCostItems(),
-        consumptionInput: inputCons,
-        tableData: this.tableData()
-      });
-    } catch (err) {
-      console.error('Erro ao exportar rateio para Excel:', err);
-    } finally {
-      this.isExportingExcel.set(false);
-    }
+    this.billExportFacade.exportToExcel(this.buildExportSnapshot());
   }
 
-  // --- COMPLETE ZIP PACKAGE EXPORT (PLANILHA EXCEL + FOTOS + MANIFESTO) ---
+  exportToCsv() {
+    this.billExportFacade.exportToCsv(this.buildExportSnapshot());
+  }
+
   async exportPackageZip() {
-    if (this.isExportingZip() || this.tableData().length === 0) return;
-    this.isExportingZip.set(true);
-
-    try {
-      const type = this.utilityType();
-      const label = type === 'luz' ? 'Luz' : type === 'agua' ? 'Agua' : 'Gas';
-      const month = this.selectedMonth();
-      const inputCons = type === 'luz'
-        ? this.luzConsumption()
-        : (type === 'agua' ? this.aguaTotalReading() : this.gasTotalReading());
-
-      // Coleta fotos do signal + mescla com fotos do IndexedDB caso alguma esteja salva localmente
-      const photosMap: Record<string, any> = { ...this.meterPhotos() };
-      try {
-        const localDbPhotos = await this.indexedDb.getMeterPhotosForMonth(type, month);
-        if (localDbPhotos) {
-          Object.entries(localDbPhotos).forEach(([storeId, p]) => {
-            if (!photosMap[storeId] && p?.photoDataUrl) {
-              photosMap[storeId] = p;
-            }
-          });
-        }
-      } catch (e) {
-        console.warn('Erro ao consultar fotos do IndexedDB para compor pacote ZIP:', e);
-      }
-
-      await this.exportService.exportCompletePackageZip({
-        utilityType: type,
-        utilityLabel: label,
-        unit: this.getUnit(),
-        month: month,
-        unitPrice: this.calculatedUnitPrice(),
-        totalBill: this.totalBillAmount(),
-        totalConsumption: this.totalConsumption(),
-        totalDistributedCost: this.totalDistributedCost(),
-        totalStoreConsumption: this.totalDistributedConsumption(),
-        airConditioningConsumption: this.airConditioningConsumption(),
-        airConditioningCost: this.airConditioningCost(),
-        commonAreaConsumption: this.commonAreaConsumption(),
-        commonAreaCost: this.commonAreaCost(),
-        costItems: this.currentCostItems(),
-        consumptionInput: inputCons,
-        tableData: this.tableData(),
-        photos: photosMap
-      });
-    } catch (err) {
-      console.error('Erro ao gerar pacote ZIP de rateio:', err);
-      alert('Houve um erro ao gerar o pacote ZIP de auditoria. Verifique o console.');
-    } finally {
-      this.isExportingZip.set(false);
-    }
+    await this.billExportFacade.exportPackageZip(this.buildExportSnapshot(), this.meterPhotos());
   }
-  // --- STORE VOUCHER / ESPELHO DO LOJISTA METHODS ---
+
+  // --- STORE VOUCHER / ESPELHO DO LOJISTA METHODS (delegado ao BillExportFacade) ---
   getUtilityLabel() {
-    switch (this.utilityType()) {
-      case 'luz': return 'Energia Elétrica';
-      case 'agua': return 'Água & Esgoto';
-      case 'gas': return 'Gás GLP';
-    }
+    return this.billExportFacade.getUtilityDisplayLabel(this.utilityType());
   }
 
   selectedMonthLabel(): string {
-    const m = this.selectedMonth();
-    if (!m) return '';
-    const [year, month] = m.split('-');
-    const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-    const idx = parseInt(month, 10) - 1;
-    return (months[idx] || month) + '/' + year;
+    return this.billExportFacade.formatMonthLabel(this.selectedMonth());
   }
 
-  openStoreVoucher(item: any) {
-    if (!item) return;
-    const type = this.utilityType();
-    const month = this.selectedMonth();
-    const photo = this.meterPhotos()[item.storeId];
-
-    const data: StoreVoucherData = {
-      storeName: item.storeName,
-      luc: item.luc,
-      contrato: item.contrato,
-      utilityType: type,
-      utilityLabel: this.getUtilityLabel(),
-      unit: this.getUnit(),
-      month: month,
-      monthLabel: this.selectedMonthLabel(),
-      prevReading: item.prevReading || 0,
-      prevConsumption: item.prevConsumption || 0,
-      prevCost: item.prevCost || 0,
-      currentReading: item.currentReading || 0,
-      readingDiff: item.readingDiff !== undefined ? item.readingDiff : ((item.currentReading || 0) - (item.prevReading || 0)),
-      constant: item.constant || 1,
-      adjustment: item.adjustment || 1,
-      adjustmentAdd: item.adjustmentAdd,
-      fluxoCost: item.fluxoCost,
-      consumption: item.consumption || 0,
-      rawConsumption: item.rawConsumption,
-      gasFactor: item.gasFactor,
-      unitPrice: this.calculatedUnitPrice() || 0,
-      totalCost: item.cost || 0,
-      originalCost: item.originalCost,
-      excludedFromBill: item.excludedFromBill,
-      variationPct: item.variation,
-      note: item.note,
-      photoDataUrl: photo?.photoDataUrl,
-      photoCapturedAt: photo?.capturedAt || item.photoTimestamp,
-      issueDate: new Date().toLocaleString('pt-BR')
-    };
-
-    this.selectedVoucherData.set(data);
-    this.showVoucherModal.set(true);
+  openStoreVoucher(item: BillTableRow | null | undefined) {
+    this.billExportFacade.openStoreVoucher(item, this.buildVoucherContext());
   }
 
   openStoreVoucherByStoreId(storeId?: string | null) {
-    if (!storeId) return;
-    const item = this.tableData().find(s => s.storeId === storeId);
-    if (item) {
-      this.openStoreVoucher(item);
-    }
+    this.billExportFacade.openStoreVoucherByStoreId(storeId, this.tableData(), this.buildVoucherContext());
   }
 
   closeStoreVoucher() {
-    this.showVoucherModal.set(false);
+    this.billExportFacade.closeStoreVoucher();
   }
 
 
