@@ -1,7 +1,19 @@
-import { Component, Input } from '@angular/core';
+import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import type { BillCalculatorComponent } from './bill-calculator.component';
+import { MeterPhotoRecord, OcrPendingConfirmation, UtilityType } from '../models';
+import {
+  BillTableRow,
+  ConfirmOcrEvent,
+  NoteEditorOpenEvent,
+  OcrFeedbackItem,
+  PhotoCaptureEvent,
+  PhotoDeleteEvent,
+  PhotoViewerOpenEvent,
+  QuickAdjustEvent,
+  QuickTagEvent,
+  ReadingFieldChangeEvent
+} from './bill-subcomponents.types';
 
 @Component({
   selector: 'app-bill-guided-route',
@@ -9,7 +21,7 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
   imports: [CommonModule, FormsModule],
   template: `
                 <div class="p-2 sm:p-5 bg-slate-100 dark:bg-slate-950 min-h-[480px] flex flex-col justify-between transition-colors">
-                  @if (calc.currentStepStore(); as stepStore) {
+                  @if (currentStepStore; as stepStore) {
                     <div class="max-w-2xl mx-auto w-full bg-white dark:bg-slate-900 rounded-3xl shadow-md border border-slate-200/90 dark:border-slate-800 p-4 sm:p-6 space-y-4 transition-all">
                       
                       <!-- Barra Superior de Gamificação & Progresso da Rota -->
@@ -17,10 +29,10 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                         <div class="flex items-center justify-between text-xs">
                           <div class="flex items-center gap-1.5 flex-wrap">
                             <span class="text-xs font-black px-2.5 py-1 bg-indigo-100 dark:bg-indigo-950/90 text-indigo-900 dark:text-indigo-200 rounded-full font-mono border border-indigo-200 dark:border-indigo-800">
-                              📍 Rota #{{ stepStore.routeOrder || (calc.stepIndex() + 1) }}
+                              📍 Rota #{{ stepStore.routeOrder || (stepIndex + 1) }}
                             </span>
                             <span class="text-xs font-bold px-2.5 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-full font-mono">
-                              Loja {{ calc.stepIndex() + 1 }} de {{ calc.fieldTableData().length }}
+                              Loja {{ stepIndex + 1 }} de {{ fieldTableData.length }}
                             </span>
                             @if (stepStore.isRead) {
                               <span class="text-xs font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1 bg-emerald-50 dark:bg-emerald-950/70 px-2.5 py-1 rounded-full border border-emerald-300 dark:border-emerald-800 shadow-2xs">
@@ -35,7 +47,7 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
 
                           <div class="flex items-center gap-2">
                             <button type="button" 
-                              (click)="calc.jumpToNextPending()" 
+                              (click)="jumpToNextPending.emit()" 
                               class="px-2.5 py-1.5 bg-amber-400 dark:bg-amber-500 hover:bg-amber-500 text-slate-950 rounded-xl text-xs font-black transition-all cursor-pointer shadow-xs flex items-center gap-1 shrink-0"
                               title="Pula direto para a próxima loja que ainda não foi lida">
                               <span>⚡</span>
@@ -47,15 +59,15 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                         <!-- Barra de Progresso Visual da Meta de Coleta -->
                         <div class="space-y-1">
                           <div class="flex justify-between items-center text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                            <span>Progresso da Rota: {{ calc.stepReadCount() }} de {{ calc.fieldTableData().length }} lojas</span>
-                            <span class="font-mono text-teal-600 dark:text-teal-400">{{ calc.stepProgressPercent() }}%</span>
+                            <span>Progresso da Rota: {{ stepReadCount }} de {{ fieldTableData.length }} lojas</span>
+                            <span class="font-mono text-teal-600 dark:text-teal-400">{{ stepProgressPercent }}%</span>
                           </div>
                           <div class="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-200/50 dark:border-slate-700/50">
                             <div class="h-full rounded-full transition-all duration-300"
-                                 [style.width.%]="calc.stepProgressPercent()"
-                                 [class]="calc.utilityType() === 'luz' 
+                                 [style.width.%]="stepProgressPercent"
+                                 [class]="utilityType === 'luz' 
                                    ? 'bg-gradient-to-r from-amber-400 to-yellow-500' 
-                                   : (calc.utilityType() === 'gas' ? 'bg-gradient-to-r from-orange-500 to-rose-500' : 'bg-gradient-to-r from-teal-500 to-emerald-500')">
+                                   : (utilityType === 'gas' ? 'bg-gradient-to-r from-orange-500 to-rose-500' : 'bg-gradient-to-r from-teal-500 to-emerald-500')">
                             </div>
                           </div>
                         </div>
@@ -63,10 +75,10 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                         <!-- Seletor Dropdown Rápido de Lojas na Rota -->
                         <div class="pt-1">
                           <select 
-                            [ngModel]="calc.stepIndex()" 
-                            (ngModelChange)="calc.setStepIndex(\$event)"
+                            [ngModel]="stepIndex" 
+                            (ngModelChange)="stepIndexChange.emit($event)"
                             class="w-full text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl p-2 font-mono text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-teal-500">
-                            @for (st of calc.fieldTableData(); track st.storeId; let sIdx = \$index) {
+                            @for (st of fieldTableData; track st.storeId; let sIdx = $index) {
                               <option [ngValue]="sIdx">
                                 {{ st.routeOrder ? '#' + st.routeOrder + ' ' : '' }}{{ st.luc }} - {{ st.storeName }} {{ st.isRead ? '✓ (' + st.currentReading + ')' : '⏳' }}
                               </option>
@@ -88,7 +100,7 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                               </span>
                             }
                             <button type="button" 
-                              (click)="calc.toggleExcludeFromBill(stepStore.storeId)" 
+                              (click)="toggleExcludeFromBill.emit(stepStore.storeId)" 
                               [title]="stepStore.excludedFromBill ? 'Esta loja está FORA DO SAP (seu consumo e custo vão para a Área Comum). Clique para incluir no SAP.' : 'Esta loja entra no Valor SAP. Clique para transferir seu valor para a Área Comum (Fora do SAP).'"
                               class="text-xs font-bold px-2.5 py-1 rounded-lg cursor-pointer flex items-center gap-1.5 transition-all border shadow-2xs"
                               [class]="stepStore.excludedFromBill 
@@ -120,17 +132,17 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                                 <span>📷</span>
                                 <span>Mês Anterior (Gabarito)</span>
                               </span>
-                              @if (calc.prevMonthPhotos()[stepStore.storeId]) {
+                              @if (prevMonthPhotos[stepStore.storeId]) {
                                 <span class="text-[9px] bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded-full font-bold">
                                   Foto Salva
                                 </span>
                               }
                             </div>
 
-                            @if (calc.prevMonthPhotos()[stepStore.storeId]; as prevPhoto) {
+                            @if (prevMonthPhotos[stepStore.storeId]; as prevPhoto) {
                               <div class="flex items-center gap-3">
                                 <div class="relative cursor-pointer shrink-0 group" 
-                                     (click)="calc.openPhotoViewer(stepStore.storeId, prevPhoto)"
+                                     (click)="openPhotoViewer.emit({ storeId: stepStore.storeId, customRecord: prevPhoto })"
                                      title="Clique para ampliar a foto do mês anterior">
                                   <img [src]="prevPhoto.photoDataUrl" 
                                        alt="Foto Mês Anterior" 
@@ -144,13 +156,13 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                                     {{ prevPhoto.capturedAt | date:'dd/MM/yy' }}
                                   </span>
                                   <span class="text-slate-900 dark:text-slate-100 font-mono font-black text-base">
-                                    {{ stepStore.prevReading | number:'1.0-0' }} <span class="text-xs font-normal text-slate-400">{{ calc.getUnit() }}</span>
-                                    @if (stepStore.prevReadingMonth && stepStore.prevReadingMonth !== calc.getPreviousMonth(calc.selectedMonth()) && stepStore.prevReading > 0) {
+                                    {{ stepStore.prevReading | number:'1.0-0' }} <span class="text-xs font-normal text-slate-400">{{ unit }}</span>
+                                    @if (stepStore.prevReadingMonth && stepStore.prevReadingMonth !== prevMonth && stepStore.prevReading > 0) {
                                       <span class="text-[10px] text-teal-600 dark:text-teal-400 font-bold ml-1">({{ stepStore.prevReadingMonth }})</span>
                                     }
                                   </span>
                                   <span class="text-[11px] text-teal-700 dark:text-teal-400 font-sans font-semibold">
-                                    Consumo Ant: <strong>{{ stepStore.prevConsumption | number:'1.0-2' }} {{ calc.getUnit() }}</strong>
+                                    Consumo Ant: <strong>{{ stepStore.prevConsumption | number:'1.0-2' }} {{ unit }}</strong>
                                   </span>
                                   @if (stepStore.prevCost) {
                                     <span class="text-[11px] text-slate-600 dark:text-slate-300 font-sans font-semibold">
@@ -158,7 +170,7 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                                     </span>
                                   }
                                   <button type="button" 
-                                    (click)="calc.openPhotoViewer(stepStore.storeId, prevPhoto)"
+                                    (click)="openPhotoViewer.emit({ storeId: stepStore.storeId, customRecord: prevPhoto })"
                                     class="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline font-bold text-left cursor-pointer">
                                     Ampliar foto anterior ↗
                                   </button>
@@ -167,13 +179,13 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                             } @else {
                               <div class="py-1">
                                 <span class="text-xs font-mono font-black text-slate-800 dark:text-slate-200 block text-sm">
-                                  Leitura Anterior: {{ stepStore.prevReading | number:'1.0-0' }} {{ calc.getUnit() }}
-                                  @if (stepStore.prevReadingMonth && stepStore.prevReadingMonth !== calc.getPreviousMonth(calc.selectedMonth()) && stepStore.prevReading > 0) {
+                                  Leitura Anterior: {{ stepStore.prevReading | number:'1.0-0' }} {{ unit }}
+                                  @if (stepStore.prevReadingMonth && stepStore.prevReadingMonth !== prevMonth && stepStore.prevReading > 0) {
                                     <span class="text-[10px] text-teal-600 dark:text-teal-400 font-bold ml-1">({{ stepStore.prevReadingMonth }})</span>
                                   }
                                 </span>
                                 <span class="text-xs text-teal-700 dark:text-teal-400 font-sans font-semibold block mt-0.5">
-                                  Consumo Anterior: <strong>{{ stepStore.prevConsumption | number:'1.0-2' }} {{ calc.getUnit() }}</strong>
+                                  Consumo Anterior: <strong>{{ stepStore.prevConsumption | number:'1.0-2' }} {{ unit }}</strong>
                                 </span>
                                 @if (stepStore.prevCost) {
                                   <span class="text-xs text-slate-600 dark:text-slate-300 font-sans font-semibold block mt-0.5">
@@ -182,7 +194,7 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                                 }
                                 @if (stepStore.validationAlert.avgConsumption > 0) {
                                   <span class="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">
-                                    Média Histórica: {{ stepStore.validationAlert.avgConsumption | number:'1.0-1' }} {{ calc.getUnit() }}
+                                    Média Histórica: {{ stepStore.validationAlert.avgConsumption | number:'1.0-1' }} {{ unit }}
                                   </span>
                                 }
                               </div>
@@ -198,17 +210,17 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                                 <span>📸</span>
                                 <span>Foto Atual (Evidência)</span>
                               </span>
-                              @if (calc.meterPhotos()[stepStore.storeId]) {
+                              @if (meterPhotos[stepStore.storeId]) {
                                 <span class="text-[9px] bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 rounded-full font-bold">
                                   ✓ Registrada
                                 </span>
                               }
                             </div>
 
-                            @if (calc.meterPhotos()[stepStore.storeId]; as curPhoto) {
+                            @if (meterPhotos[stepStore.storeId]; as curPhoto) {
                               <div class="flex items-center gap-3">
                                 <div class="relative cursor-pointer shrink-0 group" 
-                                     (click)="calc.openPhotoViewer(stepStore.storeId)"
+                                     (click)="openPhotoViewer.emit({ storeId: stepStore.storeId })"
                                      title="Clique para ver a foto tirada">
                                   <img [src]="curPhoto.photoDataUrl" 
                                        alt="Foto Medidor Atual" 
@@ -228,17 +240,17 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                                   </div>
                                   <div class="flex items-center gap-2">
                                     <button type="button" 
-                                      (click)="runOcrOnPhoto(stepStore.storeId)"
-                                      [disabled]="calc.isReadingOcr() === stepStore.storeId"
+                                      (click)="runOcr.emit(stepStore.storeId)"
+                                      [disabled]="isReadingOcr === stepStore.storeId"
                                       class="text-[11px] font-bold text-indigo-600 dark:text-indigo-300 hover:underline cursor-pointer flex items-center gap-1">
                                       <span>⚡ Reler com IA</span>
                                     </button>
                                     <label class="text-[11px] text-slate-500 dark:text-slate-400 hover:underline cursor-pointer">
                                       <span>Trocar</span>
-                                      <input type="file" accept="image/*" capture="environment" (change)="calc.onPhotoCaptured(\$event, stepStore.storeId, stepStore.storeName, stepStore.luc, stepStore.currentReading)" class="hidden">
+                                      <input type="file" accept="image/*" capture="environment" (change)="photoCaptured.emit({ event: $event, storeId: stepStore.storeId, storeName: stepStore.storeName, luc: stepStore.luc, currentReading: stepStore.currentReading })" class="hidden">
                                     </label>
                                     <button type="button" 
-                                      (click)="confirmDeletePhoto(stepStore.storeId, stepStore.storeName)" 
+                                      (click)="deletePhoto.emit({ storeId: stepStore.storeId, storeName: stepStore.storeName })" 
                                       class="text-[11px] text-rose-500 dark:text-rose-400 hover:underline cursor-pointer">
                                       <span>Excluir</span>
                                     </button>
@@ -247,7 +259,7 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                               </div>
                             } @else {
                               <label class="cursor-pointer flex flex-col items-center justify-center p-3 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 active:scale-95 text-white font-bold text-xs transition-all shadow-sm">
-                                @if (calc.isCapturingPhoto() === stepStore.storeId) {
+                                @if (isCapturingPhoto === stepStore.storeId) {
                                   <span class="animate-spin text-lg mb-1">⏳</span>
                                   <span>Compactando foto...</span>
                                 } @else {
@@ -257,9 +269,9 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                                 <input type="file" 
                                        accept="image/*" 
                                        capture="environment" 
-                                       (change)="calc.onPhotoCaptured(\$event, stepStore.storeId, stepStore.storeName, stepStore.luc, stepStore.currentReading)" 
+                                       (change)="photoCaptured.emit({ event: $event, storeId: stepStore.storeId, storeName: stepStore.storeName, luc: stepStore.luc, currentReading: stepStore.currentReading })" 
                                        class="hidden"
-                                       [disabled]="calc.isCapturingPhoto() === stepStore.storeId">
+                                       [disabled]="isCapturingPhoto === stepStore.storeId">
                               </label>
                             }
                           </div>
@@ -271,18 +283,18 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                       <div class="space-y-2">
                         <div class="flex items-center justify-between">
                           <label class="text-xs uppercase font-black text-slate-700 dark:text-slate-200 tracking-wider flex items-center gap-1">
-                            <span>DIGITAR LEITURA ATUAL ({{ calc.getUnit() }}):</span>
+                            <span>DIGITAR LEITURA ATUAL ({{ unit }}):</span>
                           </label>
-                          @if (calc.isReadingOcr() === stepStore.storeId) {
+                          @if (isReadingOcr === stepStore.storeId) {
                             <span class="text-[11px] bg-indigo-100 dark:bg-indigo-900 text-indigo-900 dark:text-indigo-200 px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1 animate-pulse">
                               <span class="animate-spin">⚡</span>
-                              <span>{{ ocrCurrentModelLabel() }} lendo visor...</span>
+                              <span>{{ ocrCurrentModelLabel }} lendo visor...</span>
                             </span>
                           }
                         </div>
 
                         <!-- Feedback de Leitura Automática OCR -->
-                        @if (ocrFeedback()[stepStore.storeId]; as fb) {
+                        @if (ocrFeedback[stepStore.storeId]; as fb) {
                           <div class="p-3 rounded-2xl text-xs flex items-center justify-between gap-2 shadow-xs transition-all"
                                [class]="fb.success ? 'bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 text-emerald-950 dark:text-emerald-100' : 'bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-950 dark:text-amber-100'">
                             <div class="flex items-center gap-2 truncate">
@@ -294,12 +306,12 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                                 }
                               </div>
                             </div>
-                            <button (click)="dismissOcrFeedback(stepStore.storeId)" class="p-1 text-slate-400 hover:text-slate-800 font-bold cursor-pointer">✕</button>
+                            <button (click)="dismissOcrFeedback.emit(stepStore.storeId)" class="p-1 text-slate-400 hover:text-slate-800 font-bold cursor-pointer">✕</button>
                           </div>
                         }
 
                         <!-- Conferência da leitura sugerida pela IA -->
-                        @if (ocrPending()[stepStore.storeId]; as pend) {
+                        @if (ocrPending[stepStore.storeId]; as pend) {
                           <div class="p-3.5 rounded-2xl border-2 border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-950/60 text-xs space-y-2">
                             <p class="font-bold text-indigo-900 dark:text-indigo-100 text-sm">
                               🤖 A IA leu <span class="font-mono text-lg font-black">{{ pend.ocrValue }}</span> — confere com a foto?
@@ -317,11 +329,11 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                                   <span>Motores de IA divergiram: toque no valor correto da foto:</span>
                                 </p>
                                 <div class="grid grid-cols-2 gap-2">
-                                  <button type="button" (click)="calc.updateDetailedReading(stepStore.storeId, 'reading', pend.dualCheck.qwenValue); confirmOcrReading(stepStore.storeId, pend.dualCheck.qwenValue)"
+                                  <button type="button" (click)="readingChange.emit({ storeId: stepStore.storeId, field: 'reading', value: pend.dualCheck.qwenValue }); confirmOcrReading.emit({ storeId: stepStore.storeId, value: pend.dualCheck.qwenValue })"
                                     class="py-2 px-2 rounded-lg bg-white dark:bg-slate-900 border-2 border-indigo-300 dark:border-indigo-700 font-mono font-bold text-sm hover:bg-indigo-50 dark:hover:bg-indigo-950/50 cursor-pointer text-indigo-700 dark:text-indigo-300">
                                     ⚡ Qwen: {{ pend.dualCheck.qwenValue }}
                                   </button>
-                                  <button type="button" (click)="calc.updateDetailedReading(stepStore.storeId, 'reading', pend.dualCheck.geminiValue); confirmOcrReading(stepStore.storeId, pend.dualCheck.geminiValue)"
+                                  <button type="button" (click)="readingChange.emit({ storeId: stepStore.storeId, field: 'reading', value: pend.dualCheck.geminiValue }); confirmOcrReading.emit({ storeId: stepStore.storeId, value: pend.dualCheck.geminiValue })"
                                     class="py-2 px-2 rounded-lg bg-white dark:bg-slate-900 border-2 border-teal-300 dark:border-teal-700 font-mono font-bold text-sm hover:bg-teal-50 dark:hover:bg-teal-950/50 cursor-pointer text-teal-700 dark:text-teal-300">
                                     🤖 Gemini: {{ pend.dualCheck.geminiValue }}
                                   </button>
@@ -332,15 +344,15 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                               <div class="p-2 rounded-lg bg-rose-100 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-100 font-semibold">
                                 <p>{{ stepStore.validationAlert.title }}</p>
                                 <p class="font-normal mt-0.5">{{ stepStore.validationAlert.message }}</p>
-                                <button type="button" (click)="retryOcrWithOtherEngine(stepStore.storeId)"
-                                  [disabled]="calc.isReadingOcr() === stepStore.storeId"
+                                <button type="button" (click)="retryOcrWithOtherEngine.emit(stepStore.storeId)"
+                                  [disabled]="isReadingOcr === stepStore.storeId"
                                   class="mt-1.5 w-full py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold cursor-pointer">
                                   🔄 Reler com {{ pend.provider === 'qwen' ? 'Gemini' : 'Qwen' }}
                                 </button>
                               </div>
                             }
-                            <button type="button" (click)="confirmOcrReading(stepStore.storeId, stepStore.currentReading)"
-                              [disabled]="!calc.canEdit()"
+                            <button type="button" (click)="confirmOcrReading.emit({ storeId: stepStore.storeId, value: stepStore.currentReading })"
+                              [disabled]="!canEdit"
                               class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold cursor-pointer">
                               ✓ Confirmar leitura
                             </button>
@@ -353,10 +365,10 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                             inputmode="decimal"
                             step="0.0001"
                             [ngModel]="stepStore.currentReading" 
-                            (ngModelChange)="calc.updateDetailedReading(stepStore.storeId, 'reading', \$event)"
-                            (blur)="calc.onReadingBlur(stepStore.storeId)"
-                            (keyup.enter)="calc.saveAndNextStep(stepStore)"
-                            [disabled]="!calc.canEdit()"
+                            (ngModelChange)="readingChange.emit({ storeId: stepStore.storeId, field: 'reading', value: $event })"
+                            (blur)="readingBlur.emit(stepStore.storeId)"
+                            (keyup.enter)="saveAndNextStep.emit(stepStore)"
+                            [disabled]="!canEdit"
                             class="w-full text-center text-4xl sm:text-5xl font-mono font-black p-4 border-2 rounded-2xl focus:ring-4 transition-all bg-white dark:bg-slate-950 text-slate-900 dark:text-white shadow-inner"
                             [class.border-rose-500]="stepStore.validationAlert.severity === 'critical'"
                             [class.ring-4]="stepStore.validationAlert.hasAlert"
@@ -375,8 +387,8 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                         <div class="flex items-center gap-1.5 flex-wrap pt-1">
                           <!-- Botão Inteligente: Repetir Leitura Anterior (Consumo 0) -->
                           <button type="button"
-                            (click)="calc.copyPreviousReading(stepStore)"
-                            [disabled]="!calc.canEdit()"
+                            (click)="copyPreviousReading.emit(stepStore)"
+                            [disabled]="!canEdit"
                             class="flex-1 min-w-[170px] py-2 px-3 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800 text-indigo-800 dark:text-indigo-200 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer shadow-2xs"
                             title="Preenche a leitura atual exatamente com a anterior (Consumo 0)">
                             <span>🔁</span>
@@ -386,26 +398,26 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                           <!-- Steppers Rápidos de Incremento / Decremento -->
                           <div class="flex items-center gap-1 shrink-0">
                             <button type="button"
-                              (click)="calc.quickAdjustReading(stepStore, -1)"
-                              [disabled]="!calc.canEdit()"
+                              (click)="quickAdjustReading.emit({ stepStore, delta: -1 })"
+                              [disabled]="!canEdit"
                               class="w-10 h-9 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl font-mono font-black text-xs transition-all active:scale-90 cursor-pointer border border-slate-200 dark:border-slate-700">
                               -1
                             </button>
                             <button type="button"
-                              (click)="calc.quickAdjustReading(stepStore, 1)"
-                              [disabled]="!calc.canEdit()"
+                              (click)="quickAdjustReading.emit({ stepStore, delta: 1 })"
+                              [disabled]="!canEdit"
                               class="w-10 h-9 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl font-mono font-black text-xs transition-all active:scale-90 cursor-pointer border border-slate-200 dark:border-slate-700">
                               +1
                             </button>
                             <button type="button"
-                              (click)="calc.quickAdjustReading(stepStore, 5)"
-                              [disabled]="!calc.canEdit()"
+                              (click)="quickAdjustReading.emit({ stepStore, delta: 5 })"
+                              [disabled]="!canEdit"
                               class="w-10 h-9 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl font-mono font-black text-xs transition-all active:scale-90 cursor-pointer border border-slate-200 dark:border-slate-700">
                               +5
                             </button>
                             <button type="button"
-                              (click)="calc.quickAdjustReading(stepStore, 10)"
-                              [disabled]="!calc.canEdit()"
+                              (click)="quickAdjustReading.emit({ stepStore, delta: 10 })"
+                              [disabled]="!canEdit"
                               class="w-10 h-9 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl font-mono font-black text-xs transition-all active:scale-90 cursor-pointer border border-slate-200 dark:border-slate-700">
                               +10
                             </button>
@@ -447,13 +459,13 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                             </p>
                             <div class="pt-1 flex flex-wrap items-center gap-2">
                               <button type="button" 
-                                (click)="confirmAnomaly(stepStore.storeId)"
+                                (click)="confirmAnomaly.emit(stepStore.storeId)"
                                 class="px-3 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-bold rounded-lg text-xs hover:bg-slate-50 cursor-pointer shadow-2xs">
                                 ✓ Confirmar como Correto
                               </button>
                               @if (stepStore.validationAlert.type === 'negative') {
                                 <button type="button" 
-                                  (click)="markRollover(stepStore.storeId)"
+                                  (click)="markRollover.emit(stepStore.storeId)"
                                   class="px-3 py-1 bg-indigo-600 text-white font-bold rounded-lg text-xs hover:bg-indigo-700 cursor-pointer shadow-2xs">
                                   🔄 Virada de Relógio
                                 </button>
@@ -468,12 +480,12 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                         <div class="bg-gradient-to-br from-teal-50 to-emerald-50 dark:from-teal-950/40 dark:to-emerald-950/30 p-3.5 rounded-2xl border border-teal-200 dark:border-teal-800/80 grid grid-cols-2 gap-3 text-xs shadow-2xs">
                           <div>
                             <span class="text-[10px] uppercase font-black text-teal-800 dark:text-teal-300 block tracking-wider">Consumo Calculado</span>
-                            <strong class="font-mono text-xl font-black text-teal-950 dark:text-teal-100">{{ stepStore.consumption | number:'1.0-2' }} {{ calc.getUnit() }}</strong>
+                            <strong class="font-mono text-xl font-black text-teal-950 dark:text-teal-100">{{ stepStore.consumption | number:'1.0-2' }} {{ unit }}</strong>
                             @if (stepStore.consumption === 0) {
                               <span class="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold block mt-0.5">🟡 Sem Consumo (0)</span>
                             } @else if (stepStore.validationAlert.avgConsumption > 0) {
                               <span class="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">
-                                Ref. Média: {{ stepStore.validationAlert.avgConsumption | number:'1.0-1' }} {{ calc.getUnit() }}
+                                Ref. Média: {{ stepStore.validationAlert.avgConsumption | number:'1.0-1' }} {{ unit }}
                               </span>
                             }
                           </div>
@@ -489,24 +501,24 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                       <div class="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
                         <div class="flex items-center justify-between text-xs">
                           <span class="font-bold text-slate-600 dark:text-slate-300">Ocorrência de Campo:</span>
-                          <button (click)="calc.openNoteEditor(stepStore.storeId, stepStore.note)" class="text-teal-700 dark:text-teal-400 font-bold hover:underline cursor-pointer">
+                          <button (click)="openNoteEditor.emit({ storeId: stepStore.storeId, currentNote: stepStore.note })" class="text-teal-700 dark:text-teal-400 font-bold hover:underline cursor-pointer">
                             {{ stepStore.note ? 'Editar Nota ✎' : '+ Escrever Nota' }}
                           </button>
                         </div>
                         @if (stepStore.note) {
                           <div class="bg-amber-50 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-800 p-2.5 rounded-xl text-xs flex justify-between items-center shadow-2xs">
                             <span class="font-medium">📝 {{ stepStore.note }}</span>
-                            <button (click)="clearNote(stepStore.storeId)" class="text-red-500 hover:text-red-700 font-bold ml-2 cursor-pointer p-1">✕</button>
+                            <button (click)="clearNote.emit(stepStore.storeId)" class="text-red-500 hover:text-red-700 font-bold ml-2 cursor-pointer p-1">✕</button>
                           </div>
                         } @else {
                           <div class="flex gap-1.5 flex-wrap">
-                            <button (click)="applyQuickTag(stepStore.storeId, 'Porta Fechada')" class="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl text-xs text-slate-700 dark:text-slate-300 transition-all cursor-pointer font-medium active:scale-95 border border-slate-200 dark:border-slate-700">
+                            <button (click)="applyQuickTag.emit({ storeId: stepStore.storeId, tag: 'Porta Fechada' })" class="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl text-xs text-slate-700 dark:text-slate-300 transition-all cursor-pointer font-medium active:scale-95 border border-slate-200 dark:border-slate-700">
                               🔒 Porta Fechada
                             </button>
-                            <button (click)="applyQuickTag(stepStore.storeId, 'Visor Embaçado')" class="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl text-xs text-slate-700 dark:text-slate-300 transition-all cursor-pointer font-medium active:scale-95 border border-slate-200 dark:border-slate-700">
+                            <button (click)="applyQuickTag.emit({ storeId: stepStore.storeId, tag: 'Visor Embaçado' })" class="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl text-xs text-slate-700 dark:text-slate-300 transition-all cursor-pointer font-medium active:scale-95 border border-slate-200 dark:border-slate-700">
                               👁️ Visor Embaçado
                             </button>
-                            <button (click)="applyQuickTag(stepStore.storeId, 'Relógio Trocado')" class="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl text-xs text-slate-700 dark:text-slate-300 transition-all cursor-pointer font-medium active:scale-95 border border-slate-200 dark:border-slate-700">
+                            <button (click)="applyQuickTag.emit({ storeId: stepStore.storeId, tag: 'Relógio Trocado' })" class="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl text-xs text-slate-700 dark:text-slate-300 transition-all cursor-pointer font-medium active:scale-95 border border-slate-200 dark:border-slate-700">
                               🔄 Relógio Trocado
                             </button>
                           </div>
@@ -516,15 +528,15 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                       <!-- BOTÃO PRINCIPAL DE AÇÃO: SALVAR E PRÓXIMA LOJA (POLEGAR ERGONÔMICO) -->
                       <div class="pt-3 border-t border-slate-200/90 dark:border-slate-800 space-y-2.5">
                         <button type="button" 
-                          (click)="calc.saveAndNextStep(stepStore)"
+                          (click)="saveAndNextStep.emit(stepStore)"
                           class="w-full py-4 px-6 bg-gradient-to-r from-teal-600 via-emerald-600 to-teal-700 hover:from-teal-700 hover:to-emerald-800 active:scale-98 text-white font-black text-base rounded-2xl shadow-lg shadow-teal-700/25 transition-all flex flex-col items-center justify-center cursor-pointer">
                           <div class="flex items-center gap-2">
                             <span class="text-xl">💾</span>
                             <span>Salvar e Próxima Loja ▶</span>
                           </div>
-                          @if (calc.nextStepStore(); as nxt) {
+                          @if (nextStepStore; as nxt) {
                             <span class="text-[11px] font-normal text-teal-100 opacity-90 mt-0.5">
-                              Próxima: #{{ nxt.routeOrder || (calc.stepIndex() + 2) }} {{ nxt.luc }} - {{ nxt.storeName }}
+                              Próxima: #{{ nxt.routeOrder || (stepIndex + 2) }} {{ nxt.luc }} - {{ nxt.storeName }}
                             </span>
                           } @else {
                             <span class="text-[11px] font-normal text-teal-100 opacity-90 mt-0.5">
@@ -535,21 +547,21 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
 
                         <div class="flex items-center gap-2">
                           <button type="button" 
-                            (click)="calc.prevStep()" 
-                            [disabled]="calc.stepIndex() === 0"
+                            (click)="prevStep.emit()" 
+                            [disabled]="stepIndex === 0"
                             class="flex-1 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 text-slate-700 dark:text-slate-200 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer border border-slate-200 dark:border-slate-700 active:scale-95">
                             <span>◀ Anterior</span>
                           </button>
 
                           <button type="button" 
-                            (click)="calc.jumpToNextPending()" 
+                            (click)="jumpToNextPending.emit()" 
                             class="flex-1 py-3 bg-amber-400 hover:bg-amber-500 text-slate-950 font-black rounded-xl text-xs transition-colors flex items-center justify-center gap-1 shadow-xs cursor-pointer active:scale-95">
                             <span>⚡ Pendente</span>
                           </button>
 
                           <button type="button" 
-                            (click)="calc.nextStep()" 
-                            [disabled]="calc.stepIndex() >= calc.fieldTableData().length - 1"
+                            (click)="nextStep.emit()" 
+                            [disabled]="stepIndex >= fieldTableData.length - 1"
                             class="flex-1 py-3 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 disabled:opacity-30 text-slate-800 dark:text-slate-200 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer border border-slate-300 dark:border-slate-600 active:scale-95">
                             <span>Pular ▶</span>
                           </button>
@@ -568,5 +580,45 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
   `
 })
 export class BillGuidedRouteComponent {
-  @Input({ required: true }) calc!: BillCalculatorComponent;
+  @Input({ required: true }) utilityType: UtilityType = 'luz';
+  @Input({ required: true }) unit = 'kWh';
+  @Input({ required: true }) selectedMonth = '';
+  @Input({ required: true }) prevMonth = '';
+  @Input({ required: true }) stepIndex = 0;
+  @Input({ required: true }) currentStepStore: BillTableRow | null = null;
+  @Input({ required: true }) nextStepStore: BillTableRow | null = null;
+  @Input({ required: true }) fieldTableData: BillTableRow[] = [];
+  @Input({ required: true }) stepReadCount = 0;
+  @Input({ required: true }) stepProgressPercent = 0;
+  @Input({ required: true }) canEdit = false;
+  @Input({ required: true }) isReadingOcr: string | null = null;
+  @Input({ required: true }) isCapturingPhoto: string | null = null;
+  @Input({ required: true }) ocrCurrentModelLabel = '';
+  @Input({ required: true }) ocrFeedback: Record<string, OcrFeedbackItem> = {};
+  @Input({ required: true }) ocrPending: Record<string, OcrPendingConfirmation> = {};
+  @Input({ required: true }) meterPhotos: Record<string, MeterPhotoRecord> = {};
+  @Input({ required: true }) prevMonthPhotos: Record<string, MeterPhotoRecord> = {};
+
+  @Output() jumpToNextPending = new EventEmitter<void>();
+  @Output() stepIndexChange = new EventEmitter<number>();
+  @Output() toggleExcludeFromBill = new EventEmitter<string>();
+  @Output() openPhotoViewer = new EventEmitter<PhotoViewerOpenEvent>();
+  @Output() runOcr = new EventEmitter<string>();
+  @Output() photoCaptured = new EventEmitter<PhotoCaptureEvent>();
+  @Output() deletePhoto = new EventEmitter<PhotoDeleteEvent>();
+  @Output() dismissOcrFeedback = new EventEmitter<string>();
+  @Output() confirmOcrReading = new EventEmitter<ConfirmOcrEvent>();
+  @Output() retryOcrWithOtherEngine = new EventEmitter<string>();
+  @Output() readingChange = new EventEmitter<ReadingFieldChangeEvent>();
+  @Output() readingBlur = new EventEmitter<string>();
+  @Output() saveAndNextStep = new EventEmitter<BillTableRow>();
+  @Output() copyPreviousReading = new EventEmitter<BillTableRow>();
+  @Output() quickAdjustReading = new EventEmitter<QuickAdjustEvent>();
+  @Output() confirmAnomaly = new EventEmitter<string>();
+  @Output() markRollover = new EventEmitter<string>();
+  @Output() openNoteEditor = new EventEmitter<NoteEditorOpenEvent>();
+  @Output() clearNote = new EventEmitter<string>();
+  @Output() applyQuickTag = new EventEmitter<QuickTagEvent>();
+  @Output() prevStep = new EventEmitter<void>();
+  @Output() nextStep = new EventEmitter<void>();
 }

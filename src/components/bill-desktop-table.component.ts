@@ -1,7 +1,18 @@
-import { Component, Input } from '@angular/core';
+import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { CommonModule, CurrencyPipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import type { BillCalculatorComponent } from './bill-calculator.component';
+import { MeterPhotoRecord, UtilityType } from '../models';
+import {
+  BillFieldStats,
+  BillTableRow,
+  NoteEditorOpenEvent,
+  PhotoCaptureEvent,
+  PhotoDeleteEvent,
+  PhotoViewerOpenEvent,
+  QuickJustifyEvent,
+  ReadingFieldChangeEvent,
+  ReadingPasteEvent
+} from './bill-subcomponents.types';
 
 @Component({
   selector: 'app-bill-desktop-table',
@@ -11,143 +22,143 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
               <div class="hidden md:block overflow-x-auto">
                 <table class="w-full text-left border-collapse text-sm">
                 <thead class="sticky top-0 z-20 shadow-md backdrop-blur-md transition-all border-b-2"
-                       [class]="calc.utilityType() === 'luz' 
+                       [class]="utilityType === 'luz' 
                          ? 'bg-slate-900/95 text-white border-amber-400' 
-                         : (calc.utilityType() === 'gas' 
+                         : (utilityType === 'gas' 
                            ? 'bg-slate-900/95 text-white border-orange-500' 
                            : 'bg-slate-900/95 text-white border-teal-400')">
                   <tr>
-                    <th (click)="calc.toggleSort('storeName')" class="p-3 font-bold uppercase text-[11px] tracking-wider w-28 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Loja">
+                    <th (click)="toggleSort.emit('storeName')" class="p-3 font-bold uppercase text-[11px] tracking-wider w-28 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Loja">
                       <div class="flex items-center justify-between gap-1">
                         <span>Loja</span>
-                        <span class="text-[10px]" [class.opacity-100]="calc.sortBy() === 'storeName' || calc.sortBy() === 'name'" [class.opacity-40]="calc.sortBy() !== 'storeName' && calc.sortBy() !== 'name'">
-                          {{ (calc.sortBy() === 'storeName' || calc.sortBy() === 'name') ? (calc.sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                        <span class="text-[10px]" [class.opacity-100]="sortBy === 'storeName' || sortBy === 'name'" [class.opacity-40]="sortBy !== 'storeName' && sortBy !== 'name'">
+                          {{ (sortBy === 'storeName' || sortBy === 'name') ? (sortDirection === 'asc' ? '▲' : '▼') : '↕' }}
                         </span>
                       </div>
                     </th>
-                    <th (click)="calc.toggleSort('prevReading')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-center w-28 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Leitura / Consumo Anterior">
+                    <th (click)="toggleSort.emit('prevReading')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-center w-28 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Leitura / Consumo Anterior">
                       <div class="flex items-center justify-center gap-1">
                         <span>Leit. / Cons. Ant.</span>
-                        <span class="text-[10px]" [class.opacity-100]="calc.sortBy() === 'prevReading' || calc.sortBy() === 'prevConsumption'" [class.opacity-40]="calc.sortBy() !== 'prevReading' && calc.sortBy() !== 'prevConsumption'">
-                          {{ (calc.sortBy() === 'prevReading' || calc.sortBy() === 'prevConsumption') ? (calc.sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                        <span class="text-[10px]" [class.opacity-100]="sortBy === 'prevReading' || sortBy === 'prevConsumption'" [class.opacity-40]="sortBy !== 'prevReading' && sortBy !== 'prevConsumption'">
+                          {{ (sortBy === 'prevReading' || sortBy === 'prevConsumption') ? (sortDirection === 'asc' ? '▲' : '▼') : '↕' }}
                         </span>
                       </div>
                     </th>
-                    <th (click)="calc.toggleSort('currentReading')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-right w-24 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Leitura Atual">
+                    <th (click)="toggleSort.emit('currentReading')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-right w-24 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Leitura Atual">
                       <div class="flex items-center justify-end gap-1">
                         <span>Leitura</span>
-                        <span class="text-[10px]" [class.opacity-100]="calc.sortBy() === 'currentReading'" [class.opacity-40]="calc.sortBy() !== 'currentReading'">
-                          {{ calc.sortBy() === 'currentReading' ? (calc.sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                        <span class="text-[10px]" [class.opacity-100]="sortBy === 'currentReading'" [class.opacity-40]="sortBy !== 'currentReading'">
+                          {{ sortBy === 'currentReading' ? (sortDirection === 'asc' ? '▲' : '▼') : '↕' }}
                         </span>
                       </div>
                     </th>
-                    @if (calc.utilityType() === 'luz') {
-                      <th (click)="calc.toggleSort('constant')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-center w-16 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Constante">
+                    @if (utilityType === 'luz') {
+                      <th (click)="toggleSort.emit('constant')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-center w-16 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Constante">
                         <div class="flex items-center justify-center gap-1">
                           <span>Const.</span>
-                          <span class="text-[10px]" [class.opacity-100]="calc.sortBy() === 'constant'" [class.opacity-40]="calc.sortBy() !== 'constant'">
-                            {{ calc.sortBy() === 'constant' ? (calc.sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                          <span class="text-[10px]" [class.opacity-100]="sortBy === 'constant'" [class.opacity-40]="sortBy !== 'constant'">
+                            {{ sortBy === 'constant' ? (sortDirection === 'asc' ? '▲' : '▼') : '↕' }}
                           </span>
                         </div>
                       </th>
                     }
-                    <th (click)="calc.toggleSort('virtual')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-right w-20 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Virtual">
+                    <th (click)="toggleSort.emit('virtual')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-right w-20 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Virtual">
                       <div class="flex items-center justify-end gap-1">
                         <span>Virtual</span>
-                        <span class="text-[10px]" [class.opacity-100]="calc.sortBy() === 'virtual'" [class.opacity-40]="calc.sortBy() !== 'virtual'">
-                          {{ calc.sortBy() === 'virtual' ? (calc.sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                        <span class="text-[10px]" [class.opacity-100]="sortBy === 'virtual'" [class.opacity-40]="sortBy !== 'virtual'">
+                          {{ sortBy === 'virtual' ? (sortDirection === 'asc' ? '▲' : '▼') : '↕' }}
                         </span>
                       </div>
                     </th>
-                    @if (calc.utilityType() === 'gas') {
-                       <th (click)="calc.toggleSort('adjustment')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-center w-16 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Ajuste Multiplicador">
+                    @if (utilityType === 'gas') {
+                       <th (click)="toggleSort.emit('adjustment')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-center w-16 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Ajuste Multiplicador">
                          <div class="flex items-center justify-center gap-1">
                            <span>Aj(x)</span>
-                           <span class="text-[10px]" [class.opacity-100]="calc.sortBy() === 'adjustment'" [class.opacity-40]="calc.sortBy() !== 'adjustment'">
-                             {{ calc.sortBy() === 'adjustment' ? (calc.sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                           <span class="text-[10px]" [class.opacity-100]="sortBy === 'adjustment'" [class.opacity-40]="sortBy !== 'adjustment'">
+                             {{ sortBy === 'adjustment' ? (sortDirection === 'asc' ? '▲' : '▼') : '↕' }}
                            </span>
                          </div>
                        </th>
-                       <th (click)="calc.toggleSort('adjustmentAdd')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-center w-20 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ajuste Adicional em R\$ (soma ao valor final a pagar)">
+                       <th (click)="toggleSort.emit('adjustmentAdd')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-center w-20 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ajuste Adicional em R$ (soma ao valor final a pagar)">
                          <div class="flex items-center justify-center gap-1">
-                           <span>Aj(+) R\$</span>
-                           <span class="text-[10px]" [class.opacity-100]="calc.sortBy() === 'adjustmentAdd'" [class.opacity-40]="calc.sortBy() !== 'adjustmentAdd'">
-                             {{ calc.sortBy() === 'adjustmentAdd' ? (calc.sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                           <span>Aj(+) R$</span>
+                           <span class="text-[10px]" [class.opacity-100]="sortBy === 'adjustmentAdd'" [class.opacity-40]="sortBy !== 'adjustmentAdd'">
+                             {{ sortBy === 'adjustmentAdd' ? (sortDirection === 'asc' ? '▲' : '▼') : '↕' }}
                            </span>
                          </div>
                        </th>
-                       <th (click)="calc.toggleSort('fcm')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-center w-16 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por FCM">
+                       <th (click)="toggleSort.emit('fcm')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-center w-16 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por FCM">
                          <div class="flex items-center justify-center gap-1">
                            <span>FCM</span>
-                           <span class="text-[10px]" [class.opacity-100]="calc.sortBy() === 'fcm'" [class.opacity-40]="calc.sortBy() !== 'fcm'">
-                             {{ calc.sortBy() === 'fcm' ? (calc.sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                           <span class="text-[10px]" [class.opacity-100]="sortBy === 'fcm'" [class.opacity-40]="sortBy !== 'fcm'">
+                             {{ sortBy === 'fcm' ? (sortDirection === 'asc' ? '▲' : '▼') : '↕' }}
                            </span>
                          </div>
                        </th>
                     } @else {
-                       <th (click)="calc.toggleSort('adjustment')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-center w-16 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Ajuste">
+                       <th (click)="toggleSort.emit('adjustment')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-center w-16 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Ajuste">
                          <div class="flex items-center justify-center gap-1">
                            <span>Ajuste</span>
-                           <span class="text-[10px]" [class.opacity-100]="calc.sortBy() === 'adjustment'" [class.opacity-40]="calc.sortBy() !== 'adjustment'">
-                             {{ calc.sortBy() === 'adjustment' ? (calc.sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                           <span class="text-[10px]" [class.opacity-100]="sortBy === 'adjustment'" [class.opacity-40]="sortBy !== 'adjustment'">
+                             {{ sortBy === 'adjustment' ? (sortDirection === 'asc' ? '▲' : '▼') : '↕' }}
                            </span>
                          </div>
                        </th>
                     }
-                    <th (click)="calc.toggleSort('consumption')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-right w-24 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Consumo">
+                    <th (click)="toggleSort.emit('consumption')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-right w-24 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Consumo">
                       <div class="flex items-center justify-end gap-1">
-                        <span>{{ calc.utilityType() === 'gas' ? 'Cons. Rateado' : 'Consumo' }}</span>
-                        <span class="text-[10px]" [class.opacity-100]="calc.sortBy() === 'consumption'" [class.opacity-40]="calc.sortBy() !== 'consumption'">
-                          {{ calc.sortBy() === 'consumption' ? (calc.sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                        <span>{{ utilityType === 'gas' ? 'Cons. Rateado' : 'Consumo' }}</span>
+                        <span class="text-[10px]" [class.opacity-100]="sortBy === 'consumption'" [class.opacity-40]="sortBy !== 'consumption'">
+                          {{ sortBy === 'consumption' ? (sortDirection === 'asc' ? '▲' : '▼') : '↕' }}
                         </span>
                       </div>
                     </th>
-                    <th (click)="calc.toggleSort('variation')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-right w-16 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Variação">
+                    <th (click)="toggleSort.emit('variation')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-right w-16 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Variação">
                       <div class="flex items-center justify-end gap-1">
                         <span>Var (%)</span>
-                        <span class="text-[10px]" [class.opacity-100]="calc.sortBy() === 'variation'" [class.opacity-40]="calc.sortBy() !== 'variation'">
-                          {{ calc.sortBy() === 'variation' ? (calc.sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                        <span class="text-[10px]" [class.opacity-100]="sortBy === 'variation'" [class.opacity-40]="sortBy !== 'variation'">
+                          {{ sortBy === 'variation' ? (sortDirection === 'asc' ? '▲' : '▼') : '↕' }}
                         </span>
                       </div>
                     </th>
-                    @if (calc.utilityType() === 'gas') {
-                      <th (click)="calc.toggleSort('fluxoCost')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-right w-24 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Fluxo">
+                    @if (utilityType === 'gas') {
+                      <th (click)="toggleSort.emit('fluxoCost')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-right w-24 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Fluxo">
                         <div class="flex items-center justify-end gap-1">
                           <span>Fluxo</span>
-                          <span class="text-[10px]" [class.opacity-100]="calc.sortBy() === 'fluxoCost'" [class.opacity-40]="calc.sortBy() !== 'fluxoCost'">
-                            {{ calc.sortBy() === 'fluxoCost' ? (calc.sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                          <span class="text-[10px]" [class.opacity-100]="sortBy === 'fluxoCost'" [class.opacity-40]="sortBy !== 'fluxoCost'">
+                            {{ sortBy === 'fluxoCost' ? (sortDirection === 'asc' ? '▲' : '▼') : '↕' }}
                           </span>
                         </div>
                       </th>
                     }
-                    <th (click)="calc.toggleSort('note')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-right w-24 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Observações de Campo">
+                    <th (click)="toggleSort.emit('note')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-right w-24 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Observações de Campo">
                       <div class="flex items-center justify-end gap-1">
                         <span>Obs. Campo</span>
-                        <span class="text-[10px]" [class.opacity-100]="calc.sortBy() === 'note'" [class.opacity-40]="calc.sortBy() !== 'note'">
-                          {{ calc.sortBy() === 'note' ? (calc.sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                        <span class="text-[10px]" [class.opacity-100]="sortBy === 'note'" [class.opacity-40]="sortBy !== 'note'">
+                          {{ sortBy === 'note' ? (sortDirection === 'asc' ? '▲' : '▼') : '↕' }}
                         </span>
                       </div>
                     </th>
-                    <th (click)="calc.toggleSort('hasPhoto')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-center w-24 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Foto do Medidor">
+                    <th (click)="toggleSort.emit('hasPhoto')" class="p-3 font-bold uppercase text-[11px] tracking-wider text-center w-24 border-r border-slate-800/80 cursor-pointer select-none hover:bg-slate-800/80 transition-colors" title="Ordenar por Foto do Medidor">
                       <div class="flex items-center justify-center gap-1">
                         <span>Foto Medidor</span>
-                        <span class="text-[10px]" [class.opacity-100]="calc.sortBy() === 'hasPhoto'" [class.opacity-40]="calc.sortBy() !== 'hasPhoto'">
-                          {{ calc.sortBy() === 'hasPhoto' ? (calc.sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                        <span class="text-[10px]" [class.opacity-100]="sortBy === 'hasPhoto'" [class.opacity-40]="sortBy !== 'hasPhoto'">
+                          {{ sortBy === 'hasPhoto' ? (sortDirection === 'asc' ? '▲' : '▼') : '↕' }}
                         </span>
                       </div>
                     </th>
-                    <th (click)="calc.toggleSort('cost')" class="p-3 font-black uppercase text-[11px] tracking-wider text-right w-28 bg-slate-950 text-emerald-400 cursor-pointer select-none hover:bg-slate-900 transition-colors border-l border-slate-800" title="Ordenar por Custo Total">
+                    <th (click)="toggleSort.emit('cost')" class="p-3 font-black uppercase text-[11px] tracking-wider text-right w-28 bg-slate-950 text-emerald-400 cursor-pointer select-none hover:bg-slate-900 transition-colors border-l border-slate-800" title="Ordenar por Custo Total">
                       <div class="flex items-center justify-end gap-1">
                         <span>Custo Total</span>
-                        <span class="text-[10px]" [class.opacity-100]="calc.sortBy() === 'cost'" [class.opacity-40]="calc.sortBy() !== 'cost'">
-                          {{ calc.sortBy() === 'cost' ? (calc.sortDirection() === 'asc' ? '▲' : '▼') : '↕' }}
+                        <span class="text-[10px]" [class.opacity-100]="sortBy === 'cost'" [class.opacity-40]="sortBy !== 'cost'">
+                          {{ sortBy === 'cost' ? (sortDirection === 'asc' ? '▲' : '▼') : '↕' }}
                         </span>
                       </div>
                     </th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100 dark:divide-slate-800/80 bg-white dark:bg-slate-900 transition-colors">
-                  @for (item of calc.filteredTableData(); track item.storeId) {
+                  @for (item of rows; track item.storeId) {
                     <tr [id]="'store-row-' + item.storeId" class="transition-colors group text-xs border-b border-slate-100 dark:border-slate-800/60"
                         [class.hover:bg-slate-50/90]="!item.validationAlert.hasAlert"
                         [class.dark:hover:bg-slate-800/60]="!item.validationAlert.hasAlert"
@@ -185,8 +196,8 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                               <span class="text-slate-500 dark:text-slate-400 font-medium">Ctr: {{ item.contrato }}</span>
                             }
                             <button type="button" 
-                              (click)="calc.toggleExcludeFromBill(item.storeId)" 
-                              [disabled]="!calc.canConfigure()"
+                              (click)="toggleExcludeFromBill.emit(item.storeId)" 
+                              [disabled]="!canConfigure"
                               [title]="item.excludedFromBill ? 'Esta loja está FORA DO SAP (seu consumo e custo vão para a Área Comum). Clique para incluir no SAP.' : 'Esta loja entra no Valor SAP. Clique para transferir seu valor para a Área Comum (Fora do SAP).'" 
                               class="text-[10px] font-bold px-1.5 py-0.5 rounded cursor-pointer flex items-center gap-1 transition-all border shadow-2xs disabled:opacity-60 disabled:cursor-default"
                               [class]="item.excludedFromBill 
@@ -194,9 +205,9 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                                 : 'bg-slate-50 dark:bg-slate-800 text-slate-500 hover:text-slate-700 dark:text-slate-400 border-slate-200 dark:border-slate-700'">
                               <span>{{ item.excludedFromBill ? '🚫 Fora do SAP' : '✓ No SAP' }}</span>
                             </button>
-                            @if (calc.authService.canConfigureBill()) {
+                            @if (canConfigureBill) {
                               <button type="button"
-                                (click)="calc.toggleHideFromTech(item.storeId)"
+                                (click)="toggleHideFromTech.emit(item.storeId)"
                                 [title]="item.hiddenFromTech ? 'Esta loja está OCULTA para o Técnico em Campo (aparece apenas para ADM / SAP). Clique para mostrar novamente ao técnico.' : 'Visível para o Técnico em Campo. Clique para ocultar do técnico sem excluir do rateio/SAP.'"
                                 class="text-[10px] font-bold px-1.5 py-0.5 rounded cursor-pointer flex items-center gap-1 transition-all border shadow-2xs"
                                 [class]="item.hiddenFromTech
@@ -205,7 +216,7 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                                 <span>{{ item.hiddenFromTech ? '🙈 Só ADM' : '👁️ Téc.' }}</span>
                               </button>
                             }
-                            <button type="button" (click)="calc.openStoreVoucher(item)" title="Gerar espelho do lojista" class="ml-auto text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer flex items-center gap-0.5"><span>📲</span><span>Espelho</span></button>
+                            <button type="button" (click)="openStoreVoucher.emit(item)" title="Gerar espelho do lojista" class="ml-auto text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer flex items-center gap-0.5"><span>📲</span><span>Espelho</span></button>
                           </div>
                       </td>
                       <td class="p-2.5 text-center font-mono border-r border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950">
@@ -213,9 +224,9 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                           {{ item.prevReading | number:'1.0-0' }}
                         </div>
                         <div class="text-[10px] font-sans font-semibold text-teal-700 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/60 px-1.5 py-0.5 rounded border border-teal-200 dark:border-teal-800/80 mt-1 inline-block" [title]="'Consumo faturado no mês anterior (' + (item.prevReadingMonth || 'mês anterior') + ')'">
-                          Ant: {{ item.prevConsumption | number:'1.0-2' }} {{ calc.getUnit() }}
+                          Ant: {{ item.prevConsumption | number:'1.0-2' }} {{ unit }}
                         </div>
-                        @if (item.prevReadingMonth && item.prevReadingMonth !== calc.getPreviousMonth(calc.selectedMonth()) && item.prevReading > 0) {
+                        @if (item.prevReadingMonth && item.prevReadingMonth !== prevMonth && item.prevReading > 0) {
                           <span class="block text-[9px] text-indigo-600 dark:text-indigo-400 font-bold font-sans mt-0.5" [title]="'Última leitura válida no histórico (' + item.prevReadingMonth + ')'">
                             Ref: {{ item.prevReadingMonth }}
                           </span>
@@ -227,11 +238,11 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                               step="0.0001" 
                               inputmode="decimal"
                               [ngModel]="item.currentReading" 
-                              (ngModelChange)="calc.updateDetailedReading(item.storeId, 'reading', \$event)" 
-                              (blur)="calc.onReadingBlur(item.storeId)"
-                              (keyup.enter)="calc.onReadingBlur(item.storeId)"
-                              (paste)="calc.onPasteCell(\$event, item.storeId, 'reading')" 
-                              [disabled]="!calc.canEdit()" 
+                              (ngModelChange)="readingChange.emit({ storeId: item.storeId, field: 'reading', value: $event })" 
+                              (blur)="readingBlur.emit(item.storeId)"
+                              (keyup.enter)="readingBlur.emit(item.storeId)"
+                              (paste)="pasteCell.emit({ event: $event, storeId: item.storeId, field: 'reading' })" 
+                              [disabled]="!canEdit" 
                               [id]="'reading-input-' + item.storeId"
                               class="w-full text-right bg-white dark:bg-slate-950 dark:text-white border-2 rounded-lg px-2 py-1 focus:ring-2 font-mono font-black tabular-nums transition-all text-xs"
                               [class.border-rose-500]="item.validationAlert.severity === 'critical'"
@@ -247,7 +258,7 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
 
                             @if (item.validationAlert.hasAlert) {
                               <button type="button" 
-                                (click)="calc.openAnomalyModal(item)"
+                                (click)="openAnomalyModal.emit(item)"
                                 class="text-[9px] font-bold px-1.5 py-0.5 rounded cursor-pointer flex items-center gap-1 shadow-2xs transition-all w-fit self-end"
                                 [class]="item.anomalyConfirmed 
                                   ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
@@ -263,25 +274,25 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                                 <span class="text-[9px] font-bold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/70 px-1.5 py-0.2 rounded border border-amber-300 dark:border-amber-800 truncate" [title]="'Justificada: ' + (item.justificationReason || '')">
                                   ⚖️ {{ item.justificationReason || 'Justificada' }}
                                 </span>
-                                @if (calc.canEdit()) {
+                                @if (canEdit) {
                                   <button type="button" 
-                                    (click)="calc.openQuickJustifyModal(item)"
+                                    (click)="openQuickJustifyModal.emit(item)"
                                     class="text-[9px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
                                     title="Alterar justificativa">✏️</button>
                                 }
                               </div>
-                            } @else if (calc.canEdit() && !item.isRead) {
+                            } @else if (canEdit && !item.isRead) {
                               <div class="flex items-center gap-1 justify-end mt-0.5">
                                 @if (item.isFrequentZero) {
                                   <button type="button" 
-                                    (click)="quickJustifyStore(item.storeId, item.learnedReason || 'Loja Fechada / Vaga', true)"
+                                    (click)="quickJustifyStore.emit({ storeId: item.storeId, reason: item.learnedReason || 'Loja Fechada / Vaga', replicatePrevReading: true })"
                                     class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/80 dark:hover:bg-amber-900 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 cursor-pointer shadow-2xs flex items-center gap-0.5"
                                     [title]="'Preenchimento rápido: ' + item.consecutiveZeroMonths + ' meses com consumo zero (' + item.learnedReason + ')'">
                                     <span>⚡ 0</span>
                                   </button>
                                 }
                                 <button type="button"
-                                  (click)="calc.openQuickJustifyModal(item)"
+                                  (click)="openQuickJustifyModal.emit(item)"
                                   class="text-[9px] font-medium px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-600 cursor-pointer"
                                   title="Justificar loja não lida (ex: fechada/em reforma)">
                                   <span>⚖️ Justificar</span>
@@ -291,32 +302,32 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                          </div>
                       </td>
                       
-                      @if (calc.utilityType() === 'luz') {
+                      @if (utilityType === 'luz') {
                           <td class="p-3 border-r border-slate-100 dark:border-slate-800">
-                              <input type="number" step="0.0001" [ngModel]="item.constant" (ngModelChange)="calc.updateDetailedReading(item.storeId, 'constant', \$event)" (paste)="calc.onPasteCell(\$event, item.storeId, 'constant')" [disabled]="!calc.canConfigure()" class="w-full text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 text-slate-600 dark:text-slate-300 disabled:opacity-50" placeholder="1">
+                              <input type="number" step="0.0001" [ngModel]="item.constant" (ngModelChange)="readingChange.emit({ storeId: item.storeId, field: 'constant', value: $event })" (paste)="pasteCell.emit({ event: $event, storeId: item.storeId, field: 'constant' })" [disabled]="!canConfigure" class="w-full text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 text-slate-600 dark:text-slate-300 disabled:opacity-50" placeholder="1">
                           </td>
                       }
                       <td class="p-3 border-r border-slate-100 dark:border-slate-800">
-                          <input type="number" step="0.0001" [ngModel]="item.virtual" (ngModelChange)="calc.updateDetailedReading(item.storeId, 'virtual', \$event)" (paste)="calc.onPasteCell(\$event, item.storeId, 'virtual')" [disabled]="!calc.canConfigure()" class="w-full text-right bg-transparent border border-slate-200 dark:border-slate-700 rounded px-1 py-0.5 focus:border-teal-500 text-blue-600 dark:text-blue-400 placeholder-slate-300 disabled:border-none disabled:text-slate-400 font-semibold" placeholder="—" title="Consumo Virtual (override manual - deixe vazio para usar medição normal)">
+                          <input type="number" step="0.0001" [ngModel]="item.virtual" (ngModelChange)="readingChange.emit({ storeId: item.storeId, field: 'virtual', value: $event })" (paste)="pasteCell.emit({ event: $event, storeId: item.storeId, field: 'virtual' })" [disabled]="!canConfigure" class="w-full text-right bg-transparent border border-slate-200 dark:border-slate-700 rounded px-1 py-0.5 focus:border-teal-500 text-blue-600 dark:text-blue-400 placeholder-slate-300 disabled:border-none disabled:text-slate-400 font-semibold" placeholder="—" title="Consumo Virtual (override manual - deixe vazio para usar medição normal)">
                       </td>
 
-                      @if (calc.utilityType() === 'gas') {
+                      @if (utilityType === 'gas') {
                           <td class="p-3 border-r border-slate-100 dark:border-slate-800">
-                              <input type="number" step="0.000001" [ngModel]="item.adjustment" (ngModelChange)="calc.updateDetailedReading(item.storeId, 'adjustment', \$event)" (paste)="calc.onPasteCell(\$event, item.storeId, 'adjustment')" [disabled]="!calc.canConfigure()" class="w-full text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 text-slate-500 dark:text-slate-400 disabled:opacity-50" placeholder="1.347">
+                              <input type="number" step="0.000001" [ngModel]="item.adjustment" (ngModelChange)="readingChange.emit({ storeId: item.storeId, field: 'adjustment', value: $event })" (paste)="pasteCell.emit({ event: $event, storeId: item.storeId, field: 'adjustment' })" [disabled]="!canConfigure" class="w-full text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 text-slate-500 dark:text-slate-400 disabled:opacity-50" placeholder="1.347">
                           </td>
                           <td class="p-3 border-r border-slate-100 dark:border-slate-800">
-                              <input type="number" step="0.01" [ngModel]="item.adjustmentAdd" (ngModelChange)="calc.updateDetailedReading(item.storeId, 'adjustmentAdd', \$event)" (paste)="calc.onPasteCell(\$event, item.storeId, 'adjustmentAdd')" [disabled]="!calc.canConfigure()" class="w-full text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 text-slate-600 dark:text-slate-300 disabled:opacity-50 font-mono" placeholder="0.00" title="Ajuste Adicional em R\$ (soma ao valor final a pagar)">
+                              <input type="number" step="0.01" [ngModel]="item.adjustmentAdd" (ngModelChange)="readingChange.emit({ storeId: item.storeId, field: 'adjustmentAdd', value: $event })" (paste)="pasteCell.emit({ event: $event, storeId: item.storeId, field: 'adjustmentAdd' })" [disabled]="!canConfigure" class="w-full text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 text-slate-600 dark:text-slate-300 disabled:opacity-50 font-mono" placeholder="0.00" title="Ajuste Adicional em R$ (soma ao valor final a pagar)">
                           </td>
                            <td class="p-3 border-r border-slate-100 dark:border-slate-800">
-                              <input type="number" step="0.000001" [ngModel]="item.fcm" (ngModelChange)="calc.updateDetailedReading(item.storeId, 'fcm', \$event)" (paste)="calc.onPasteCell(\$event, item.storeId, 'fcm')" [disabled]="!calc.canConfigure()" class="w-full text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 text-slate-500 dark:text-slate-400 disabled:opacity-50" placeholder="1.0727">
+                              <input type="number" step="0.000001" [ngModel]="item.fcm" (ngModelChange)="readingChange.emit({ storeId: item.storeId, field: 'fcm', value: $event })" (paste)="pasteCell.emit({ event: $event, storeId: item.storeId, field: 'fcm' })" [disabled]="!canConfigure" class="w-full text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 text-slate-500 dark:text-slate-400 disabled:opacity-50" placeholder="1.0727">
                           </td>
                       } @else {
                           <td class="p-3 border-r border-slate-100 dark:border-slate-800">
-                            <input type="number" step="0.000001" [ngModel]="item.adjustment" (ngModelChange)="calc.updateDetailedReading(item.storeId, 'adjustment', \$event)" (paste)="calc.onPasteCell(\$event, item.storeId, 'adjustment')" [disabled]="!calc.canConfigure()" class="w-full text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 text-slate-500 dark:text-slate-400 disabled:opacity-50" placeholder="1">
+                            <input type="number" step="0.000001" [ngModel]="item.adjustment" (ngModelChange)="readingChange.emit({ storeId: item.storeId, field: 'adjustment', value: $event })" (paste)="pasteCell.emit({ event: $event, storeId: item.storeId, field: 'adjustment' })" [disabled]="!canConfigure" class="w-full text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 text-slate-500 dark:text-slate-400 disabled:opacity-50" placeholder="1">
                           </td>
                       }
                       <td class="p-3 text-right font-mono border-r border-slate-100 dark:border-slate-800">
-                        <div class="font-black text-slate-800 dark:text-slate-100 text-sm tabular-nums" [title]="'Consumo atual faturado: ' + (item.consumption | number:'1.0-4') + ' ' + calc.getUnit() + (item.prevConsumption ? ' (Mês anterior: ' + (item.prevConsumption | number:'1.0-2') + ' ' + calc.getUnit() + ')' : '')">
+                        <div class="font-black text-slate-800 dark:text-slate-100 text-sm tabular-nums" [title]="'Consumo atual faturado: ' + (item.consumption | number:'1.0-4') + ' ' + unit + (item.prevConsumption ? ' (Mês anterior: ' + (item.prevConsumption | number:'1.0-2') + ' ' + unit + ')' : '')">
                           {{ item.consumption | number:'1.0-4' }}
                         </div>
                         <div class="text-[10px] text-slate-400 dark:text-slate-500 font-sans font-medium mt-0.5" title="Consumo registrado no mês anterior">
@@ -338,9 +349,9 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                           <span class="text-slate-400 dark:text-slate-500 font-mono text-[10px]">0,0%</span>
                         }
                       </td>
-                      @if (calc.utilityType() === 'gas') {
+                      @if (utilityType === 'gas') {
                           <td class="p-3 border-r border-slate-100 dark:border-slate-800">
-                              <input type="number" step="0.01" [ngModel]="item.fluxoCost" (ngModelChange)="calc.updateDetailedReading(item.storeId, 'fluxoCost', \$event)" (paste)="calc.onPasteCell(\$event, item.storeId, 'fluxoCost')" [disabled]="!calc.canConfigure()" class="w-full text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 text-slate-600 dark:text-slate-300 disabled:opacity-50" placeholder="0.00">
+                              <input type="number" step="0.01" [ngModel]="item.fluxoCost" (ngModelChange)="readingChange.emit({ storeId: item.storeId, field: 'fluxoCost', value: $event })" (paste)="pasteCell.emit({ event: $event, storeId: item.storeId, field: 'fluxoCost' })" [disabled]="!canConfigure" class="w-full text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-teal-500 text-slate-600 dark:text-slate-300 disabled:opacity-50" placeholder="0.00">
                           </td>
                       }
                       <!-- Observação de Campo Desktop -->
@@ -350,38 +361,38 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                             {{ item.note }}
                           </span>
                         } @else {
-                          <button (click)="calc.openNoteEditor(item.storeId)" class="text-[10px] text-slate-400 hover:text-teal-600 dark:hover:text-teal-400 transition-colors cursor-pointer">
+                          <button (click)="openNoteEditor.emit({ storeId: item.storeId })" class="text-[10px] text-slate-400 hover:text-teal-600 dark:hover:text-teal-400 transition-colors cursor-pointer">
                             + nota
                           </button>
                         }
                       </td>
                       <!-- Foto do Medidor Desktop -->
                       <td class="p-3 border-r border-slate-100 dark:border-slate-800 text-center">
-                        @if (calc.isReadingOcr() === item.storeId) {
+                        @if (isReadingOcr === item.storeId) {
                           <span class="inline-flex items-center gap-1 text-[10px] text-indigo-700 dark:text-indigo-300 font-bold animate-pulse">
                             <span class="animate-spin text-xs">⚡</span>
                             <span>Lendo IA...</span>
                           </span>
-                        } @else if (calc.meterPhotos()[item.storeId]) {
+                        } @else if (meterPhotos[item.storeId]) {
                           <div class="inline-flex items-center gap-1">
                             <button type="button" 
-                              (click)="calc.openPhotoViewer(item.storeId)" 
+                              (click)="openPhotoViewer.emit({ storeId: item.storeId })" 
                               class="inline-flex items-center gap-1 px-2 py-0.5 bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 text-teal-800 dark:text-teal-300 border border-teal-200 dark:border-teal-800 rounded text-[10px] font-bold transition-all cursor-pointer shadow-2xs">
                               <span>📷 Foto</span>
-                              @if (calc.meterPhotos()[item.storeId].synced) {
+                              @if (meterPhotos[item.storeId].synced) {
                                 <span class="text-[9px] text-teal-600 dark:text-teal-400" title="Foto sincronizada na nuvem com Supabase">☁️</span>
                               } @else {
                                 <span class="text-[9px] text-amber-500" title="Salva localmente no IndexedDB, pendente envio para nuvem">⏳</span>
                               }
                             </button>
                             <button type="button" 
-                              (click)="runOcrOnPhoto(item.storeId)" 
+                              (click)="runOcr.emit(item.storeId)" 
                               class="inline-flex items-center px-1.5 py-0.5 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded text-[9px] font-bold transition-all cursor-pointer shadow-2xs"
                               title="Ler visor com IA (Groq Qwen ou Gemini)">
                               <span>⚡</span>
                             </button>
                             <button type="button" 
-                              (click)="confirmDeletePhoto(item.storeId, item.storeName)" 
+                              (click)="deletePhoto.emit({ storeId: item.storeId, storeName: item.storeName })" 
                               class="p-0.5 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer text-[10px]"
                               title="Excluir foto do medidor">
                               <span>🗑️</span>
@@ -393,22 +404,22 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                             <input type="file" 
                               accept="image/*" 
                               capture="environment" 
-                              (change)="calc.onPhotoCaptured(\$event, item.storeId, item.storeName, item.luc, item.currentReading)" 
+                              (change)="photoCaptured.emit({ event: $event, storeId: item.storeId, storeName: item.storeName, luc: item.luc, currentReading: item.currentReading })" 
                               class="hidden">
                           </label>
                         }
                       </td>
                       <td class="p-3 text-right font-mono font-black tabular-nums text-sm bg-slate-50/70 dark:bg-slate-950/50 border-l border-slate-100 dark:border-slate-800"
-                          [class.text-amber-500]="calc.utilityType() === 'luz'"
-                          [class.text-orange-500]="calc.utilityType() === 'gas'"
-                          [class.text-teal-700]="calc.utilityType() === 'agua'"
-                          [class.dark:text-teal-400]="calc.utilityType() === 'agua'">
+                          [class.text-amber-500]="utilityType === 'luz'"
+                          [class.text-orange-500]="utilityType === 'gas'"
+                          [class.text-teal-700]="utilityType === 'agua'"
+                          [class.dark:text-teal-400]="utilityType === 'agua'">
                         @if (item.excludedFromBill) {
                           <span class="text-amber-600 dark:text-amber-400 block line-through opacity-60 text-[10px]">
                             {{ item.originalCost | currency:'BRL' }}
                           </span>
                           <span class="text-amber-700 dark:text-amber-300 font-extrabold text-xs block">
-                            R\$ 0,00
+                            R$ 0,00
                           </span>
                           <span class="text-[9px] text-amber-600 dark:text-amber-400 font-bold uppercase tracking-wider block">
                             Fora do SAP (Área Comum)
@@ -424,28 +435,28 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                       </td>
                     </tr>
                   }
-                  @if (calc.filteredTableData().length === 0) {
+                  @if (rows.length === 0) {
                     <tr>
                       <td colspan="15" class="p-10 text-center text-slate-400 text-xs">
-                        @if (calc.statusFilter() === 'prev_missing') {
+                        @if (statusFilter === 'prev_missing') {
                           <div class="py-6 space-y-2 max-w-md mx-auto">
                             <div class="text-4xl">✨</div>
                             <p class="font-black text-emerald-600 dark:text-emerald-400 text-sm">Todas as lojas do mês anterior já foram lidas!</p>
                             <p class="text-slate-500 dark:text-slate-400 text-xs">
-                              Parabéns! Nenhuma loja que tinha medição em <strong>{{ calc.getPreviousMonth(calc.selectedMonth()) }}</strong> ficou para trás neste mês.
+                              Parabéns! Nenhuma loja que tinha medição em <strong>{{ prevMonth }}</strong> ficou para trás neste mês.
                             </p>
-                            <button type="button" (click)="calc.statusFilter.set('all')" class="mt-2 px-3.5 py-1.5 bg-slate-900 dark:bg-slate-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-xs">
+                            <button type="button" (click)="resetStatusFilter.emit()" class="mt-2 px-3.5 py-1.5 bg-slate-900 dark:bg-slate-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-xs">
                               Ver Todas as Lojas
                             </button>
                           </div>
-                        } @else if (calc.searchQuery()) {
+                        } @else if (searchQuery) {
                           Nenhuma loja encontrada para o termo pesquisado.
-                        } @else if (!calc.hasMonthlyListForSelectedMonth()) {
+                        } @else if (!hasMonthlyListForSelectedMonth) {
                           <div class="py-4 space-y-2 max-w-md mx-auto">
                             <div class="text-3xl">📋</div>
-                            <p class="font-bold text-slate-700 dark:text-slate-200 text-sm">Mês {{ calc.selectedMonth() }} em branco</p>
+                            <p class="font-bold text-slate-700 dark:text-slate-200 text-sm">Mês {{ selectedMonth }} em branco</p>
                             <p class="text-slate-400 text-xs">
-                              Nenhuma lista de lojas foi importada para <strong>{{ calc.selectedMonth() }}</strong>.
+                              Nenhuma lista de lojas foi importada para <strong>{{ selectedMonth }}</strong>.
                               Os meses sem importação permanecem em branco.
                             </p>
                             <a href="#stores" class="inline-block mt-2 px-3.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded text-xs font-bold transition-colors">
@@ -466,16 +477,16 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                       <div class="flex items-center justify-between">
                         <span class="text-[11px] uppercase tracking-wider text-slate-400 font-sans">Totais:</span>
                         <span class="text-xs text-slate-200 font-sans font-bold">
-                          {{ calc.filteredTableData().length }} lojas ({{ calc.fieldStats().completed }} lidas)
+                          {{ rows.length }} lojas ({{ fieldStats.completed }} lidas)
                         </span>
                       </div>
                     </td>
                     <td class="p-3 text-right border-r border-slate-800 text-slate-400 text-[11px]">—</td>
-                    @if (calc.utilityType() === 'luz') {
+                    @if (utilityType === 'luz') {
                       <td class="p-3 border-r border-slate-800 text-center text-slate-500 text-[10px]">—</td>
                     }
                     <td class="p-3 border-r border-slate-800 text-center text-slate-500 text-[10px]">—</td>
-                    @if (calc.utilityType() === 'gas') {
+                    @if (utilityType === 'gas') {
                       <td class="p-3 border-r border-slate-800 text-center text-slate-500 text-[10px]">—</td>
                       <td class="p-3 border-r border-slate-800 text-center text-slate-500 text-[10px]">—</td>
                       <td class="p-3 border-r border-slate-800 text-center text-slate-500 text-[10px]">—</td>
@@ -483,19 +494,19 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                       <td class="p-3 border-r border-slate-800 text-center text-slate-500 text-[10px]">—</td>
                     }
                     <td class="p-3 text-right font-black border-r border-slate-800 text-slate-100 tabular-nums">
-                      {{ calc.totalDistributedConsumption() | number:'1.0-4' }}
+                      {{ totalDistributedConsumption | number:'1.0-4' }}
                     </td>
                     <td class="p-3 text-right border-r border-slate-800 text-slate-500 text-[10px]">—</td>
-                    @if (calc.utilityType() === 'gas') {
+                    @if (utilityType === 'gas') {
                       <td class="p-3 border-r border-slate-800 text-center text-slate-500 text-[10px]">—</td>
                     }
                     <td class="p-3 border-r border-slate-800 text-center text-slate-500 text-[10px]">—</td>
                     <td class="p-3 border-r border-slate-800 text-center text-slate-500 text-[10px]">—</td>
                     <td class="p-3 text-right font-black tabular-nums text-sm border-l border-slate-800"
-                        [class.text-amber-400]="calc.utilityType() === 'luz'"
-                        [class.text-orange-400]="calc.utilityType() === 'gas'"
-                        [class.text-teal-300]="calc.utilityType() === 'agua'">
-                      {{ calc.totalDistributedCost() | currency:'BRL' }}
+                        [class.text-amber-400]="utilityType === 'luz'"
+                        [class.text-orange-400]="utilityType === 'gas'"
+                        [class.text-teal-300]="utilityType === 'agua'">
+                      {{ totalDistributedCost | currency:'BRL' }}
                     </td>
                   </tr>
                 </tfoot>
@@ -504,5 +515,39 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
   `
 })
 export class BillDesktopTableComponent {
-  @Input({ required: true }) calc!: BillCalculatorComponent;
+  @Input({ required: true }) utilityType: UtilityType = 'luz';
+  @Input({ required: true }) unit = 'kWh';
+  @Input({ required: true }) selectedMonth = '';
+  @Input({ required: true }) prevMonth = '';
+  @Input({ required: true }) rows: BillTableRow[] = [];
+  @Input({ required: true }) fieldStats: BillFieldStats = { total: 0, completed: 0, pending: 0, alerts: 0, progressPct: 0 };
+  @Input({ required: true }) sortBy = 'route';
+  @Input({ required: true }) sortDirection: 'asc' | 'desc' = 'asc';
+  @Input({ required: true }) statusFilter = 'all';
+  @Input({ required: true }) searchQuery = '';
+  @Input({ required: true }) hasMonthlyListForSelectedMonth = true;
+  @Input({ required: true }) canEdit = false;
+  @Input({ required: true }) canConfigure = false;
+  @Input({ required: true }) canConfigureBill = false;
+  @Input({ required: true }) totalDistributedConsumption = 0;
+  @Input({ required: true }) totalDistributedCost = 0;
+  @Input({ required: true }) isReadingOcr: string | null = null;
+  @Input({ required: true }) meterPhotos: Record<string, MeterPhotoRecord> = {};
+
+  @Output() toggleSort = new EventEmitter<string>();
+  @Output() readingChange = new EventEmitter<ReadingFieldChangeEvent>();
+  @Output() readingBlur = new EventEmitter<string>();
+  @Output() pasteCell = new EventEmitter<ReadingPasteEvent>();
+  @Output() toggleExcludeFromBill = new EventEmitter<string>();
+  @Output() toggleHideFromTech = new EventEmitter<string>();
+  @Output() openStoreVoucher = new EventEmitter<BillTableRow>();
+  @Output() openAnomalyModal = new EventEmitter<BillTableRow>();
+  @Output() openQuickJustifyModal = new EventEmitter<BillTableRow>();
+  @Output() quickJustifyStore = new EventEmitter<QuickJustifyEvent>();
+  @Output() openNoteEditor = new EventEmitter<NoteEditorOpenEvent>();
+  @Output() openPhotoViewer = new EventEmitter<PhotoViewerOpenEvent>();
+  @Output() runOcr = new EventEmitter<string>();
+  @Output() deletePhoto = new EventEmitter<PhotoDeleteEvent>();
+  @Output() photoCaptured = new EventEmitter<PhotoCaptureEvent>();
+  @Output() resetStatusFilter = new EventEmitter<void>();
 }

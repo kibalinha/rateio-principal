@@ -1,7 +1,19 @@
-import { Component, Input } from '@angular/core';
+import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { CommonModule, CurrencyPipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import type { BillCalculatorComponent } from './bill-calculator.component';
+import { MeterPhotoRecord, OcrPendingConfirmation } from '../models';
+import {
+  BillTableRow,
+  ConfirmOcrEvent,
+  NoteEditorOpenEvent,
+  OcrFeedbackItem,
+  PhotoCaptureEvent,
+  PhotoDeleteEvent,
+  PhotoViewerOpenEvent,
+  QuickJustifyEvent,
+  QuickTagEvent,
+  ReadingFieldChangeEvent
+} from './bill-subcomponents.types';
 
 @Component({
   selector: 'app-bill-mobile-cards',
@@ -9,7 +21,7 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
   imports: [CommonModule, FormsModule, CurrencyPipe, DecimalPipe],
   template: `
                 <div class="flex flex-col divide-y divide-slate-200 dark:divide-slate-800 bg-slate-100 dark:bg-slate-950">
-                  @for (item of calc.filteredTableData(); track item.storeId) {
+                  @for (item of rows; track item.storeId) {
                      <div [id]="'store-card-' + item.storeId" class="p-4 bg-white dark:bg-slate-900 transition-colors"
                           [class.border-l-4]="true"
                           [class.border-l-rose-500]="item.validationAlert.severity === 'critical'"
@@ -36,7 +48,7 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                                   </span>
                                 }
                                 <button type="button" 
-                                  (click)="calc.toggleExcludeFromBill(item.storeId)" 
+                                  (click)="toggleExcludeFromBill.emit(item.storeId)" 
                                   [title]="item.excludedFromBill ? 'Esta loja está FORA DO SAP (seu consumo e custo vão para a Área Comum). Clique para incluir no SAP.' : 'Esta loja entra no Valor SAP. Clique para transferir seu valor para a Área Comum (Fora do SAP).'"
                                   class="text-[10px] font-bold px-2 py-0.5 rounded-md cursor-pointer flex items-center gap-1 transition-all border shadow-2xs"
                                   [class]="item.excludedFromBill 
@@ -89,8 +101,8 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                            <div class="flex flex-col bg-slate-50 dark:bg-slate-800/80 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700">
                               <label class="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-400 tracking-wider">Leitura Anterior</label>
                               <div class="text-slate-700 dark:text-slate-200 font-mono text-lg font-bold mt-0.5">
-                                 {{ item.prevReading | number:'1.0-0' }} <span class="text-xs font-normal text-slate-400">{{ calc.getUnit() }}</span>
-                                 @if (item.prevReadingMonth && item.prevReadingMonth !== calc.getPreviousMonth(calc.selectedMonth()) && item.prevReading > 0) {
+                                 {{ item.prevReading | number:'1.0-0' }} <span class="text-xs font-normal text-slate-400">{{ unit }}</span>
+                                 @if (item.prevReadingMonth && item.prevReadingMonth !== prevMonth && item.prevReading > 0) {
                                    <span class="text-[10px] text-teal-600 dark:text-teal-400 font-bold ml-1">({{ item.prevReadingMonth }})</span>
                                  }
                               </div>
@@ -100,7 +112,7 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                            <div class="flex flex-col">
                               <div class="flex items-center justify-between">
                                 <label class="text-[10px] uppercase font-bold text-teal-700 dark:text-teal-400 tracking-wider">Leitura Atual</label>
-                                @if (calc.isReadingOcr() === item.storeId) {
+                                @if (isReadingOcr === item.storeId) {
                                   <span class="text-[9px] bg-indigo-100 dark:bg-indigo-900/60 text-indigo-800 dark:text-indigo-200 px-1.5 py-0.2 rounded-full font-bold flex items-center gap-1 animate-pulse">
                                     <span class="animate-spin text-[10px]">⚡</span>
                                     <span>Lendo...</span>
@@ -109,30 +121,30 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                               </div>
 
                               <!-- Indicador OCR Ativo no Card -->
-                              @if (calc.isReadingOcr() === item.storeId) {
+                              @if (isReadingOcr === item.storeId) {
                                 <div class="mt-1 p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800 text-indigo-900 dark:text-indigo-200 text-[11px] font-bold flex items-center justify-between gap-1.5 animate-pulse">
                                   <span class="flex items-center gap-1">
                                     <span>⚡</span>
-                                    <span>{{ ocrCurrentModelLabel() }} lendo foto...</span>
+                                    <span>{{ ocrCurrentModelLabel }} lendo foto...</span>
                                   </span>
                                   <span class="text-[9px] bg-indigo-200 dark:bg-indigo-800 px-1 rounded">OCR</span>
                                 </div>
                               }
 
                               <!-- Feedback OCR no Card -->
-                              @if (ocrFeedback()[item.storeId]; as fb) {
+                              @if (ocrFeedback[item.storeId]; as fb) {
                                 <div class="mt-1 p-1.5 rounded-lg text-[11px] flex items-center justify-between gap-1 transition-all"
                                      [class]="fb.success ? 'bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 text-emerald-950 dark:text-emerald-100' : 'bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-950 dark:text-amber-100'">
                                   <div class="flex items-center gap-1 truncate">
                                     <span>{{ fb.success ? '🤖✓' : '🤖⚠️' }}</span>
                                     <span class="font-bold truncate">{{ fb.message }}</span>
                                   </div>
-                                  <button (click)="dismissOcrFeedback(item.storeId)" class="p-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-white font-bold cursor-pointer shrink-0">✕</button>
+                                  <button (click)="dismissOcrFeedback.emit(item.storeId)" class="p-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-white font-bold cursor-pointer shrink-0">✕</button>
                                 </div>
                               }
 
                               <!-- Conferência da leitura sugerida pela IA -->
-                              @if (ocrPending()[item.storeId]; as pend) {
+                              @if (ocrPending[item.storeId]; as pend) {
                                 <div class="mt-1 p-2 rounded-lg border-2 border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-950/60 text-[11px] space-y-1.5">
                                   <p class="font-bold text-indigo-900 dark:text-indigo-100">
                                     🤖 IA leu <span class="font-mono text-sm">{{ pend.ocrValue }}</span> — confere com a foto?
@@ -150,11 +162,11 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                                         <span>Motores de IA divergiram: toque no valor correto:</span>
                                       </p>
                                       <div class="grid grid-cols-2 gap-1.5">
-                                        <button type="button" (click)="calc.updateDetailedReading(item.storeId, 'reading', pend.dualCheck.qwenValue); confirmOcrReading(item.storeId, pend.dualCheck.qwenValue)"
+                                        <button type="button" (click)="readingChange.emit({ storeId: item.storeId, field: 'reading', value: pend.dualCheck.qwenValue }); confirmOcrReading.emit({ storeId: item.storeId, value: pend.dualCheck.qwenValue })"
                                           class="py-1 px-1.5 rounded-md bg-white dark:bg-slate-900 border border-indigo-300 dark:border-indigo-700 font-mono font-bold text-xs hover:bg-indigo-50 dark:hover:bg-indigo-950/50 cursor-pointer text-indigo-700 dark:text-indigo-300">
                                           ⚡ Qwen: {{ pend.dualCheck.qwenValue }}
                                         </button>
-                                        <button type="button" (click)="calc.updateDetailedReading(item.storeId, 'reading', pend.dualCheck.geminiValue); confirmOcrReading(item.storeId, pend.dualCheck.geminiValue)"
+                                        <button type="button" (click)="readingChange.emit({ storeId: item.storeId, field: 'reading', value: pend.dualCheck.geminiValue }); confirmOcrReading.emit({ storeId: item.storeId, value: pend.dualCheck.geminiValue })"
                                           class="py-1 px-1.5 rounded-md bg-white dark:bg-slate-900 border border-teal-300 dark:border-teal-700 font-mono font-bold text-xs hover:bg-teal-50 dark:hover:bg-teal-950/50 cursor-pointer text-teal-700 dark:text-teal-300">
                                           🤖 Gemini: {{ pend.dualCheck.geminiValue }}
                                         </button>
@@ -165,15 +177,15 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                                     <div class="p-1.5 rounded-md bg-rose-100 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-100 font-semibold">
                                       <p>{{ item.validationAlert.title }}</p>
                                       <p class="font-normal mt-0.5">{{ item.validationAlert.message }}</p>
-                                      <button type="button" (click)="retryOcrWithOtherEngine(item.storeId)"
-                                        [disabled]="calc.isReadingOcr() === item.storeId"
+                                      <button type="button" (click)="retryOcrWithOtherEngine.emit(item.storeId)"
+                                        [disabled]="isReadingOcr === item.storeId"
                                         class="mt-1 w-full py-1 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold cursor-pointer">
                                         🔄 Reler com {{ pend.provider === 'qwen' ? 'Gemini' : 'Qwen' }}
                                       </button>
                                     </div>
                                   }
-                                  <button type="button" (click)="confirmOcrReading(item.storeId, item.currentReading)"
-                                    [disabled]="!calc.canEdit()"
+                                  <button type="button" (click)="confirmOcrReading.emit({ storeId: item.storeId, value: item.currentReading })"
+                                    [disabled]="!canEdit"
                                     class="w-full py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold cursor-pointer">
                                     ✓ Confirmar leitura
                                   </button>
@@ -185,10 +197,10 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                                    inputmode="decimal"
                                    step="0.0001"
                                    [ngModel]="item.currentReading" 
-                                   (ngModelChange)="calc.updateDetailedReading(item.storeId, 'reading', \$event)"
-                                   (blur)="calc.onReadingBlur(item.storeId)"
-                                   (keyup.enter)="calc.onReadingBlur(item.storeId)"
-                                   [disabled]="!calc.canEdit()"
+                                   (ngModelChange)="readingChange.emit({ storeId: item.storeId, field: 'reading', value: $event })"
+                                   (blur)="readingBlur.emit(item.storeId)"
+                                   (keyup.enter)="readingBlur.emit(item.storeId)"
+                                   [disabled]="!canEdit"
                                    [id]="'reading-card-input-' + item.storeId"
                                    class="w-full text-right text-xl font-mono p-2.5 border-2 rounded-xl focus:ring-2 font-bold bg-white dark:bg-slate-950 text-slate-900 dark:text-white disabled:bg-slate-100 dark:disabled:bg-slate-800 transition-colors"
                                    [class.border-rose-500]="item.validationAlert.severity === 'critical'"
@@ -215,26 +227,26 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                                 <span class="text-[11px] text-amber-700 dark:text-amber-300 font-medium">{{ item.justificationReason || 'Sem consumo no mês' }}</span>
                               </div>
                             </div>
-                            @if (calc.canEdit()) {
+                            @if (canEdit) {
                               <button type="button" 
-                                (click)="calc.openQuickJustifyModal(item)"
+                                (click)="openQuickJustifyModal.emit(item)"
                                 class="px-2.5 py-1 bg-amber-200 hover:bg-amber-300 dark:bg-amber-900 dark:hover:bg-amber-800 text-amber-950 dark:text-amber-100 rounded-lg text-xs font-bold cursor-pointer transition-colors shadow-2xs">
                                 Alterar
                               </button>
                             }
                           </div>
-                        } @else if (calc.canEdit() && !item.isRead) {
+                        } @else if (canEdit && !item.isRead) {
                           <div class="mb-3 flex items-center gap-2 flex-wrap">
                             @if (item.isFrequentZero) {
                               <button type="button"
-                                (click)="quickJustifyStore(item.storeId, item.learnedReason || 'Loja Fechada / Vaga', true)"
+                                (click)="quickJustifyStore.emit({ storeId: item.storeId, reason: item.learnedReason || 'Loja Fechada / Vaga', replicatePrevReading: true })"
                                 class="flex-1 py-2 px-3 bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/80 dark:hover:bg-amber-900 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
                                 [title]="item.consecutiveZeroMonths + ' meses com consumo zero'">
-                                <span>⚡ 0 {{ calc.getUnit() }} (Histórico Zero: {{ item.consecutiveZeroMonths }}m)</span>
+                                <span>⚡ 0 {{ unit }} (Histórico Zero: {{ item.consecutiveZeroMonths }}m)</span>
                               </button>
                             }
                             <button type="button"
-                              (click)="calc.openQuickJustifyModal(item)"
+                              (click)="openQuickJustifyModal.emit(item)"
                               class="py-2 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-600 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer transition-colors">
                               <span>⚖️ Justificar Loja</span>
                             </button>
@@ -278,7 +290,7 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                                 <span>Anterior: <strong>{{ item.prevReading | number:'1.0-0' }}</strong></span>
                                 <span>Digitada: <strong>{{ item.currentReading | number:'1.0-2' }}</strong></span>
                                 @if (item.validationAlert.avgConsumption > 0) {
-                                  <span>Média Histórica: <strong>{{ item.validationAlert.avgConsumption | number:'1.0-1' }} {{ calc.getUnit() }}</strong></span>
+                                  <span>Média Histórica: <strong>{{ item.validationAlert.avgConsumption | number:'1.0-1' }} {{ unit }}</strong></span>
                                 }
                               </div>
                               <div class="text-[10px] font-semibold text-rose-800 dark:text-rose-300 bg-white/70 dark:bg-slate-900/80 px-2 py-0.5 rounded border border-rose-200 dark:border-rose-800 mt-1 inline-block">
@@ -289,13 +301,13 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                               <div class="flex items-center gap-2 mt-2 pt-1.5 border-t border-black/10 dark:border-white/10 flex-wrap">
                                 @if (!item.anomalyConfirmed) {
                                   <button type="button" 
-                                          (click)="confirmAnomaly(item.storeId)"
+                                          (click)="confirmAnomaly.emit(item.storeId)"
                                           class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] flex items-center gap-1 cursor-pointer shadow-xs">
                                     <span>✓ Confirmar como Correto</span>
                                   </button>
                                   @if (item.validationAlert.type === 'negative') {
                                     <button type="button" 
-                                            (click)="markRollover(item.storeId)"
+                                            (click)="markRollover.emit(item.storeId)"
                                             class="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] flex items-center gap-1 cursor-pointer shadow-xs">
                                       <span>🔄 Virada de Relógio</span>
                                     </button>
@@ -315,11 +327,11 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                           <div class="grid grid-cols-3 gap-2 bg-slate-50 dark:bg-slate-800/80 p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs mb-2">
                              <div>
                                 <span class="text-[10px] text-slate-400 block">Diferença</span>
-                                <strong class="font-mono text-slate-700 dark:text-slate-200">+{{ item.readingDiff | number:'1.0-2' }} {{ calc.getUnit() }}</strong>
+                                <strong class="font-mono text-slate-700 dark:text-slate-200">+{{ item.readingDiff | number:'1.0-2' }} {{ unit }}</strong>
                              </div>
                              <div>
                                 <span class="text-[10px] text-slate-400 block">Consumo</span>
-                                <strong class="font-mono text-slate-900 dark:text-white">{{ item.consumption | number:'1.0-2' }} {{ calc.getUnit() }}</strong>
+                                <strong class="font-mono text-slate-900 dark:text-white">{{ item.consumption | number:'1.0-2' }} {{ unit }}</strong>
                                 @if (item.isGasDistributed) {
                                   <span class="text-[9px] text-red-600 dark:text-red-400 block font-sans">campo: {{ item.rawConsumption | number:'1.0-1' }}</span>
                                 }
@@ -330,7 +342,7 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                                   <span class="text-[10px] text-amber-600 dark:text-amber-400 line-through opacity-70 block font-mono">
                                     {{ item.originalCost | currency:'BRL' }}
                                   </span>
-                                  <strong class="font-mono text-amber-700 dark:text-amber-300">R\$ 0,00</strong>
+                                  <strong class="font-mono text-amber-700 dark:text-amber-300">R$ 0,00</strong>
                                   <span class="text-[9px] text-amber-600 dark:text-amber-400 font-bold block uppercase">Fora do SAP (Área Comum)</span>
                                 } @else {
                                   <strong class="font-mono text-teal-700 dark:text-teal-400">{{ item.cost | currency:'BRL' }}</strong>
@@ -345,23 +357,23 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                              @if (item.note) {
                                <div class="inline-flex items-center gap-1 bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 px-2 py-0.5 rounded-full text-xs border border-amber-200 dark:border-amber-800 font-medium">
                                  <span>📝 {{ item.note }}</span>
-                                 <button (click)="clearNote(item.storeId)" class="hover:text-red-600 font-bold ml-1 cursor-pointer" title="Remover observação">✕</button>
+                                 <button (click)="clearNote.emit(item.storeId)" class="hover:text-red-600 font-bold ml-1 cursor-pointer" title="Remover observação">✕</button>
                                </div>
                              } @else {
                                <span class="text-[10px] text-slate-400">Etiqueta:</span>
-                               <button type="button" (click)="applyQuickTag(item.storeId, 'Porta Fechada')" class="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-[10px] text-slate-600 dark:text-slate-300 transition-colors cursor-pointer">
+                               <button type="button" (click)="applyQuickTag.emit({ storeId: item.storeId, tag: 'Porta Fechada' })" class="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-[10px] text-slate-600 dark:text-slate-300 transition-colors cursor-pointer">
                                  🔒 Fechada
                                </button>
-                               <button type="button" (click)="applyQuickTag(item.storeId, 'Visor Embaçado')" class="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-[10px] text-slate-600 dark:text-slate-300 transition-colors cursor-pointer">
+                               <button type="button" (click)="applyQuickTag.emit({ storeId: item.storeId, tag: 'Visor Embaçado' })" class="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-[10px] text-slate-600 dark:text-slate-300 transition-colors cursor-pointer">
                                  👁️ Embaçado
                                </button>
-                               <button type="button" (click)="applyQuickTag(item.storeId, 'Relógio Trocado')" class="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-[10px] text-slate-600 dark:text-slate-300 transition-colors cursor-pointer">
+                               <button type="button" (click)="applyQuickTag.emit({ storeId: item.storeId, tag: 'Relógio Trocado' })" class="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-[10px] text-slate-600 dark:text-slate-300 transition-colors cursor-pointer">
                                  🔄 Novo
                                </button>
                              }
                            </div>
 
-                           <button type="button" (click)="calc.openNoteEditor(item.storeId, item.note)" class="text-slate-500 dark:text-slate-400 hover:text-teal-700 dark:hover:text-teal-300 text-xs font-semibold underline cursor-pointer">
+                           <button type="button" (click)="openNoteEditor.emit({ storeId: item.storeId, currentNote: item.note })" class="text-slate-500 dark:text-slate-400 hover:text-teal-700 dark:hover:text-teal-300 text-xs font-semibold underline cursor-pointer">
                              {{ item.note ? 'Editar nota' : '+ Observação' }}
                            </button>
                         </div>
@@ -369,9 +381,9 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                         <!-- Foto de Evidência do Medidor (Offline no IndexedDB) -->
                         <div class="mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
                           <div class="flex items-center gap-2">
-                            @if (calc.meterPhotos()[item.storeId]) {
-                              <div class="relative cursor-pointer group shrink-0" (click)="calc.openPhotoViewer(item.storeId)" title="Visualizar comprovante fotográfico">
-                                <img [src]="calc.meterPhotos()[item.storeId].photoDataUrl" 
+                            @if (meterPhotos[item.storeId]) {
+                              <div class="relative cursor-pointer group shrink-0" (click)="openPhotoViewer.emit({ storeId: item.storeId })" title="Visualizar comprovante fotográfico">
+                                <img [src]="meterPhotos[item.storeId].photoDataUrl" 
                                      alt="Foto do Medidor" 
                                      class="w-10 h-10 object-cover rounded-xl border-2 border-teal-500 shadow-xs">
                                 <span class="absolute -bottom-1 -right-1 bg-teal-600 text-white rounded-full w-3.5 h-3.5 flex items-center justify-center text-[8px] font-bold shadow-xs">
@@ -380,23 +392,23 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                               </div>
                               <div class="flex flex-col">
                                 <button type="button" 
-                                        (click)="calc.openPhotoViewer(item.storeId)"
+                                        (click)="openPhotoViewer.emit({ storeId: item.storeId })"
                                         class="text-xs font-bold text-teal-800 hover:text-teal-950 flex items-center gap-1 cursor-pointer text-left">
                                   <span>📷 Ver Foto Medidor</span>
                                 </button>
                                 <span class="text-[9px] font-mono flex items-center gap-1">
-                                  <span class="text-slate-400">{{ calc.meterPhotos()[item.storeId].capturedAt | date:'dd/MM HH:mm' }}</span>
-                                  @if (calc.meterPhotos()[item.storeId].synced) {
+                                  <span class="text-slate-400">{{ meterPhotos[item.storeId].capturedAt | date:'dd/MM HH:mm' }}</span>
+                                  @if (meterPhotos[item.storeId].synced) {
                                     <span class="text-teal-600 dark:text-teal-400" title="Foto sincronizada na nuvem">☁️ Nuvem</span>
                                   } @else {
                                     <span class="text-amber-500" title="Salva localmente, pendente envio para nuvem">💾 Local</span>
                                   }
                                 </span>
                                 <button type="button" 
-                                        (click)="runOcrOnPhoto(item.storeId)"
-                                        [disabled]="calc.isReadingOcr() === item.storeId"
+                                        (click)="runOcr.emit(item.storeId)"
+                                        [disabled]="isReadingOcr === item.storeId"
                                         class="mt-1 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 hover:text-indigo-900 dark:hover:text-white bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800 flex items-center gap-1 cursor-pointer w-fit shadow-xs">
-                                  @if (calc.isReadingOcr() === item.storeId) {
+                                  @if (isReadingOcr === item.storeId) {
                                     <span class="animate-spin text-[10px]">⏳</span>
                                     <span>Lendo...</span>
                                   } @else {
@@ -406,7 +418,7 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                               </div>
                             } @else {
                               <label class="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 text-xs font-bold transition-all shadow-xs active:scale-95">
-                                @if (calc.isCapturingPhoto() === item.storeId) {
+                                @if (isCapturingPhoto === item.storeId) {
                                   <span class="animate-spin text-xs">⏳</span>
                                   <span>Compactando...</span>
                                 } @else {
@@ -416,25 +428,25 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                                 <input type="file" 
                                        accept="image/*" 
                                        capture="environment" 
-                                       (change)="calc.onPhotoCaptured(\$event, item.storeId, item.storeName, item.luc, item.currentReading)" 
+                                       (change)="photoCaptured.emit({ event: $event, storeId: item.storeId, storeName: item.storeName, luc: item.luc, currentReading: item.currentReading })" 
                                        class="hidden"
-                                       [disabled]="calc.isCapturingPhoto() === item.storeId">
+                                       [disabled]="isCapturingPhoto === item.storeId">
                               </label>
                             }
                           </div>
 
-                          @if (calc.meterPhotos()[item.storeId]) {
+                          @if (meterPhotos[item.storeId]) {
                             <div class="flex items-center gap-2.5 shrink-0">
                               <label class="cursor-pointer text-[10px] font-semibold text-teal-700 dark:text-teal-400 hover:underline">
                                 <span>Substituir</span>
                                 <input type="file" 
                                        accept="image/*" 
                                        capture="environment" 
-                                       (change)="calc.onPhotoCaptured(\$event, item.storeId, item.storeName, item.luc, item.currentReading)" 
+                                       (change)="photoCaptured.emit({ event: $event, storeId: item.storeId, storeName: item.storeName, luc: item.luc, currentReading: item.currentReading })" 
                                        class="hidden">
                               </label>
                               <button type="button" 
-                                (click)="confirmDeletePhoto(item.storeId, item.storeName)" 
+                                (click)="deletePhoto.emit({ storeId: item.storeId, storeName: item.storeName })" 
                                 class="text-[10px] font-semibold text-rose-600 dark:text-rose-400 hover:underline cursor-pointer">
                                 🗑️ Excluir
                               </button>
@@ -444,32 +456,32 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
                      </div>
                   }
 
-                  @if (calc.filteredTableData().length === 0) {
+                  @if (rows.length === 0) {
                     <div class="p-8 text-center bg-white dark:bg-slate-900 border border-transparent dark:border-slate-800 rounded-xl my-3">
                       <div class="text-3xl mb-2">📋</div>
-                      @if (calc.statusFilter() === 'prev_missing') {
+                      @if (statusFilter === 'prev_missing') {
                         <div class="py-4 space-y-2">
                           <div class="text-4xl">✨</div>
                           <p class="font-black text-emerald-600 dark:text-emerald-400 text-sm">100% do mês anterior conferido!</p>
                           <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                            Todas as lojas que tinham valor em <strong>{{ calc.getPreviousMonth(calc.selectedMonth()) }}</strong> já foram lidas neste mês.
+                            Todas as lojas que tinham valor em <strong>{{ prevMonth }}</strong> já foram lidas neste mês.
                           </p>
-                          <button type="button" (click)="calc.statusFilter.set('all')" class="mt-2 px-3.5 py-1.5 bg-slate-900 dark:bg-slate-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-xs">
+                          <button type="button" (click)="resetStatusFilter.emit()" class="mt-2 px-3.5 py-1.5 bg-slate-900 dark:bg-slate-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-xs">
                             Ver Todas as Lojas
                           </button>
                         </div>
-                      } @else if (calc.searchQuery()) {
+                      } @else if (searchQuery) {
                         <p class="font-bold text-slate-700 dark:text-slate-300 text-sm">Nenhuma loja encontrada</p>
                         <p class="text-xs text-slate-400 mt-1">Ajuste o termo da busca ou o filtro.</p>
-                      } @else if (!calc.hasMonthlyListForSelectedMonth()) {
-                        <p class="font-bold text-slate-700 dark:text-slate-200 text-sm">Mês {{ calc.selectedMonth() }} em branco</p>
+                      } @else if (!hasMonthlyListForSelectedMonth) {
+                        <p class="font-bold text-slate-700 dark:text-slate-200 text-sm">Mês {{ selectedMonth }} em branco</p>
                         <p class="text-xs text-slate-400 mt-1">Nenhuma lista mensal importada para este mês.</p>
                         <a href="#stores" class="inline-block mt-3 px-3.5 py-1.5 bg-teal-600 text-white rounded text-xs font-bold">
                           Ir para Lojas e Subir Lista
                         </a>
                       } @else {
                         <p class="font-bold text-slate-700 dark:text-slate-300 text-sm">Nenhuma loja encontrada</p>
-                        <button (click)="calc.statusFilter.set('all'); calc.searchQuery.set('')" class="mt-3 px-3 py-1.5 bg-teal-600 text-white rounded text-xs font-bold cursor-pointer">
+                        <button (click)="resetFilters.emit()" class="mt-3 px-3.5 py-1.5 bg-teal-600 text-white rounded text-xs font-bold cursor-pointer">
                           Ver Todas as Lojas
                         </button>
                       }
@@ -479,5 +491,38 @@ import type { BillCalculatorComponent } from './bill-calculator.component';
   `
 })
 export class BillMobileCardsComponent {
-  @Input({ required: true }) calc!: BillCalculatorComponent;
+  @Input({ required: true }) unit = 'kWh';
+  @Input({ required: true }) selectedMonth = '';
+  @Input({ required: true }) prevMonth = '';
+  @Input({ required: true }) rows: BillTableRow[] = [];
+  @Input({ required: true }) statusFilter = 'all';
+  @Input({ required: true }) searchQuery = '';
+  @Input({ required: true }) hasMonthlyListForSelectedMonth = true;
+  @Input({ required: true }) canEdit = false;
+  @Input({ required: true }) isReadingOcr: string | null = null;
+  @Input({ required: true }) isCapturingPhoto: string | null = null;
+  @Input({ required: true }) ocrCurrentModelLabel = '';
+  @Input({ required: true }) ocrFeedback: Record<string, OcrFeedbackItem> = {};
+  @Input({ required: true }) ocrPending: Record<string, OcrPendingConfirmation> = {};
+  @Input({ required: true }) meterPhotos: Record<string, MeterPhotoRecord> = {};
+
+  @Output() toggleExcludeFromBill = new EventEmitter<string>();
+  @Output() readingChange = new EventEmitter<ReadingFieldChangeEvent>();
+  @Output() readingBlur = new EventEmitter<string>();
+  @Output() dismissOcrFeedback = new EventEmitter<string>();
+  @Output() confirmOcrReading = new EventEmitter<ConfirmOcrEvent>();
+  @Output() retryOcrWithOtherEngine = new EventEmitter<string>();
+  @Output() openQuickJustifyModal = new EventEmitter<BillTableRow>();
+  @Output() quickJustifyStore = new EventEmitter<QuickJustifyEvent>();
+  @Output() confirmAnomaly = new EventEmitter<string>();
+  @Output() markRollover = new EventEmitter<string>();
+  @Output() clearNote = new EventEmitter<string>();
+  @Output() applyQuickTag = new EventEmitter<QuickTagEvent>();
+  @Output() openNoteEditor = new EventEmitter<NoteEditorOpenEvent>();
+  @Output() openPhotoViewer = new EventEmitter<PhotoViewerOpenEvent>();
+  @Output() runOcr = new EventEmitter<string>();
+  @Output() photoCaptured = new EventEmitter<PhotoCaptureEvent>();
+  @Output() deletePhoto = new EventEmitter<PhotoDeleteEvent>();
+  @Output() resetStatusFilter = new EventEmitter<void>();
+  @Output() resetFilters = new EventEmitter<void>();
 }

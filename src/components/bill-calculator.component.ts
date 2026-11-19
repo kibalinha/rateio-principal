@@ -1056,22 +1056,150 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
 
           <!-- DESKTOP TABLE VIEW (Visível em telas médias/grandes quando no modo Lista) -->
           @if (mobileViewMode() === 'cards') {
-            <app-bill-desktop-table [calc]="this" />
+            <app-bill-desktop-table
+              [utilityType]="utilityType()"
+              [unit]="getUnit()"
+              [selectedMonth]="selectedMonth()"
+              [prevMonth]="getPreviousMonth(selectedMonth())"
+              [rows]="filteredTableData()"
+              [fieldStats]="fieldStats()"
+              [sortBy]="sortBy()"
+              [sortDirection]="sortDirection()"
+              [statusFilter]="statusFilter()"
+              [searchQuery]="searchQuery()"
+              [hasMonthlyListForSelectedMonth]="hasMonthlyListForSelectedMonth()"
+              [canEdit]="canEdit()"
+              [canConfigure]="canConfigure()"
+              [canConfigureBill]="authService.canConfigureBill()"
+              [totalDistributedConsumption]="totalDistributedConsumption()"
+              [totalDistributedCost]="totalDistributedCost()"
+              [isReadingOcr]="isReadingOcr()"
+              [meterPhotos]="meterPhotos()"
+              (toggleSort)="toggleSort($event)"
+              (readingChange)="updateDetailedReading($event.storeId, $event.field, $event.value)"
+              (readingBlur)="onReadingBlur($event)"
+              (pasteCell)="onPasteCell($event.event, $event.storeId, $event.field)"
+              (toggleExcludeFromBill)="toggleExcludeFromBill($event)"
+              (toggleHideFromTech)="toggleHideFromTech($event)"
+              (openStoreVoucher)="openStoreVoucher($event)"
+              (openAnomalyModal)="openAnomalyModal($event)"
+              (openQuickJustifyModal)="openQuickJustifyModal($event)"
+              (quickJustifyStore)="quickJustifyStore($event.storeId, $event.reason, $event.replicatePrevReading)"
+              (openNoteEditor)="openNoteEditor($event.storeId, $event.currentNote)"
+              (openPhotoViewer)="openPhotoViewer($event.storeId, $event.customRecord)"
+              (runOcr)="runOcrOnPhoto($event)"
+              (deletePhoto)="confirmDeletePhoto($event.storeId, $event.storeName)"
+              (photoCaptured)="onPhotoCaptured($event.event, $event.storeId, $event.storeName, $event.luc, $event.currentReading)"
+              (resetStatusFilter)="statusFilter.set('all')"
+            />
           }
 
           <!-- MOBILE INTERFACE (Visível apenas em dispositivos móveis / telas menores) -->
           <div class="md:hidden">
             @if (mobileViewMode() === 'cards') {
-              <app-bill-mobile-cards [calc]="this" />
+              <app-bill-mobile-cards
+                [unit]="getUnit()"
+                [selectedMonth]="selectedMonth()"
+                [prevMonth]="getPreviousMonth(selectedMonth())"
+                [rows]="filteredTableData()"
+                [statusFilter]="statusFilter()"
+                [searchQuery]="searchQuery()"
+                [hasMonthlyListForSelectedMonth]="hasMonthlyListForSelectedMonth()"
+                [canEdit]="canEdit()"
+                [isReadingOcr]="isReadingOcr()"
+                [isCapturingPhoto]="isCapturingPhoto()"
+                [ocrCurrentModelLabel]="ocrCurrentModelLabel()"
+                [ocrFeedback]="ocrFeedback()"
+                [ocrPending]="ocrPending()"
+                [meterPhotos]="meterPhotos()"
+                (toggleExcludeFromBill)="toggleExcludeFromBill($event)"
+                (readingChange)="updateDetailedReading($event.storeId, $event.field, $event.value)"
+                (readingBlur)="onReadingBlur($event)"
+                (dismissOcrFeedback)="dismissOcrFeedback($event)"
+                (confirmOcrReading)="confirmOcrReading($event.storeId, $event.value)"
+                (retryOcrWithOtherEngine)="retryOcrWithOtherEngine($event)"
+                (openQuickJustifyModal)="openQuickJustifyModal($event)"
+                (quickJustifyStore)="quickJustifyStore($event.storeId, $event.reason, $event.replicatePrevReading)"
+                (confirmAnomaly)="confirmAnomaly($event)"
+                (markRollover)="markRollover($event)"
+                (clearNote)="clearNote($event)"
+                (applyQuickTag)="applyQuickTag($event.storeId, $event.tag)"
+                (openNoteEditor)="openNoteEditor($event.storeId, $event.currentNote)"
+                (openPhotoViewer)="openPhotoViewer($event.storeId, $event.customRecord)"
+                (runOcr)="runOcrOnPhoto($event)"
+                (photoCaptured)="onPhotoCaptured($event.event, $event.storeId, $event.storeName, $event.luc, $event.currentReading)"
+                (deletePhoto)="confirmDeletePhoto($event.storeId, $event.storeName)"
+                (resetStatusFilter)="statusFilter.set('all')"
+                (resetFilters)="statusFilter.set('all'); searchQuery.set('')"
+              />
             }
             @if (mobileViewMode() === 'step') {
-              <app-bill-guided-route [calc]="this" />
+              <app-bill-guided-route
+                [utilityType]="utilityType()"
+                [unit]="getUnit()"
+                [selectedMonth]="selectedMonth()"
+                [prevMonth]="getPreviousMonth(selectedMonth())"
+                [stepIndex]="stepIndex()"
+                [currentStepStore]="currentStepStore()"
+                [nextStepStore]="nextStepStore()"
+                [fieldTableData]="fieldTableData()"
+                [stepReadCount]="stepReadCount()"
+                [stepProgressPercent]="stepProgressPercent()"
+                [canEdit]="canEdit()"
+                [isReadingOcr]="isReadingOcr()"
+                [isCapturingPhoto]="isCapturingPhoto()"
+                [ocrCurrentModelLabel]="ocrCurrentModelLabel()"
+                [ocrFeedback]="ocrFeedback()"
+                [ocrPending]="ocrPending()"
+                [meterPhotos]="meterPhotos()"
+                [prevMonthPhotos]="prevMonthPhotos()"
+                (jumpToNextPending)="jumpToNextPending()"
+                (stepIndexChange)="setStepIndex($event)"
+                (toggleExcludeFromBill)="toggleExcludeFromBill($event)"
+                (openPhotoViewer)="openPhotoViewer($event.storeId, $event.customRecord)"
+                (runOcr)="runOcrOnPhoto($event)"
+                (photoCaptured)="onPhotoCaptured($event.event, $event.storeId, $event.storeName, $event.luc, $event.currentReading)"
+                (deletePhoto)="confirmDeletePhoto($event.storeId, $event.storeName)"
+                (dismissOcrFeedback)="dismissOcrFeedback($event)"
+                (confirmOcrReading)="confirmOcrReading($event.storeId, $event.value)"
+                (retryOcrWithOtherEngine)="retryOcrWithOtherEngine($event)"
+                (readingChange)="updateDetailedReading($event.storeId, $event.field, $event.value)"
+                (readingBlur)="onReadingBlur($event)"
+                (saveAndNextStep)="saveAndNextStep($event)"
+                (copyPreviousReading)="copyPreviousReading($event)"
+                (quickAdjustReading)="quickAdjustReading($event.stepStore, $event.delta)"
+                (confirmAnomaly)="confirmAnomaly($event)"
+                (markRollover)="markRollover($event)"
+                (openNoteEditor)="openNoteEditor($event.storeId, $event.currentNote)"
+                (clearNote)="clearNote($event)"
+                (applyQuickTag)="applyQuickTag($event.storeId, $event.tag)"
+                (prevStep)="prevStep()"
+                (nextStep)="nextStep()"
+              />
             }
           </div>
           </div>
 
           <!-- Footer Summary (ALL TYPES) -->
-          <app-bill-footer-summary [calc]="this" />
+          <app-bill-footer-summary
+            [utilityType]="utilityType()"
+            [unit]="getUnit()"
+            [commonAreaConsumption]="commonAreaConsumption()"
+            [commonAreaCost]="commonAreaCost()"
+            [commonAreaPct]="getPercentage(commonAreaCost())"
+            [airConditioningConsumption]="airConditioningConsumption()"
+            [airConditioningCost]="airConditioningCost()"
+            [airConditioningPct]="getPercentage(airConditioningCost())"
+            [totalDistributedConsumption]="totalDistributedConsumption()"
+            [totalDistributedCost]="totalDistributedCost()"
+            [distributedPct]="getPercentage(totalDistributedCost())"
+            [excludedSapCost]="excludedSapCost()"
+            [excludedSapCount]="excludedSapCount()"
+            [acConsumptionFormatted]="formatPtBr(currentACConsumption())"
+            [canConfigure]="canConfigure()"
+            (acInput)="onAcInput($event)"
+            (acBlur)="onAcBlur($event)"
+          />
         </div>
       </div>
 

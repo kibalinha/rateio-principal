@@ -33,7 +33,7 @@ import { UserRole, AppView, AppView as View } from './models';
   }
 
   <!-- Mobile Header -->
-  <header class="md:hidden bg-slate-900 text-white px-4 py-3 flex justify-between items-center shadow-md z-30 shrink-0 border-b border-slate-800">
+  <header class="md:hidden bg-slate-900 text-white px-4 py-3 flex justify-between items-center shadow-md z-[45] shrink-0 border-b border-slate-800">
     <div class="flex items-center gap-2.5">
       <span class="text-accent text-xl">◆</span>
       <div>
