@@ -9,7 +9,19 @@ export type { UserRole };
   providedIn: 'root'
 })
 export class AuthService {
-  private supabase = inject(SupabaseService);
+  private supabase: SupabaseService = (() => {
+    try {
+      return inject(SupabaseService);
+    } catch {
+      return {} as any;
+    }
+  })();
+
+  private readonly MAX_FAILED_ADMIN_ATTEMPTS = 5;
+  private readonly ADMIN_LOCKOUT_MS = 5 * 60 * 1000;
+  private failedAdminAttempts = 0;
+  private adminLockedUntilMs = 0;
+  readonly adminLockoutUntil = signal<number>(0);
 
   readonly user = signal<any | null>(null);
   readonly firebaseUser = computed(() => this.user());
@@ -42,6 +54,7 @@ export class AuthService {
   }
 
   private initAuthListener() {
+    if (typeof this.supabase?.getClient !== 'function') return;
     try {
       const client = this.supabase.getClient();
       client.auth.getSession().then(({ data: { session } }) => {
@@ -87,8 +100,54 @@ export class AuthService {
     this.currentUserRole.set(role);
   }
 
+  private getAdminPassword(): string {
+    if (typeof window !== 'undefined') {
+      const envPassword = (window as any).__env?.ADMIN_PASSWORD;
+      if (typeof envPassword === 'string' && envPassword.length > 0) {
+        return envPassword;
+      }
+    }
+    return 'admin123';
+  }
+
+  isAdminLoginLocked(): boolean {
+    const now = Date.now();
+    if (this.adminLockedUntilMs > now) {
+      return true;
+    }
+    if (this.adminLockedUntilMs > 0 && now >= this.adminLockedUntilMs) {
+      this.adminLockedUntilMs = 0;
+      this.failedAdminAttempts = 0;
+      this.adminLockoutUntil.set(0);
+    }
+    return false;
+  }
+
+  getAdminLockRemainingSeconds(): number {
+    if (!this.isAdminLoginLocked()) return 0;
+    return Math.max(0, Math.ceil((this.adminLockedUntilMs - Date.now()) / 1000));
+  }
+
   validateAdminPassword(password: string): boolean {
-    return password === 'admin123';
+    const now = Date.now();
+    if (this.isAdminLoginLocked()) {
+      return false;
+    }
+
+    const isValid = password === this.getAdminPassword();
+    if (isValid) {
+      this.failedAdminAttempts = 0;
+      this.adminLockedUntilMs = 0;
+      this.adminLockoutUntil.set(0);
+      return true;
+    }
+
+    this.failedAdminAttempts += 1;
+    if (this.failedAdminAttempts >= this.MAX_FAILED_ADMIN_ATTEMPTS) {
+      this.adminLockedUntilMs = now + this.ADMIN_LOCKOUT_MS;
+      this.adminLockoutUntil.set(this.adminLockedUntilMs);
+    }
+    return false;
   }
 
   getRoleLabel(role: UserRole) {

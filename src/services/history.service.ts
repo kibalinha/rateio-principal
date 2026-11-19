@@ -8,6 +8,117 @@ import { parsePtBrNumber } from './apportionment-engine.service';
 
 export type { StoreReading, BillData };
 
+export function isPopulatedStoreReading(r: StoreReading | number | undefined | null): boolean {
+  if (r === undefined || r === null) return false;
+  if (typeof r === 'number') return r > 0;
+  return Boolean(
+    (r.reading && r.reading > 0) ||
+    (r.virtual !== undefined && r.virtual !== null) ||
+    (r.calculatedConsumption && r.calculatedConsumption > 0) ||
+    r.isJustified ||
+    r.hasPhoto ||
+    (r.note && r.note.trim().length > 0)
+  );
+}
+
+function getReadingUpdatedAtMs(r: StoreReading | number | undefined | null): number {
+  if (r && typeof r === 'object' && typeof r.updatedAtMs === 'number' && !Number.isNaN(r.updatedAtMs)) {
+    return r.updatedAtMs;
+  }
+  return 0;
+}
+
+export function mergeStoreReadings(
+  localReadings: Record<string, StoreReading | number> = {},
+  remoteReadings: Record<string, StoreReading | number> = {},
+  isLocalNewer: boolean
+): { mergedReadings: Record<string, StoreReading | number>; tookLocalContribution: boolean } {
+  const allStoreIds = new Set([
+    ...Object.keys(remoteReadings || {}),
+    ...Object.keys(localReadings || {})
+  ]);
+  const mergedReadings: Record<string, StoreReading | number> = {};
+  let tookLocalContribution = false;
+
+  for (const storeId of allStoreIds) {
+    const localR = localReadings?.[storeId];
+    const remoteR = remoteReadings?.[storeId];
+
+    if (localR !== undefined && remoteR === undefined) {
+      mergedReadings[storeId] = localR;
+      if (isPopulatedStoreReading(localR)) {
+        tookLocalContribution = true;
+      }
+      continue;
+    }
+
+    if (remoteR !== undefined && localR === undefined) {
+      mergedReadings[storeId] = remoteR;
+      continue;
+    }
+
+    if (localR !== undefined && remoteR !== undefined) {
+      const localPop = isPopulatedStoreReading(localR);
+      const remotePop = isPopulatedStoreReading(remoteR);
+
+      if (localPop && !remotePop) {
+        mergedReadings[storeId] = localR;
+        tookLocalContribution = true;
+      } else if (remotePop && !localPop) {
+        mergedReadings[storeId] = remoteR;
+      } else {
+        const localTs = getReadingUpdatedAtMs(localR);
+        const remoteTs = getReadingUpdatedAtMs(remoteR);
+        if (localTs > remoteTs) {
+          mergedReadings[storeId] = localR;
+          tookLocalContribution = true;
+        } else if (remoteTs > localTs) {
+          mergedReadings[storeId] = remoteR;
+        } else {
+          mergedReadings[storeId] = isLocalNewer ? localR : remoteR;
+          if (isLocalNewer) {
+            tookLocalContribution = true;
+          }
+        }
+      }
+    }
+  }
+
+  return { mergedReadings, tookLocalContribution };
+}
+
+export function mergeBillData(
+  local: BillData,
+  remote: BillData
+): { merged: BillData; shouldSyncRemote: boolean } {
+  const localVersion = local.version || 0;
+  const remoteVersion = remote.version || 0;
+  const localTime = local.lastModifiedMs || (local.lastUpdated ? new Date(local.lastUpdated).getTime() : 0);
+  const remoteTime = remote.lastModifiedMs || (remote.lastUpdated ? new Date(remote.lastUpdated).getTime() : 0);
+
+  // Resolução de Conflitos OCC (Optimistic Concurrency Control):
+  // 1. Se a versão local é maior, a alteração foi realizada neste dispositivo e ainda não sincronizou completamente com a nuvem.
+  // 2. Se as versões empatarem, vence o timestamp mais recente.
+  const isLocalNewer = localVersion > remoteVersion || (localVersion === remoteVersion && localTime > remoteTime);
+
+  const { mergedReadings, tookLocalContribution } = mergeStoreReadings(
+    local.readings || {},
+    remote.readings || {},
+    isLocalNewer
+  );
+
+  const baseBill = isLocalNewer ? local : remote;
+  const merged: BillData = {
+    ...baseBill,
+    readings: mergedReadings
+  };
+
+  return {
+    merged,
+    shouldSyncRemote: isLocalNewer || tookLocalContribution
+  };
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -83,25 +194,13 @@ export class HistoryService {
         for (const [k, v] of Object.entries(local)) {
           const remoteItem = merged[k];
           if (remoteItem) {
-            const localVersion = v.version || 0;
-            const remoteVersion = remoteItem.version || 0;
-            const localTime = v.lastModifiedMs || (v.lastUpdated ? new Date(v.lastUpdated).getTime() : 0);
-            const remoteTime = remoteItem.lastModifiedMs || (remoteItem.lastUpdated ? new Date(remoteItem.lastUpdated).getTime() : 0);
-
-            // Resolução de Conflitos OCC (Optimistic Concurrency Control):
-            // 1. Se a versão local é maior, a alteração foi realizada neste dispositivo e ainda não sincronizou completamente com a nuvem.
-            // 2. Se as versões empatarem, vence o timestamp mais recente.
-            const isLocalNewer = localVersion > remoteVersion || (localVersion === remoteVersion && localTime > remoteTime);
-            if (isLocalNewer) {
-              merged[k] = v;
-              // Garante que o Supabase receba a versão local mais nova
+            const { merged: mergedBill, shouldSyncRemote } = mergeBillData(v, remoteItem);
+            merged[k] = mergedBill;
+            if (shouldSyncRemote) {
               const [uType, uMonth] = k.split('_');
               if (uType && uMonth) {
-                this.supabase.syncBill(uType, uMonth, v).catch(() => {});
+                this.supabase.syncBill(uType, uMonth, mergedBill).catch(() => {});
               }
-            } else {
-              // A fatura remota é mais nova ou igual (ex: alterada pelo celular)
-              merged[k] = remoteItem;
             }
           } else {
             // Existe apenas localmente (ex: novo mês criado offline)
@@ -149,13 +248,41 @@ export class HistoryService {
     const key = this.generateKey(type, month);
     const existing = this.billsSignal()[key];
     const nextVersion = Math.max(existing?.version || 0, data.version || 0) + 1;
+    const nowMs = Date.now();
+
+    const stampedReadings: Record<string, StoreReading | number> = {};
+    for (const [storeId, r] of Object.entries(data.readings || {})) {
+      if (r && typeof r === 'object') {
+        const prev = existing?.readings?.[storeId];
+        if (isPopulatedStoreReading(r)) {
+          const changed =
+            !prev ||
+            typeof prev !== 'object' ||
+            prev.reading !== r.reading ||
+            prev.virtual !== r.virtual ||
+            prev.calculatedConsumption !== r.calculatedConsumption ||
+            prev.isJustified !== r.isJustified ||
+            prev.hasPhoto !== r.hasPhoto ||
+            prev.note !== r.note;
+          stampedReadings[storeId] = {
+            ...r,
+            updatedAtMs: changed ? nowMs : (r.updatedAtMs ?? prev.updatedAtMs ?? nowMs)
+          };
+        } else {
+          stampedReadings[storeId] = r;
+        }
+      } else {
+        stampedReadings[storeId] = r;
+      }
+    }
 
     const updated: BillData = {
       ...data,
+      readings: stampedReadings,
       version: nextVersion,
       clientSessionId: this.indexedDb.clientSessionId,
-      lastModifiedMs: Date.now(),
-      lastUpdated: new Date().toISOString()
+      lastModifiedMs: nowMs,
+      lastUpdated: new Date(nowMs).toISOString()
     };
     (updated as any)._pendingSync = true;
     

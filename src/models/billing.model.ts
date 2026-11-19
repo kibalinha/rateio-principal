@@ -32,6 +32,7 @@ export type StoreReading = {
   luc?: string;
   contrato?: string;
   storeName?: string;
+  updatedAtMs?: number;
 };
 
 export interface BillData {

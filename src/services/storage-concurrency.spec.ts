@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BillData, StorageQuotaInfo } from '../models';
+import { HistoryService, mergeBillData } from './history.service';
 
 describe('Storage Quota & Optimistic Concurrency Control (Passo D)', () => {
   describe('Storage Quota Monitoring & Formatting', () => {
@@ -140,6 +141,160 @@ describe('Storage Quota & Optimistic Concurrency Control (Passo D)', () => {
       expect(isConflict).toBe(false);
       const nextVersion = Math.max(existingRecord.version || 0, incomingBill.version || 0) + 1;
       expect(nextVersion).toBe(3);
+    });
+  });
+
+  describe('Merge por Loja (readings[storeId]) em refreshBillsFromSupabase', () => {
+    it('deve preservar leituras preenchidas de lojas diferentes editadas simultaneamente por dois dispositivos', () => {
+      const localBill: BillData = {
+        costItems: [],
+        consumptionInput: 500,
+        acInput: 0,
+        lastUpdated: '2026-11-18T10:00:00.000Z',
+        version: 2,
+        lastModifiedMs: 1000,
+        readings: {
+          'loja-1': { reading: 120, constant: 1, adjustment: 1, calculatedConsumption: 20, updatedAtMs: 1000 },
+          'loja-2': { reading: 0, constant: 1, adjustment: 1, calculatedConsumption: 0 }
+        }
+      };
+
+      const remoteBill: BillData = {
+        costItems: [],
+        consumptionInput: 500,
+        acInput: 0,
+        lastUpdated: '2026-11-18T10:05:00.000Z',
+        version: 3, // Remoto tem versão maior
+        lastModifiedMs: 2000,
+        readings: {
+          'loja-1': { reading: 0, constant: 1, adjustment: 1, calculatedConsumption: 0 },
+          'loja-2': { reading: 340, constant: 1, adjustment: 1, calculatedConsumption: 40, updatedAtMs: 2000 }
+        }
+      };
+
+      const { merged, shouldSyncRemote } = mergeBillData(localBill, remoteBill);
+
+      expect((merged.readings['loja-1'] as any).reading).toBe(120);
+      expect((merged.readings['loja-2'] as any).reading).toBe(340);
+      expect(shouldSyncRemote).toBe(true);
+    });
+
+    it('deve resolver conflito na mesma loja usando updatedAtMs mais recente', () => {
+      const localBill: BillData = {
+        costItems: [],
+        consumptionInput: 500,
+        acInput: 0,
+        lastUpdated: '2026-11-18T10:00:00.000Z',
+        version: 2,
+        lastModifiedMs: 1000,
+        readings: {
+          'loja-1': { reading: 185, constant: 1, adjustment: 1, calculatedConsumption: 35, updatedAtMs: 2500 }
+        }
+      };
+
+      const remoteBill: BillData = {
+        costItems: [],
+        consumptionInput: 500,
+        acInput: 0,
+        lastUpdated: '2026-11-18T10:05:00.000Z',
+        version: 3,
+        lastModifiedMs: 2000,
+        readings: {
+          'loja-1': { reading: 150, constant: 1, adjustment: 1, calculatedConsumption: 10, updatedAtMs: 1800 }
+        }
+      };
+
+      const { merged, shouldSyncRemote } = mergeBillData(localBill, remoteBill);
+
+      expect((merged.readings['loja-1'] as any).reading).toBe(185);
+      expect((merged.readings['loja-1'] as any).updatedAtMs).toBe(2500);
+      expect(shouldSyncRemote).toBe(true);
+    });
+
+    it('deve usar fallback de versão da fatura quando updatedAtMs estiver ausente em ambas as leituras', () => {
+      const localBill: BillData = {
+        costItems: [],
+        consumptionInput: 500,
+        acInput: 0,
+        lastUpdated: '2026-11-18T10:00:00.000Z',
+        version: 2,
+        lastModifiedMs: 1000,
+        readings: {
+          'loja-1': { reading: 110, constant: 1, adjustment: 1, calculatedConsumption: 10 }
+        }
+      };
+
+      const remoteBill: BillData = {
+        costItems: [],
+        consumptionInput: 500,
+        acInput: 0,
+        lastUpdated: '2026-11-18T10:05:00.000Z',
+        version: 4,
+        lastModifiedMs: 2000,
+        readings: {
+          'loja-1': { reading: 130, constant: 1, adjustment: 1, calculatedConsumption: 30 }
+        }
+      };
+
+      const { merged, shouldSyncRemote } = mergeBillData(localBill, remoteBill);
+
+      expect((merged.readings['loja-1'] as any).reading).toBe(130);
+      expect(shouldSyncRemote).toBe(false);
+    });
+
+    it('deve fazer merge por loja em HistoryService.refreshBillsFromSupabase e re-sincronizar leitura local preservada', async () => {
+      const storageMap = new Map<string, string>();
+      (globalThis as any).localStorage = {
+        getItem: (k: string) => storageMap.get(k) ?? null,
+        setItem: (k: string, v: string) => storageMap.set(k, String(v)),
+        removeItem: (k: string) => storageMap.delete(k),
+        clear: () => storageMap.clear(),
+        get length() { return storageMap.size; },
+        key: (i: number) => Array.from(storageMap.keys())[i] ?? null
+      };
+
+      const syncBillMock = vi.fn().mockResolvedValue(true);
+      const remoteBill: BillData = {
+        costItems: [],
+        consumptionInput: 500,
+        acInput: 0,
+        lastUpdated: '2026-11-18T10:05:00.000Z',
+        version: 5,
+        lastModifiedMs: 3000,
+        readings: {
+          'loja-a': { reading: 0, constant: 1, adjustment: 1, calculatedConsumption: 0 },
+          'loja-b': { reading: 420, constant: 1, adjustment: 1, calculatedConsumption: 20, updatedAtMs: 3000 }
+        }
+      };
+
+      const service = new HistoryService();
+      (service as any).indexedDb = { clientSessionId: 'dev-a', saveBill: vi.fn().mockResolvedValue(undefined) };
+      (service as any).supabase = {
+        subscribeToBills: vi.fn(),
+        fetchAllBills: vi.fn().mockResolvedValue({ 'agua_2026-11': remoteBill }),
+        syncBill: syncBillMock
+      };
+
+      service.saveBill('agua', '2026-11', {
+        costItems: [],
+        consumptionInput: 500,
+        acInput: 0,
+        lastUpdated: '2026-11-18T10:00:00.000Z',
+        version: 1,
+        readings: {
+          'loja-a': { reading: 215, constant: 1, adjustment: 1, calculatedConsumption: 15 },
+          'loja-b': { reading: 0, constant: 1, adjustment: 1, calculatedConsumption: 0 }
+        }
+      });
+
+      syncBillMock.mockClear();
+      await service.refreshBillsFromSupabase();
+
+      const merged = service.getBill('agua', '2026-11');
+      expect(merged).not.toBeNull();
+      expect((merged!.readings['loja-a'] as any).reading).toBe(215);
+      expect((merged!.readings['loja-b'] as any).reading).toBe(420);
+      expect(syncBillMock).toHaveBeenCalledTimes(1);
     });
   });
 });

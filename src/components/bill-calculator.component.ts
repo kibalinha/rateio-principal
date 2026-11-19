@@ -11,6 +11,13 @@ import { OcrFeedbackService } from '../services/ocr-feedback.service';
 import { buildReadingContext } from '../services/ocr-context';
 import { analyzeAndEnhanceBase64Image } from '../services/ocr-image-processor';
 import { getRecommendedProvider } from '../services/ocr-stats';
+import {
+  computeHistoricalStats,
+  computeZeroConsumptionLearning,
+  evaluateReadingAnomaly,
+  HistoricalStoreStats,
+  ZeroConsumptionLearning
+} from '../services/bill-audit.helpers';
 import { SupabaseService } from '../services/supabase.service';
 import * as XLSX from 'xlsx';
 import { ApportionmentEngineService, parsePtBrNumber, formatPtBrInput } from '../services/apportionment-engine.service';
@@ -3969,203 +3976,31 @@ export class BillCalculatorComponent implements OnDestroy {
   });
 
   // Histórico de consumo e baseline de anomalias (inclui média histórica e conferência de meses zerados)
-  historicalStats = computed<Map<string, { avgConsumption: number; count: number; prevMonthZero: boolean }>>(() => {
-    const allData = this.historyService.getAllData();
-    const type = this.utilityType();
+  historicalStats = computed<Map<string, HistoricalStoreStats>>(() => {
     const currentMonth = this.selectedMonth();
-    const prevMonth = this.getPreviousMonth(currentMonth);
-
-    const prevBill = allData[`${type}_${prevMonth}`];
-    const map = new Map<string, { total: number; count: number }>();
-
-    Object.entries(allData).forEach(([key, bill]) => {
-      const parts = key.split('_');
-      if (parts.length === 2) {
-        const [bType, bMonth] = parts;
-        if (bType === type && bMonth && bMonth !== currentMonth && bill.readings) {
-          Object.entries(bill.readings).forEach(([storeId, r]) => {
-            let cons = 0;
-            if (typeof r === 'object' && r !== null) {
-              cons = (r as any).calculatedConsumption ?? (r as any).consumption ?? 0;
-            } else if (typeof r === 'number') {
-              cons = r;
-            }
-            if (cons > 0) {
-              const curr = map.get(storeId) || { total: 0, count: 0 };
-              curr.total += cons;
-              curr.count += 1;
-              map.set(storeId, curr);
-            }
-          });
-        }
-      }
+    return computeHistoricalStats({
+      allData: this.historyService.getAllData(),
+      type: this.utilityType(),
+      currentMonth,
+      prevMonth: this.getPreviousMonth(currentMonth),
+      activeStores: this.activeStores(),
+      allStores: this.storeService.stores()
     });
-
-    const result = new Map<string, { avgConsumption: number; count: number; prevMonthZero: boolean }>();
-    this.activeStores().forEach(store => {
-      const hist = map.get(store.id);
-      let isPrevZero = false;
-
-      let r: any = undefined;
-      if (prevBill && prevBill.readings) {
-        if (prevBill.readings[store.id] !== undefined) {
-          r = prevBill.readings[store.id];
-        } else if (store.luc) {
-          const normLuc = normalizeLuc(store.luc);
-          const normContrato = store.contrato ? normalizeContract(store.contrato) : '';
-          const allStores = this.storeService.stores();
-          const matchStore = allStores.find(s => s.id !== store.id && (
-            (s.luc && normalizeLuc(s.luc) === normLuc) ||
-            (normContrato && s.contrato && normalizeContract(s.contrato) === normContrato)
-          ));
-          if (matchStore && prevBill.readings[matchStore.id] !== undefined) {
-            r = prevBill.readings[matchStore.id];
-          }
-        }
-      }
-      if (r !== undefined) {
-        const pCons = typeof r === 'object' && r !== null ? ((r as any).calculatedConsumption ?? (r as any).consumption ?? 0) : (typeof r === 'number' ? r : 0);
-        isPrevZero = pCons === 0;
-      }
-
-      result.set(store.id, {
-        avgConsumption: hist && hist.count > 0 ? hist.total / hist.count : 0,
-        count: hist ? hist.count : 0,
-        prevMonthZero: isPrevZero
-      });
-    });
-
-    return result;
   });
 
   historicalAverages = computed(() => this.historicalStats());
 
   // --- MOTOR DE APRENDIZADO DE CONSUMO ZERO RECORRENTE (FACILITADOR DO TÉCNICO) ---
-  zeroConsumptionLearning = computed(() => {
-    const allData = this.historyService.getAllData();
-    const type = this.utilityType();
+  zeroConsumptionLearning = computed<Map<string, ZeroConsumptionLearning>>(() => {
     const currentMonth = this.selectedMonth();
-    
-    // Identifica todos os meses passados que possuem faturas salvas desta utilidade e que sejam anteriores a currentMonth
-    const pastMonths: string[] = [];
-    const prefix = `${type}_`;
-    for (const key of Object.keys(allData)) {
-      if (key.startsWith(prefix)) {
-        const m = key.substring(prefix.length);
-        if (m && /^\d{4}-\d{2}$/.test(m) && m < currentMonth) {
-          pastMonths.push(m);
-        }
-      }
-    }
-    // Garante que o mês imediatamente anterior cronológico esteja incluído se possível
-    const prevMonth = this.getPreviousMonth(currentMonth);
-    if (!pastMonths.includes(prevMonth)) {
-      pastMonths.push(prevMonth);
-    }
-    // Ordena do mais recente para o mais antigo: ex: ['2026-10', '2026-09', '2026-08', ...]
-    pastMonths.sort().reverse();
-
-    const allStores = this.storeService.stores();
-    const map = new Map<string, {
-      isFrequentZero: boolean;
-      consecutiveZeroMonths: number;
-      totalZeroMonths: number;
-      lastNote: string;
-      learnedReason: string;
-      pastZeroMonthsList: string[];
-    }>();
-
-    for (const store of this.activeStores()) {
-      const normLuc = store.luc ? normalizeLuc(store.luc) : '';
-      const normContrato = store.contrato ? normalizeContract(store.contrato) : '';
-      const normName = store.name ? normalizeStoreName(store.name) : '';
-
-      let consecutiveZero = 0;
-      let totalZero = 0;
-      let streakBroken = false;
-      let lastNote = '';
-      const pastZeroMonthsList: string[] = [];
-
-      for (const m of pastMonths) {
-        const bill = allData[`${prefix}${m}`];
-        if (!bill || !bill.readings) continue;
-
-        // Procura leitura da loja pelo storeId ou fallback por LUC / Contrato / Nome
-        let r: any = bill.readings[store.id];
-        if (r === undefined && (normLuc || normContrato || normName)) {
-          const matchStore = allStores.find(s => s.id !== store.id && (
-            (normLuc && s.luc && normalizeLuc(s.luc) === normLuc) ||
-            (normContrato && s.contrato && normalizeContract(s.contrato) === normContrato) ||
-            (normName && s.name && normalizeStoreName(s.name) === normName)
-          ));
-          if (matchStore && bill.readings[matchStore.id] !== undefined) {
-            r = bill.readings[matchStore.id];
-          }
-        }
-
-        if (r !== undefined) {
-          let cons = 0;
-          let note = '';
-          if (typeof r === 'object' && r !== null) {
-            cons = (r as any).calculatedConsumption ?? (r as any).consumption ?? 0;
-            note = (r as any).note || '';
-          } else if (typeof r === 'number') {
-            cons = r;
-          }
-
-          const hasZeroConsumption = (cons === 0);
-          const hasZeroKeyword = !!note && (
-            note.toLowerCase().includes('fechad') ||
-            note.toLowerCase().includes('vaga') ||
-            note.toLowerCase().includes('reforma') ||
-            note.toLowerCase().includes('sem consumo') ||
-            note.toLowerCase().includes('inativ') ||
-            note.toLowerCase().includes('desocupad')
-          );
-
-          if (hasZeroConsumption || hasZeroKeyword) {
-            totalZero++;
-            pastZeroMonthsList.push(m);
-            if (!streakBroken) {
-              consecutiveZero++;
-            }
-            if (!lastNote && note) {
-              lastNote = note;
-            }
-          } else {
-            streakBroken = true;
-          }
-        }
-      }
-
-      // Determina motivo sugerido com base no histórico aprendido
-      let learnedReason = 'Loja Fechada / Vaga';
-      const lowerNote = lastNote.toLowerCase();
-      if (lowerNote.includes('reforma') || lowerNote.includes('obra')) {
-        learnedReason = 'Em Reforma / Obra';
-      } else if (lowerNote.includes('inacess') || lowerNote.includes('trancad')) {
-        learnedReason = 'Medidor Inacessível';
-      } else if (lowerNote.includes('sem hidr') || lowerNote.includes('sem ponto') || lowerNote.includes('inativ')) {
-        learnedReason = 'Sem Ponto / Inativo';
-      } else if (consecutiveZero >= 2) {
-        learnedReason = 'Loja Fechada / Vaga';
-      } else {
-        learnedReason = 'Sem Consumo no Mês';
-      }
-
-      const isFrequentZero = (consecutiveZero >= 2) || (totalZero >= 2 && consecutiveZero >= 1);
-
-      map.set(store.id, {
-        isFrequentZero,
-        consecutiveZeroMonths: consecutiveZero,
-        totalZeroMonths: totalZero,
-        lastNote,
-        learnedReason,
-        pastZeroMonthsList
-      });
-    }
-
-    return map;
+    return computeZeroConsumptionLearning({
+      allData: this.historyService.getAllData(),
+      type: this.utilityType(),
+      currentMonth,
+      prevMonth: this.getPreviousMonth(currentMonth),
+      activeStores: this.activeStores(),
+      allStores: this.storeService.stores()
+    });
   });
 
   // --- TABLE DATA CALCULATION ---
@@ -4320,96 +4155,20 @@ export class BillCalculatorComponent implements OnDestroy {
 
       // --- MOTOR DE AUDITORIA INTELIGENTE & ANTI-ERRO (ETAPA 1) ---
       const histData = histAvgMap.get(store.id);
-      const avgCons = histData && histData.avgConsumption > 0 ? histData.avgConsumption : (prevData.consumption > 0 ? prevData.consumption : 0);
-
-      // 1. Alerta Crítico: Leitura menor que a anterior (sem marcação de virada de medidor)
-      const isNegative = isRead && prevReading > 0 && currentReading < prevReading && !isRollover;
-
-      // 2. Alerta de Suspeita de Vazamento / Salto Abrupto (>= 3x a média histórica da loja)
-      const is3xJump = isRead && !isNegative && (
-        (avgCons > 0 && consumption >= avgCons * 3 && consumption >= 12) ||
-        (prevData.consumption > 0 && consumption >= prevData.consumption * 3 && consumption >= 12)
-      );
-
-      // 3. Alerta de Suspeita de Zero a Mais / Salto Extremo (>= 5x da média)
-      const isExtremeJump = isRead && !isNegative && (
-        (avgCons > 0 && consumption >= avgCons * 5 && consumption >= 25) ||
-        (prevData.consumption > 0 && consumption >= prevData.consumption * 5 && consumption >= 25)
-      );
-
-      // 4. Alerta de Relógio Parado por 2 meses seguidos (loja ativa com 0 no mês anterior E agora)
-      const is2MonthsZero = isRead && store.active !== false && prevReading > 0 && (currentReading === prevReading || consumption === 0) && (histData?.prevMonthZero === true);
-
-      // 5. Alerta de Consumo Zero no mês atual (loja ativa)
-      const isZeroThisMonth = isRead && store.active !== false && prevReading > 0 && (currentReading === prevReading || consumption === 0) && !is2MonthsZero;
-
-      // 6. Alerta de Dígitos a Mais: leitura com mais dígitos que a anterior sem ser uma virada natural
-      // (ex.: 1510 -> 15100). Cobre lojas sem histórico, onde o alerta de salto não dispara.
-      const intDigits = (n: number) => Math.floor(Math.abs(n)).toString().length;
-      const isDigitsMismatch = isRead && !isNegative && !isRollover && virtual === undefined &&
-        prevReading >= 100 && intDigits(currentReading) > intDigits(prevReading) &&
-        currentReading > prevReading * 2 && !isExtremeJump;
-
-      const hasSuspiciousAlert = isNegative || is3xJump || isExtremeJump || isDigitsMismatch || is2MonthsZero || isZeroThisMonth;
-
-      const alertSeverity: 'none' | 'warning' | 'critical' =
-        isConfirmed ? 'none' : ((isNegative || isExtremeJump) ? 'critical' : ((is3xJump || isDigitsMismatch || is2MonthsZero || isZeroThisMonth) ? 'warning' : 'none'));
-
-      let alertType: 'none' | 'negative' | 'leak_suspect' | 'typo_extreme' | 'digits_mismatch' | 'zero_2months' | 'zero_month' = 'none';
-      let alertBadge = '';
-      let alertTitle = '';
-      let alertMessage = '';
-
-      if (isNegative) {
-        alertType = 'negative';
-        alertBadge = isConfirmed ? '✓ Leitura Menor Auditada' : '🚨 Leitura Menor';
-        alertTitle = '🚨 Leitura Menor que a Anterior';
-        const diffVal = Math.abs(currentReading - prevReading);
-        alertMessage = `A leitura digitada (${currentReading}) é menor que a anterior (${prevReading}). Diferença: -${diffVal.toFixed(1)} ${unit}. Verifique se houve virada física de medidor ou erro na digitação dos dígitos.`;
-      } else if (isExtremeJump) {
-        alertType = 'typo_extreme';
-        alertBadge = isConfirmed ? '✓ Salto Auditado' : '🚨 Zero a Mais?';
-        alertTitle = '🚨 Suspeita de Zero a Mais (Salto Extremo)';
-        const mult = avgCons > 0 ? (consumption / avgCons).toFixed(1) : (consumption / prevData.consumption).toFixed(1);
-        alertMessage = `Atenção: Consumo desta loja deu ${consumption.toFixed(1)} ${unit} (a média é ${avgCons.toFixed(1)} ${unit}, salto de ${mult}x). Confira no visor do relógio se não digitou um zero extra no final!`;
-      } else if (is3xJump) {
-        alertType = 'leak_suspect';
-        alertBadge = isConfirmed ? '✓ Salto Auditado' : '⚠️ Salto >3x (Vazamento?)';
-        alertTitle = '⚠️ Suspeita de Vazamento / Salto Abrupto (>3x Média)';
-        alertMessage = `Atenção: Consumo desta loja deu ${consumption.toFixed(1)} ${unit} (a média histórica é ${avgCons.toFixed(1)} ${unit}). Deseja confirmar ou conferir o relógio no local?`;
-      } else if (isDigitsMismatch) {
-        alertType = 'digits_mismatch';
-        alertBadge = isConfirmed ? '✓ Dígitos Auditados' : '🔢 Dígito a Mais?';
-        alertTitle = '🔢 Leitura com Mais Dígitos que a Anterior';
-        alertMessage = `A leitura (${currentReading}) tem ${intDigits(currentReading)} dígitos e a anterior (${prevReading}) tinha ${intDigits(prevReading)}. Confira no visor se não foi lido um dígito a mais (ex.: casa decimal ou roleta vermelha).`;
-      } else if (is2MonthsZero) {
-        alertType = 'zero_2months';
-        alertBadge = isConfirmed ? '✓ Relógio Checado' : '⏱️ Relógio Parado (2m Zerado)';
-        alertTitle = '⏱️ Suspeita de Relógio Parado (2 Meses Seguidos Zerado)';
-        alertMessage = `Atenção: Esta loja ativa está com consumo 0 pelo segundo mês consecutivo (Leitura anterior: ${prevReading}, Leitura atual: ${currentReading}). Verifique no local se o hidrômetro/relógio está travado ou desligado.`;
-      } else if (isZeroThisMonth) {
-        alertType = 'zero_month';
-        alertBadge = isConfirmed ? '✓ Consumo 0 Auditado' : '⚠️ Consumo Zero';
-        alertTitle = '⚠️ Consumo Zero em Loja Ativa';
-        alertMessage = `A loja está ativa, mas a leitura digitada (${currentReading}) é idêntica à anterior (${prevReading}), gerando consumo 0 ${unit}. Verifique se o medidor operou no período.`;
-      } else if (isConfirmed) {
-        alertBadge = '✅ Auditado em Campo';
-      }
-
-      const validationAlert = {
-        hasAlert: hasSuspiciousAlert,
-        type: alertType,
-        severity: alertSeverity,
-        badgeLabel: alertBadge,
-        title: alertTitle,
-        message: alertMessage,
-        avgConsumption: avgCons,
-        prevConsumption: prevData.consumption,
-        prevReading,
+      const anomalyEval = evaluateReadingAnomaly({
+        isRead,
+        storeActive: store.active !== false,
         currentReading,
+        prevReading,
         consumption,
-        diffPct: avgCons > 0 ? Math.round(((consumption - avgCons) / avgCons) * 100) : null
-      };
+        prevConsumption: prevData.consumption,
+        histAvgConsumption: histData?.avgConsumption || 0,
+        prevMonthZero: histData?.prevMonthZero === true,
+        isRollover,
+        isConfirmed,
+        hasVirtualOverride: virtual !== undefined,
+        unit
+      });
 
       return {
         storeId: store.id,
@@ -4448,15 +4207,15 @@ export class BillCalculatorComponent implements OnDestroy {
         isFrequentZero,
         consecutiveZeroMonths,
         learnedReason,
-        isNegative,
-        isZeroActive: isZeroThisMonth || is2MonthsZero,
-        isHugeTypoJump: isExtremeJump,
-        isAtypicalJump: is3xJump,
-        hasSuspiciousAlert: hasSuspiciousAlert && !isConfirmed,
+        isNegative: anomalyEval.isNegative,
+        isZeroActive: anomalyEval.isZeroActive,
+        isHugeTypoJump: anomalyEval.isExtremeJump,
+        isAtypicalJump: anomalyEval.is3xJump,
+        hasSuspiciousAlert: anomalyEval.hasUnconfirmedAlert,
         anomalyConfirmed: isConfirmed,
         isRollover,
-        alertSeverity,
-        validationAlert,
+        alertSeverity: anomalyEval.alertSeverity,
+        validationAlert: anomalyEval.validationAlert,
         readingDiff
       };
     }).sort((a, b) => {
