@@ -21,7 +21,7 @@ describe('Regression: November previous month values and store import matching',
     };
     (globalThis as any).localStorage = mockLocalStorage;
 
-    mockLocalStorage.setItem('shop_rateio_clean_slate_20261007_v1', 'done');
+    mockLocalStorage.setItem('shop_rateio_clean_slate_20261120_v1', 'done');
 
     storeService = new StoreService();
     (storeService as any).indexedDb = {

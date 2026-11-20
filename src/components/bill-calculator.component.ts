@@ -2129,7 +2129,7 @@ export class BillCalculatorComponent implements OnDestroy {
     }
   }
 
-  confirmClearMonthStores() {
+  async confirmClearMonthStores() {
     const type = this.utilityType();
     const month = this.selectedMonth();
     const typeLabel = type === 'luz' ? 'Energia/Luz' : (type === 'agua' ? 'Água' : 'Gás');
@@ -2153,13 +2153,14 @@ export class BillCalculatorComponent implements OnDestroy {
       [type]: new Map()
     }));
 
-    // 3. Limpa o histórico de faturas salvas para este mês/tipo
-    this.historyService.clearBillForMonth(type, month);
+    // 3. Remove definitivamente o registro do mês no histórico local e no Supabase
+    await this.historyService.clearBillForMonth(type, month);
+    await this.storeService.flushSyncToSupabase();
 
     // 4. Recarrega os dados do mês atual para refletir o estado limpo
     this.loadDataForCurrentSelection();
 
-    this.indexedDb.showToast(`🗑️ Lojas de ${typeLabel} do mês ${month} foram apagadas com sucesso!`);
+    this.indexedDb.showToast(`🗑️ Lojas e rateio de ${typeLabel} (${month}) apagados do sistema e do Supabase!`);
   }
 
   loadDataForCurrentSelection() {

@@ -296,5 +296,94 @@ describe('Storage Quota & Optimistic Concurrency Control (Passo D)', () => {
       expect((merged!.readings['loja-b'] as any).reading).toBe(420);
       expect(syncBillMock).toHaveBeenCalledTimes(1);
     });
+
+    it('não deve ressuscitar mês apagado do Supabase quando refreshBillsFromSupabase rodar em cache já sincronizado', async () => {
+      const storageMap = new Map<string, string>();
+      (globalThis as any).localStorage = {
+        getItem: (k: string) => storageMap.get(k) ?? null,
+        setItem: (k: string, v: string) => storageMap.set(k, String(v)),
+        removeItem: (k: string) => storageMap.delete(k),
+        clear: () => storageMap.clear(),
+        get length() { return storageMap.size; },
+        key: (i: number) => Array.from(storageMap.keys())[i] ?? null
+      };
+
+      const syncBillMock = vi.fn().mockResolvedValue(true);
+      const deleteIdbBillMock = vi.fn().mockResolvedValue(undefined);
+      const deleteSupaBillMock = vi.fn().mockResolvedValue(true);
+
+      const service = new HistoryService();
+      (service as any).indexedDb = {
+        clientSessionId: 'dev-a',
+        saveBill: vi.fn().mockResolvedValue(undefined),
+        deleteBill: deleteIdbBillMock
+      };
+      (service as any).supabase = {
+        subscribeToBills: vi.fn(),
+        fetchAllBills: vi.fn().mockResolvedValue({}), // Mês foi apagado no Supabase!
+        syncBill: syncBillMock,
+        deleteBill: deleteSupaBillMock
+      };
+
+      // Simula mês já sincronizado anteriormente (_pendingSync = false)
+      (service as any).billsSignal.set({
+        'gas_2026-11': {
+          costItems: [],
+          consumptionInput: 100,
+          acInput: 0,
+          lastUpdated: '2026-11-18T10:00:00.000Z',
+          version: 3,
+          readings: { 's1': { reading: 500, constant: 1, adjustment: 1, calculatedConsumption: 10 } }
+        }
+      });
+
+      await service.refreshBillsFromSupabase();
+
+      expect(service.getBill('gas', '2026-11')).toBeNull();
+      expect(syncBillMock).not.toHaveBeenCalled();
+      expect(deleteIdbBillMock).toHaveBeenCalledWith('gas', '2026-11');
+    });
+
+    it('clearBillForMonth deve remover definitivamente do estado local, IndexedDB e Supabase', async () => {
+      const storageMap = new Map<string, string>();
+      (globalThis as any).localStorage = {
+        getItem: (k: string) => storageMap.get(k) ?? null,
+        setItem: (k: string, v: string) => storageMap.set(k, String(v)),
+        removeItem: (k: string) => storageMap.delete(k),
+        clear: () => storageMap.clear(),
+        get length() { return storageMap.size; },
+        key: (i: number) => Array.from(storageMap.keys())[i] ?? null
+      };
+
+      const deleteIdbBillMock = vi.fn().mockResolvedValue(undefined);
+      const deleteSupaBillMock = vi.fn().mockResolvedValue(true);
+
+      const service = new HistoryService();
+      (service as any).indexedDb = {
+        clientSessionId: 'dev-a',
+        saveBill: vi.fn().mockResolvedValue(undefined),
+        deleteBill: deleteIdbBillMock
+      };
+      (service as any).supabase = {
+        subscribeToBills: vi.fn(),
+        fetchAllBills: vi.fn().mockResolvedValue(null),
+        syncBill: vi.fn().mockResolvedValue(true),
+        deleteBill: deleteSupaBillMock
+      };
+
+      service.saveBill('agua', '2026-11', {
+        costItems: [],
+        consumptionInput: 100,
+        acInput: 0,
+        lastUpdated: '2026-11-18T10:00:00.000Z',
+        readings: { 's1': { reading: 100, constant: 1, adjustment: 1, calculatedConsumption: 10 } }
+      });
+
+      await service.clearBillForMonth('agua', '2026-11');
+
+      expect(service.getBill('agua', '2026-11')).toBeNull();
+      expect(deleteIdbBillMock).toHaveBeenCalledWith('agua', '2026-11');
+      expect(deleteSupaBillMock).toHaveBeenCalledWith('agua', '2026-11');
+    });
   });
 });

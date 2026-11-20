@@ -408,6 +408,26 @@ FOR ALL USING (bucket_id = 'meter-photos') WITH CHECK (bucket_id = 'meter-photos
   }
 
   /**
+   * Exclui permanentemente um fechamento mensal de rateio do Supabase
+   */
+  async deleteBill(type: string, month: string): Promise<boolean> {
+    try {
+      const client = this.getClient();
+      const id = `${type}_${month}`;
+      const { error } = await client.from('bills').delete().eq('id', id);
+      if (error) {
+        console.warn('Erro ao excluir rateio do Supabase:', error);
+        return false;
+      }
+      this.addLog(`🗑️ Rateio de ${type.toUpperCase()} (${month}) excluído do Supabase.`);
+      return true;
+    } catch (err) {
+      console.warn('Falha de rede ao excluir rateio do Supabase:', err);
+      return false;
+    }
+  }
+
+  /**
    * Busca um fechamento mensal de rateio do Supabase
    */
   async fetchBill(type: string, month: string): Promise<BillData | null> {

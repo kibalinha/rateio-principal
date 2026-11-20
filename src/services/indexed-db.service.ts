@@ -34,7 +34,7 @@ export class IndexedDbService {
   readonly lastSyncTimestamp = signal<string | null>(null);
   readonly syncMessage = signal<string | null>(null);
 
-  private readonly CLEAN_SLATE_KEY = 'shop_rateio_clean_slate_20261007_v1';
+  private readonly CLEAN_SLATE_KEY = 'shop_rateio_clean_slate_20261120_v1';
 
   constructor() {
     this.dbReadyPromise = this.initIndexedDB();
@@ -78,6 +78,7 @@ export class IndexedDbService {
       try {
         localStorage.removeItem('shop_rateio_stores_data');
         localStorage.removeItem('shop_rateio_history');
+        localStorage.removeItem('shop_rateio_monthly_lists_v1');
         localStorage.removeItem('shop_rateio_pending_photo_deletions');
 
         const keysToRemove: string[] = [];
@@ -304,6 +305,27 @@ export class IndexedDbService {
       await this.deleteRecord('stores', id);
     } catch (e) {
       console.warn('Error deleting store from IndexedDB:', e);
+    }
+  }
+
+  async deleteBill(type: string, month: string): Promise<void> {
+    const key = `${type}_${month}`;
+    try {
+      await this.deleteRecord('bills', key);
+    } catch (e) {
+      console.warn('Error deleting bill from IndexedDB:', e);
+    }
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const storageStr = localStorage.getItem('shop_rateio_history');
+        if (storageStr) {
+          const storage = JSON.parse(storageStr);
+          if (storage && key in storage) {
+            delete storage[key];
+            localStorage.setItem('shop_rateio_history', JSON.stringify(storage));
+          }
+        }
+      } catch {}
     }
   }
 

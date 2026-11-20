@@ -158,7 +158,7 @@ export class StoreService {
     }
   }
 
-  private readonly CLEAN_SLATE_KEY = 'shop_rateio_clean_slate_20261007_v1';
+  private readonly CLEAN_SLATE_KEY = 'shop_rateio_clean_slate_20261120_v1';
 
   async syncStoresToSupabase(): Promise<boolean> {
     const list = this.storesSignal();
@@ -252,26 +252,24 @@ export class StoreService {
         }
         await this.indexedDb?.saveStores?.(finalStores);
 
-        // Também atualiza listas mensais caso tenham sido modificadas remotamente (aceitando arrays vazios [] limpos remotamente)
+        // Também atualiza listas mensais usando a nuvem como fonte autoritativa (removendo chaves apagadas remotamente)
         if (typeof this.supabase?.fetchMonthlyStoreLists === 'function') {
           const remoteLists = await this.supabase.fetchMonthlyStoreLists();
           if (this.isLocalWriteInFlight) return;
           if (remoteLists && typeof remoteLists === 'object') {
-            this.monthlyStoreListsSignal.update(curr => {
-              const merged: Record<string, string[]> = { ...curr };
-              for (const [key, remoteList] of Object.entries(remoteLists)) {
-                if (Array.isArray(remoteList)) {
-                  merged[key] = remoteList;
-                }
+            const cleanedRemote: Record<string, string[]> = {};
+            for (const [key, remoteList] of Object.entries(remoteLists)) {
+              if (Array.isArray(remoteList)) {
+                cleanedRemote[key] = remoteList;
               }
-              if (typeof localStorage !== 'undefined') {
-                try {
-                  localStorage.setItem(this.MONTHLY_LISTS_STORAGE_KEY, JSON.stringify(merged));
-                } catch {}
-              }
-              this.indexedDb?.saveMonthlyStoreLists?.(merged);
-              return merged;
-            });
+            }
+            this.monthlyStoreListsSignal.set(cleanedRemote);
+            if (typeof localStorage !== 'undefined') {
+              try {
+                localStorage.setItem(this.MONTHLY_LISTS_STORAGE_KEY, JSON.stringify(cleanedRemote));
+              } catch {}
+            }
+            this.indexedDb?.saveMonthlyStoreLists?.(cleanedRemote);
           }
         }
       }
@@ -778,8 +776,8 @@ export class StoreService {
         const hist = localStorage.getItem('shop_rateio_history');
         if (hist) {
           const parsed = JSON.parse(hist);
-          if (parsed && parsed[key]) {
-            parsed[key].readings = {};
+          if (parsed && key in parsed) {
+            delete parsed[key];
             localStorage.setItem('shop_rateio_history', JSON.stringify(parsed));
           }
         }
@@ -1426,26 +1424,38 @@ export class StoreService {
   }
 
   async removeStore(id: string) {
-    this.storesSignal.update(list => {
-      const updated = list.filter(s => s.id !== id);
-      this.persistStores(updated);
-      return updated;
-    });
+    this.isLocalWriteInFlight = true;
+    this.suppressRealtimeUntilMs = Date.now() + 3000;
+    try {
+      this.storesSignal.update(list => {
+        const updated = list.filter(s => s.id !== id);
+        this.persistStores(updated, false);
+        return updated;
+      });
 
-    this.monthlyStoreListsSignal.update(current => {
-      const updated: Record<string, string[]> = {};
-      for (const [k, ids] of Object.entries(current)) {
-        updated[k] = ids.filter(storeId => storeId !== id);
+      let nextLists: Record<string, string[]> = {};
+      this.monthlyStoreListsSignal.update(current => {
+        const updated: Record<string, string[]> = {};
+        for (const [k, ids] of Object.entries(current)) {
+          updated[k] = ids.filter(storeId => storeId !== id);
+        }
+        nextLists = updated;
+        this.persistMonthlyStoreLists(updated, false);
+        return updated;
+      });
+
+      // 1. Exclui individualmente no IndexedDB
+      await this.indexedDb.deleteStore(id);
+
+      // 2. Exclui permanentemente no Supabase PostgreSQL e atualiza listas mensais na nuvem
+      await this.supabase.deleteStore(id);
+      if (typeof this.supabase?.syncMonthlyStoreLists === 'function') {
+        await this.supabase.syncMonthlyStoreLists(nextLists);
       }
-      this.persistMonthlyStoreLists(updated);
-      return updated;
-    });
-
-    // 1. Exclui individualmente no IndexedDB
-    await this.indexedDb.deleteStore(id);
-
-    // 2. Exclui permanentemente no Supabase PostgreSQL
-    await this.supabase.deleteStore(id);
+    } finally {
+      this.isLocalWriteInFlight = false;
+      this.suppressRealtimeUntilMs = Date.now() + 1500;
+    }
   }
 
   updateStore(updatedStore: Store) {

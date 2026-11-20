@@ -978,7 +978,7 @@ export class StoreManagerComponent {
     this.showImport.set(true);
   }
 
-  confirmClearMonthStores() {
+  async confirmClearMonthStores() {
     const tabName = this.getTabName();
     const month = this.consultationMonth();
     const type = this.activeTab();
@@ -994,8 +994,9 @@ export class StoreManagerComponent {
     if (!confirmed) return;
 
     this.storeService.clearMonthlyStoreList(type, month);
-    this.historyService.clearBillForMonth(type, month);
-    this.indexedDb.showToast(`🗑️ Lojas de ${tabName} do mês ${month} foram apagadas com sucesso!`);
+    await this.historyService.clearBillForMonth(type, month);
+    await this.storeService.flushSyncToSupabase();
+    this.indexedDb.showToast(`🗑️ Lojas e rateio de ${tabName} (${month}) apagados do sistema e do Supabase!`);
   }
 
   isStoreActiveInSelectedMonth(store: Store): boolean {
@@ -1301,8 +1302,9 @@ export class StoreManagerComponent {
     const store = this.storeToDelete();
     if (!store) return;
     this.storeToDelete.set(null);
+    this.historyService.removeStoreFromAllBills(store.id);
     await this.storeService.removeStore(store.id);
-    this.indexedDb.showToast(`🗑️ Loja "${store.name}" (${store.luc}) excluída com sucesso do banco de dados.`);
+    this.indexedDb.showToast(`🗑️ Loja "${store.name}" (${store.luc}) excluída definitivamente do sistema e do Supabase.`);
   }
 
   async refreshStores() {

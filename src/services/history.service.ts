@@ -124,7 +124,7 @@ export function mergeBillData(
 })
 export class HistoryService {
   private readonly STORAGE_KEY = 'shop_rateio_history';
-  private readonly CLEAN_SLATE_KEY = 'shop_rateio_clean_slate_20261007_v1';
+  private readonly CLEAN_SLATE_KEY = 'shop_rateio_clean_slate_20261120_v1';
   readonly indexedDb: IndexedDbService = (() => {
     try {
       return inject(IndexedDbService);
@@ -208,12 +208,18 @@ export class HistoryService {
                 this.supabase.syncBill(uType, uMonth, mergedBill).catch(() => {});
               }
             }
-          } else {
-            // Existe apenas localmente (ex: novo mês criado offline)
+          } else if ((v as any)?._pendingSync === true) {
+            // Existe apenas localmente e ainda não foi sincronizado (criado offline)
             merged[k] = v;
             const [uType, uMonth] = k.split('_');
             if (uType && uMonth) {
               this.supabase.syncBill(uType, uMonth, v).catch(() => {});
+            }
+          } else {
+            // Não existe mais no Supabase e não está pendente offline -> foi apagado na nuvem
+            const [uType, uMonth] = k.split('_');
+            if (uType && uMonth && typeof this.indexedDb?.deleteBill === 'function') {
+              this.indexedDb.deleteBill(uType, uMonth).catch(() => {});
             }
           }
         }
@@ -326,6 +332,11 @@ export class HistoryService {
         const current = this.billsSignal()[key];
         if (current && current.version === updated.version) {
           (current as any)._pendingSync = false;
+          if (typeof localStorage !== 'undefined') {
+            try {
+              localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.billsSignal()));
+            } catch {}
+          }
         }
       }
     }).catch(err => {
@@ -348,17 +359,40 @@ export class HistoryService {
     return this.billsSignal();
   }
 
-  clearBillForMonth(type: string, month: string) {
+  async clearBillForMonth(type: string, month: string): Promise<void> {
     const key = this.generateKey(type, month);
-    const existing = this.billsSignal()[key];
-    if (existing) {
-      const updated: BillData = {
-        ...existing,
-        readings: {},
-        lastUpdated: new Date().toISOString(),
-        version: (existing.version || 0) + 1
-      };
-      this.saveBill(type, month, updated);
+    this.billsSignal.update(curr => {
+      if (!(key in curr)) return curr;
+      const { [key]: _, ...rest } = curr;
+      return rest;
+    });
+
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.billsSignal()));
+      } catch {}
+    }
+
+    if (typeof this.indexedDb?.deleteBill === 'function') {
+      await this.indexedDb.deleteBill(type, month);
+    }
+
+    if (typeof this.supabase?.deleteBill === 'function') {
+      await this.supabase.deleteBill(type, month);
+    }
+  }
+
+  removeStoreFromAllBills(storeId: string): void {
+    const all = this.billsSignal();
+    for (const [key, bill] of Object.entries(all)) {
+      if (!bill?.readings || !(storeId in bill.readings)) continue;
+      const [uType, uMonth] = key.split('_');
+      if (!uType || !uMonth) continue;
+      const { [storeId]: _, ...remainingReadings } = bill.readings;
+      this.saveBill(uType, uMonth, {
+        ...bill,
+        readings: remainingReadings
+      });
     }
   }
 
@@ -438,9 +472,17 @@ export class HistoryService {
     // Ordena os meses do mais recente para o mais antigo (ex.: 2026-10, 2026-09, 2026-08...)
     pastMonths.sort().reverse();
 
+    const monthlyLists = typeof (this.storeService as any)?.monthlyStoreLists === 'function'
+      ? (this.storeService as any).monthlyStoreLists()
+      : {};
+
     // 2. Itera pelos meses passados mais recentes primeiro
     for (const m of pastMonths) {
-      const bill = allData[`${prefix}${m}`];
+      const listKey = `${prefix}${m}`;
+      if (listKey in monthlyLists && (!monthlyLists[listKey] || monthlyLists[listKey].length === 0)) {
+        continue;
+      }
+      const bill = allData[listKey];
       if (!bill || !bill.readings) continue;
 
       // Tarifa unitária do mês histórico para cálculo do custo caso não esteja gravado diretamente
