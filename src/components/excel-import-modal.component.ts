@@ -292,7 +292,7 @@ export interface ExcelImportSuccessEvent {
                     <button type="button"
                       (click)="showAdvancedMappings.set(!showAdvancedMappings())"
                       class="text-[11px] px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-teal-200 dark:border-teal-800 text-teal-800 dark:text-teal-300 font-bold hover:bg-teal-50 cursor-pointer">
-                      {{ showAdvancedMappings() ? '▲ Ocultar extras' : '▼ Constante / Ajuste / Contrato' }}
+                      {{ showAdvancedMappings() ? '▲ Ocultar extras' : '▼ Constante / Ajuste / FCM / Contrato' }}
                     </button>
                     @if (canUseAiMapping()) {
                       <button type="button"
@@ -462,6 +462,36 @@ export interface ExcelImportSuccessEvent {
                       <select
                         [ngModel]="columnMappings().adjustment"
                         (ngModelChange)="updateColumnMapping('adjustment', $event)"
+                        class="w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-xs font-medium">
+                        <option value="">-- Não Mapear --</option>
+                        @for (h of rawExcelHeaders(); track h) {
+                          <option [value]="h">{{ h }}</option>
+                        }
+                      </select>
+                    </div>
+
+                    <div>
+                      <label class="block font-bold text-[11px] text-slate-700 dark:text-slate-300 mb-1">
+                        Ajuste (+) (R$)
+                      </label>
+                      <select
+                        [ngModel]="columnMappings().adjustmentAdd"
+                        (ngModelChange)="updateColumnMapping('adjustmentAdd', $event)"
+                        class="w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-xs font-medium">
+                        <option value="">-- Não Mapear --</option>
+                        @for (h of rawExcelHeaders(); track h) {
+                          <option [value]="h">{{ h }}</option>
+                        }
+                      </select>
+                    </div>
+
+                    <div>
+                      <label class="block font-bold text-[11px] text-slate-700 dark:text-slate-300 mb-1">
+                        FCM (Gás)
+                      </label>
+                      <select
+                        [ngModel]="columnMappings().fcm"
+                        (ngModelChange)="updateColumnMapping('fcm', $event)"
                         class="w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-xs font-medium">
                         <option value="">-- Não Mapear --</option>
                         @for (h of rawExcelHeaders(); track h) {
@@ -973,7 +1003,7 @@ export class ExcelImportModalComponent {
             alert('A planilha selecionada está vazia.');
             return;
           }
-          const bestIdx = chooseBestSheetIndex(sheets, this.utilityType);
+          const bestIdx = chooseBestSheetIndex(sheets, this.utilityType, this.selectedMonth);
           this.workbookSheets.set(sheets);
           this.selectedSheetIndex.set(bestIdx);
           this.applySmartGridExtraction(sheets[bestIdx].grid, null);

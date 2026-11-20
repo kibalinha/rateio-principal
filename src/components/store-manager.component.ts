@@ -457,6 +457,23 @@ import {
                   </div>
                 }
 
+                @if (importIsMultiMonthMatrix() && importMatrixActiveRows().length > 0 && importMatrixActiveRows().length < importMatrixAllRows().length) {
+                  <label class="text-[11px] px-2.5 py-2 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-900 font-semibold flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      [ngModel]="filterMatrixActiveOnly()"
+                      (ngModelChange)="toggleFilterMatrixActiveOnly($event)"
+                      class="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500">
+                    <span>
+                      Importar apenas lojas com medição/consumo nesta planilha
+                      (<strong>{{ importMatrixActiveRows().length }}</strong> de {{ importMatrixAllRows().length }})
+                      <span class="block text-[10px] font-normal text-indigo-700 mt-0.5">
+                        Ideal para planilhas como Gás que listam todo o shopping mas só possuem medidor nas operações ativas.
+                      </span>
+                    </span>
+                  </label>
+                }
+
                 <div class="flex justify-between items-center">
                   <span class="text-xs font-bold text-teal-800 uppercase tracking-wide">Ou cole os dados da planilha (Ctrl+V)</span>
                   <span class="text-[11px] text-teal-600">Aceita planilha inteira ou LUC / CONTRATO / NOME</span>
@@ -896,6 +913,10 @@ export class StoreManagerComponent {
   selectedImportSheetIndex = signal<number>(0);
   importSmartInfo = signal<string>('');
   importDetectedUtility = signal<TabType | null>(null);
+  importMatrixAllRows = signal<ParsedStoreRow[]>([]);
+  importMatrixActiveRows = signal<ParsedStoreRow[]>([]);
+  importIsMultiMonthMatrix = signal<boolean>(false);
+  filterMatrixActiveOnly = signal<boolean>(false);
   isDraggingStoreFile = signal(false);
   parsedImportData = signal<ParsedStoreRow[]>([]);
   skippedImportLines = signal<SkippedImportLine[]>([]);
@@ -1136,10 +1157,7 @@ export class StoreManagerComponent {
     this.showImport.update(v => !v);
     if (this.showImport()) {
       this.importReferenceMonth.set(this.consultationMonth());
-      this.importText.set('');
-      this.parsedImportData.set([]);
-      this.skippedImportLines.set([]);
-      this.detectedImportOrder.set('auto');
+      this.clearImport();
     }
   }
 
@@ -1150,9 +1168,20 @@ export class StoreManagerComponent {
     this.selectedImportSheetIndex.set(0);
     this.importSmartInfo.set('');
     this.importDetectedUtility.set(null);
+    this.importMatrixAllRows.set([]);
+    this.importMatrixActiveRows.set([]);
+    this.importIsMultiMonthMatrix.set(false);
+    this.filterMatrixActiveOnly.set(false);
     this.parsedImportData.set([]);
     this.skippedImportLines.set([]);
     this.detectedImportOrder.set('auto');
+  }
+
+  toggleFilterMatrixActiveOnly(enabled: boolean) {
+    this.filterMatrixActiveOnly.set(enabled);
+    if (!this.importIsMultiMonthMatrix()) return;
+    const rows = enabled ? this.importMatrixActiveRows() : this.importMatrixAllRows();
+    this.parsedImportData.set(rows);
   }
 
   resetForm() {
@@ -1322,7 +1351,7 @@ export class StoreManagerComponent {
             alert('A planilha selecionada está vazia.');
             return;
           }
-          const bestIdx = chooseBestSheetIndex(sheets, this.activeTab());
+          const bestIdx = chooseBestSheetIndex(sheets, this.activeTab(), this.importReferenceMonth());
           this.importWorkbookSheets.set(sheets);
           this.selectedImportSheetIndex.set(bestIdx);
           this.applyStoreSheetGrid(sheets[bestIdx].grid, sheets[bestIdx].name);
@@ -1350,18 +1379,33 @@ export class StoreManagerComponent {
 
   private applyStoreSheetGrid(grid: any[][], sourceLabel: string) {
     const extracted = extractMonthlyStoreRowsFromGrid(grid);
-    this.parsedImportData.set(extracted.rows);
+    const canFilterActive =
+      extracted.isMultiMonthMatrix &&
+      extracted.activeOnlyRows.length > 0 &&
+      extracted.activeOnlyRows.length < extracted.rows.length;
+    const defaultFilterActive = canFilterActive && this.activeTab() === 'gas';
+
+    this.importMatrixAllRows.set(extracted.rows);
+    this.importMatrixActiveRows.set(extracted.activeOnlyRows);
+    this.importIsMultiMonthMatrix.set(extracted.isMultiMonthMatrix);
+    this.filterMatrixActiveOnly.set(defaultFilterActive);
+
+    const chosenRows = defaultFilterActive ? extracted.activeOnlyRows : extracted.rows;
+    this.parsedImportData.set(chosenRows);
     this.skippedImportLines.set(extracted.skippedLines);
     this.detectedImportOrder.set(extracted.usedSmartMatrixParser ? 'smart-header' : 'auto');
     this.importDetectedUtility.set(extracted.detectedUtility);
 
     if (extracted.usedSmartMatrixParser && extracted.detectedHeaderRow >= 0) {
+      const filterNote = defaultFilterActive
+        ? ` (${extracted.activeOnlyRows.length} com medição de ${extracted.rows.length} no total)`
+        : '';
       this.importSmartInfo.set(
-        `Planilha inteligente (${sourceLabel}): cabeçalho encontrado na linha ${extracted.detectedHeaderRow + 1} · ${extracted.rows.length} lojas extraídas automaticamente.`
+        `Planilha inteligente (${sourceLabel}): cabeçalho encontrado na linha ${extracted.detectedHeaderRow + 1} · ${chosenRows.length} lojas extraídas automaticamente${filterNote}.`
       );
     } else {
       this.importSmartInfo.set(
-        `Arquivo lido (${sourceLabel}): ${extracted.rows.length} lojas detectadas.`
+        `Arquivo lido (${sourceLabel}): ${chosenRows.length} lojas detectadas.`
       );
     }
   }
@@ -1372,6 +1416,10 @@ export class StoreManagerComponent {
     this.importWorkbookSheets.set([]);
     this.importSmartInfo.set('');
     this.importDetectedUtility.set(null);
+    this.importMatrixAllRows.set([]);
+    this.importMatrixActiveRows.set([]);
+    this.importIsMultiMonthMatrix.set(false);
+    this.filterMatrixActiveOnly.set(false);
 
     if (!text.trim()) {
       this.parsedImportData.set([]);
@@ -1384,12 +1432,24 @@ export class StoreManagerComponent {
     const grid = parseTextToGrid(text);
     const smart = extractMonthlyStoreRowsFromGrid(grid);
     if (smart.usedSmartMatrixParser && smart.rows.length > 0) {
-      this.parsedImportData.set(smart.rows);
+      const canFilterActive =
+        smart.isMultiMonthMatrix &&
+        smart.activeOnlyRows.length > 0 &&
+        smart.activeOnlyRows.length < smart.rows.length;
+      const defaultFilterActive = canFilterActive && this.activeTab() === 'gas';
+
+      this.importMatrixAllRows.set(smart.rows);
+      this.importMatrixActiveRows.set(smart.activeOnlyRows);
+      this.importIsMultiMonthMatrix.set(smart.isMultiMonthMatrix);
+      this.filterMatrixActiveOnly.set(defaultFilterActive);
+
+      const chosenRows = defaultFilterActive ? smart.activeOnlyRows : smart.rows;
+      this.parsedImportData.set(chosenRows);
       this.skippedImportLines.set(smart.skippedLines);
       this.detectedImportOrder.set('smart-header');
       this.importDetectedUtility.set(smart.detectedUtility);
       this.importSmartInfo.set(
-        `Cabeçalho detectado automaticamente na linha ${smart.detectedHeaderRow + 1} · ${smart.rows.length} lojas extraídas (linhas de resumo e colunas extras ignoradas).`
+        `Cabeçalho detectado automaticamente na linha ${smart.detectedHeaderRow + 1} · ${chosenRows.length} lojas extraídas (linhas de resumo e colunas extras ignoradas).`
       );
       return;
     }

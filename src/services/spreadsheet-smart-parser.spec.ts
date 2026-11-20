@@ -187,16 +187,157 @@ describe('spreadsheet-smart-parser', () => {
     expect(result.suggestedMappings['reading']).toBe('Coluna 3');
   });
 
-  it('seleciona automaticamente a aba certa em um workbook com múltiplas abas (Resumo, Água, Energia, Gás)', () => {
+  it('seleciona automaticamente a aba certa em um workbook com múltiplas abas (Resumo, Água XXXX, Água 2026, Energia 2026, Gás 2026)', () => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Resumo Geral']]), 'Resumo');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['LUC', 'Loja', 'Leitura'], ['101', 'A', 50]]), 'Água 2026');
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.aoa_to_sheet([
+        ['RATEIO ÁGUA XXXX', '', '', 'Anterior', 'Janeiro', '', '', 'Novembro'],
+        ['LUC2', 'Contrato', 'Nome Fantasia', 'Leitura', 'Leitura3', 'Cons. Virtual', '', 'Leitura86'],
+        ['1001/1002', '20000610', 'TRAMONTINA STORE', '', '', '', '', '']
+      ]),
+      'BASE'
+    );
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.aoa_to_sheet([
+        ['RATEIO ÁGUA 2026', '', '', 'Anterior', 'Janeiro', '', '', 'Novembro'],
+        ['LUC2', 'Contrato', 'Nome Fantasia', 'Leitura', 'Leitura3', 'Cons. Virtual', '', 'Leitura86'],
+        ['1001/1002', '20000610', 'TRAMONTINA STORE', 500, 520, '', '', 561]
+      ]),
+      '2026'
+    );
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['LUC', 'Loja', 'Leitura'], ['101', 'A', 5000]]), 'Energia 2026');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['LUC', 'Loja', 'Leitura'], ['101', 'A', 25]]), 'Gás 2026');
 
     const sheets = extractSheetsFromWorkbook(wb);
-    expect(chooseBestSheetIndex(sheets, 'agua')).toBe(1);
-    expect(chooseBestSheetIndex(sheets, 'luz')).toBe(2);
-    expect(chooseBestSheetIndex(sheets, 'gas')).toBe(3);
+    expect(chooseBestSheetIndex(sheets, 'agua', '2026-11')).toBe(2); // prefere 2026 em vez de BASE (XXXX)
+    expect(chooseBestSheetIndex(sheets, 'luz', '2026-11')).toBe(3);
+    expect(chooseBestSheetIndex(sheets, 'gas', '2026-11')).toBe(4);
+  });
+
+  it('detecta matriz real de ÁGUA 2026 com cabeçalhos numerados do Excel (LUC2, Leitura86, Cons. Virtual87, Ajuste88, Rec. Fluxo92)', () => {
+    const aguaGrid: any[][] = [
+      ['RATEIO ÁGUA 2026', '', '', 'Anterior', 'Outubro', '', '', '', '', '', '', '', '', 'Novembro', '', '', '', '', '', '', '', ''],
+      ['', '', 'Valor conta', 70000, '', '', '', '', '', '', '', 'Valor conta', 88836.31, '', '', '', '', '', '', '', 'Valor conta', 81031.76],
+      ['', '', 'Enviro Tools', 1800, '', '', '', '', '', '', '', 'Enviro Tools', 1843.46, '', '', '', '', '', '', '', 'Enviro Tools', 1843.46],
+      ['', '', 'Fluxo de caixa', 0, '', '', '', '', '', '', '', 'Fluxo de caixa', 0, '', '', '', '', '', '', '', 'Fluxo de caixa', 0],
+      ['', '', 'Custo total', 71800, '', '', '', '', '', '', '', 'Custo total', 90679.77, '', '', '', '', '', '', '', 'Custo total', 82875.22],
+      ['', '', 'Consumo', 5800, '', '', '', '', '', '', '', 'Consumo', 6081, '', '', '', '', '', '', '', 'Consumo', 5661],
+      ['', '', 'Valor do m³', 12.38, '', '', '', '', '', '', '', 'Valor do m³', 14.91, '', '', '', '', '', '', '', 'Valor do m³', 14.64],
+      ['', '', 'Ar Condicionado', 10000, '', '', '', '', '', '', '', 'Ar Condicionado', 13092.63, '', '', '', '', '', '', '', 'Ar Condicionado', 12604.76],
+      ['', '', '', 0.14, '', '', '', '', '', '', '', '', 0.144, '', '', '', '', '', '', '', '', 0.152],
+      ['', '', '', 800, '', '', '', '', '', '', '', '', 878, '', '', '', '', '', '', '', '', 861],
+      [
+        'LUC2', 'Contrato', 'Nome Fantasia', 'Leitura',
+        'Leitura77', 'Cons. Virtual78', 'Ajuste79', 'Consumo80', 'Var (%)81', 'Custo R$82', 'Rec. Fluxo83', 'Custo total R$84', 'Coluna85',
+        'Leitura86', 'Cons. Virtual87', 'Ajuste88', 'Consumo89', 'Var (%)90', 'Custo R$91', 'Rec. Fluxo92', 'Custo total R$93', 'Coluna94'
+      ],
+      ['1003/1004', '20000416', 'PANVEL', 899, 904, '', '', 5, 0, 74.55, '', 74.55, '', 909, '', '', 5, 0.22, 73.2, '', 73.2, ''],
+      ['1007/1008A', '20000590', 'NIKE', 3390, 3402, '', '', 12, 'NaN', 178.92, '', 178.92, '', 3419, '', '', 17, 'N.Cons.', 248.87, 15.5, 264.37, ''],
+      ['', '', 'AVATIM', '', '', '', '', 0, 0, 0, '', 0, '', '', '', '', 0, 0, 0, '', 0, '']
+    ];
+
+    const result = extractSmartTableFromGrid(aguaGrid, {
+      selectedMonth: '2026-11',
+      utilityType: 'agua'
+    });
+
+    expect(result.headerRowIndex).toBe(10);
+    expect(result.isMultiMonthMatrix).toBe(true);
+    expect(result.detectedUtility).toBe('agua');
+    expect(result.selectedBlockId).toBe('11');
+    expect(result.suggestedMappings['luc']).toBe('LUC2');
+    expect(result.suggestedMappings['contrato']).toBe('Contrato');
+    expect(result.suggestedMappings['storeName']).toBe('Nome Fantasia');
+    expect(result.suggestedMappings['reading']).toBe('Leitura86');
+    expect(result.suggestedMappings['prevReading']).toBe('Leitura Anterior (Outubro)');
+    expect(result.suggestedMappings['virtual']).toBe('Cons. Virtual87');
+    expect(result.suggestedMappings['adjustment']).toBe('Ajuste88');
+    expect(result.suggestedMappings['fluxoCost']).toBe('Rec. Fluxo92');
+
+    const panvel = result.rows.find(r => r['LUC2'] === '1003/1004')!;
+    expect(panvel['Leitura86']).toBe(909);
+    expect(panvel['Leitura Anterior (Outubro)']).toBe(904);
+
+    const nike = result.rows.find(r => r['LUC2'] === '1007/1008A')!;
+    expect(nike['Leitura86']).toBe(3419);
+    expect(nike['Rec. Fluxo92']).toBe(15.5);
+
+    expect(result.billSummary).not.toBeNull();
+    expect(result.billSummary!.costItems.length).toBe(2);
+    expect(result.billSummary!.totalBillFromItems).toBeCloseTo(82875.22, 2);
+    expect(result.billSummary!.totalConsumption).toBe(5661);
+    expect(result.billSummary!.acConsumption).toBe(861);
+
+    // Extração de lista mensal de lojas: AVATIM sem LUC/Contrato vai para skippedLines
+    const monthly = extractMonthlyStoreRowsFromGrid(aguaGrid);
+    expect(monthly.rows.length).toBe(2);
+    expect(monthly.skippedLines.length).toBe(1);
+    expect(monthly.skippedLines[0].reason).toContain('Sem LUC e sem Contrato');
+  });
+
+  it('detecta matriz real de GÁS 2026 com Ajuste (x), Ajuste (+), FCM, fatura exata e filtro de lojas com medição', () => {
+    const gasGrid: any[][] = [
+      ['RATEIO GÁS 2026', '', '', 'Anterior', 'Outubro', '', '', '', '', '', '', '', '', '', '', '', 'Novembro', '', '', '', '', '', '', '', '', '', ''],
+      ['', '', 'Valor conta', 130000, '', '', '', '', '', '', '', '', '', '', 'Valor conta', 138160.77, '', '', '', '', '', '', '', '', '', 'Valor conta', 136093.69],
+      ['', '', 'Fluxo de caixa', 0, '', '', '', '', '', '', '', '', '', '', 'Fluxo de caixa', 0, '', '', '', '', '', '', '', '', '', 'Fluxo de caixa', 0],
+      ['', '', 'Custo total', 130000, '', '', '', '', '', '', '', '', '', '', 'Custo total', 138160.77, '', '', '', '', '', '', '', '', '', 'Custo total', 136093.69],
+      ['', '', 'Consumo', 20500, '', '', '', '', '', '', '', '', '', '', 'Consumo', 21252.96, '', '', '', '', '', '', '', '', '', 'Consumo', 20907.71],
+      ['', '', 'Valor do m³', 6.34, '', '', '', '', '', '', '', '', '', '', 'Valor do m³', 6.50, '', '', '', '', '', '', '', '', '', 'Valor do m³', 6.5092585],
+      [
+        'LUC', 'Contrato', 'Nome Fantasia', 'Leitura',
+        'Leitura', 'Cons. Virtual', 'Ajuste (x)', 'Ajuste (+)', 'FCM', 'Consumo Inicial', 'Consumo c/ FCC', 'Var (%)', 'Custo R$', 'Rec. Fluxo', 'Custo total R$', '',
+        'Leitura', 'Cons. Virtual', 'Ajuste (x)', 'Ajuste (+)', 'FCM', 'Consumo Inicial', 'Consumo c/ FCC', 'Var (%)', 'Custo R$', 'Rec. Fluxo', 'Custo total R$'
+      ],
+      ['1001/1002', '20000610', 'TRAMONTINA STORE', '', '', '', '', '', 1.0727, 0, 0, 0, 0, 0, 0, '', '', '', '', '', 1.0727, 0, 0, 0, 0, 0, 0],
+      ['1078', '20000531', 'KFC', 10500, 10983, '', 1.266, 0.87, 1.0727, 611.48, 655.93, 0, 4263.55, 0, 4263.55, '', 11477, '', 1.266, 0.8702376962722226, 1.0727, 625.404, 670.8708708, 0, 4367.74, 0, 4367.74],
+      ['1095/1096', '20000682', 'PETISKEIRA', 750, 809, 2099, '', '', 1.0727, 2099, 2099, 0, 13643.5, 0, 13643.5, '', 809, 2099, '', '', 1.0727, 2099, 2099, 0, 13662.93, 0, 13662.93],
+      ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', -1.1193780944897579e-12]
+    ];
+
+    const result = extractSmartTableFromGrid(gasGrid, {
+      selectedMonth: '2026-11',
+      utilityType: 'gas'
+    });
+
+    expect(result.headerRowIndex).toBe(6);
+    expect(result.isMultiMonthMatrix).toBe(true);
+    expect(result.detectedUtility).toBe('gas');
+    expect(result.selectedBlockId).toBe('11');
+    expect(result.rows.length).toBe(3); // linha final de resíduo numérico ignorada
+    expect(result.suggestedMappings['luc']).toBe('LUC');
+    expect(result.suggestedMappings['reading']).toBe('Leitura');
+    expect(result.suggestedMappings['prevReading']).toBe('Leitura Anterior (Outubro)');
+    expect(result.suggestedMappings['virtual']).toBe('Cons. Virtual');
+    expect(result.suggestedMappings['adjustment']).toBe('Ajuste (x)');
+    expect(result.suggestedMappings['adjustmentAdd']).toBe('Ajuste (+)');
+    expect(result.suggestedMappings['fcm']).toBe('FCM');
+    expect(result.suggestedMappings['fluxoCost']).toBe('Rec. Fluxo');
+
+    const kfc = result.rows.find(r => r['LUC'] === '1078')!;
+    expect(kfc['Leitura']).toBe(11477);
+    expect(kfc['Leitura Anterior (Outubro)']).toBe(10983);
+    expect(kfc['Ajuste (x)']).toBe(1.266);
+    expect(kfc['Ajuste (+)']).toBeCloseTo(0.8702377, 6);
+    expect(kfc['FCM']).toBe(1.0727);
+
+    const petiskeira = result.rows.find(r => r['LUC'] === '1095/1096')!;
+    expect(petiskeira['Leitura']).toBe(809);
+    expect(petiskeira['Cons. Virtual']).toBe(2099);
+
+    expect(result.billSummary).not.toBeNull();
+    expect(result.billSummary!.costItems).toEqual([
+      { id: 'imp-11-1', name: 'Valor conta', value: 136093.69 }
+    ]);
+    expect(result.billSummary!.totalBillFromItems).toBeCloseTo(136093.69, 2);
+    expect(result.billSummary!.totalConsumption).toBeCloseTo(20907.71, 2);
+
+    // Em Lojas -> Gás, activeOnlyRows separa as lojas que realmente usam gás das demais do shopping
+    const monthly = extractMonthlyStoreRowsFromGrid(gasGrid);
+    expect(monthly.isMultiMonthMatrix).toBe(true);
+    expect(monthly.rows.length).toBe(3);
+    expect(monthly.activeOnlyRows.map(r => r.luc)).toEqual(['1078', '1095/1096']);
   });
 });

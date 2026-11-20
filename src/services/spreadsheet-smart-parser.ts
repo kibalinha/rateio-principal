@@ -44,10 +44,12 @@ export interface SmartTableExtraction {
 
 export interface SmartMonthlyStoreExtraction {
   rows: ParsedStoreRow[];
+  activeOnlyRows: ParsedStoreRow[];
   skippedLines: SkippedImportLine[];
   detectedHeaderRow: number;
   detectedUtility: UtilityType | null;
   usedSmartMatrixParser: boolean;
+  isMultiMonthMatrix: boolean;
 }
 
 const MONTH_PATTERNS: Array<{ monthNumber: number; label: string; regex: RegExp }> = [
@@ -91,6 +93,17 @@ export function normalizeHeaderText(val: any): string {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * Remove sufixos numéricos automáticos que o Excel cria em Tabelas Estruturadas
+ * quando colunas têm nomes repetidos (ex: "LUC2" -> "luc", "Leitura86" -> "leitura",
+ * "Ajuste88" -> "ajuste", "Cons. Virtual87" -> "cons. virtual", "Rec. Fluxo92" -> "rec. fluxo").
+ */
+function stripExcelAutoNumberSuffix(normHeader: string): string {
+  // Não altera cabeçalhos sintéticos ("coluna 1") nem "bss-1" / "bss1"
+  if (/^(coluna\s+\d+|bss[\s-]*\d+)$/i.test(normHeader)) return normHeader;
+  return normHeader.replace(/([a-z)%$])\d+$/i, '$1').trim();
 }
 
 export function parseCellNumber(val: any): number | null {
@@ -189,19 +202,23 @@ export function detectUtilityFromText(text: string): UtilityType | null {
   return null;
 }
 
-export function chooseBestSheetIndex(sheets: ParsedSheetGrid[], utilityType?: UtilityType): number {
+export function chooseBestSheetIndex(
+  sheets: ParsedSheetGrid[],
+  utilityType?: UtilityType,
+  selectedMonth?: string
+): number {
   if (!sheets || sheets.length <= 1) return 0;
 
+  const targetYear = selectedMonth ? Number(selectedMonth.split('-')[0]) : null;
   let bestIdx = 0;
-  let bestScore = -1;
+  let bestScore = -999;
 
   sheets.forEach((sheet, idx) => {
     let score = 0;
     const sheetUtil = detectUtilityFromText(sheet.name);
-    if (utilityType && sheetUtil === utilityType) score += 50;
-    else if (utilityType && sheetUtil && sheetUtil !== utilityType) score -= 30;
+    if (utilityType && sheetUtil === utilityType) score += 60;
+    else if (utilityType && sheetUtil && sheetUtil !== utilityType) score -= 40;
 
-    // Inspeciona título nas primeiras 3 linhas
     const topText = (sheet.grid || [])
       .slice(0, 3)
       .flat()
@@ -209,13 +226,23 @@ export function chooseBestSheetIndex(sheets: ParsedSheetGrid[], utilityType?: Ut
       .join(' ');
     const topUtil = detectUtilityFromText(topText);
     if (utilityType && topUtil === utilityType) score += 30;
+    else if (utilityType && topUtil && topUtil !== utilityType) score -= 20;
 
-    // Verifica se tem tabela real de lojas
+    // Penaliza abas-modelo com "XXXX" e favorece abas com o ano do mês selecionado
+    const combinedTitle = `${sheet.name} ${topText}`;
+    if (/\bxxxx\b/i.test(combinedTitle)) score -= 25;
+    if (targetYear && combinedTitle.includes(String(targetYear))) score += 25;
+
     const headerRow = findHeaderRowIndex(sheet.grid || []);
-    if (headerRow >= 0) score += 20;
+    if (headerRow >= 0) {
+      score += 20;
+      const blocks = detectMonthBlocks(sheet.grid || [], headerRow);
+      const monthsWithData = blocks.filter(b => b.monthNumber !== null && b.hasReadings).length;
+      if (monthsWithData > 0) score += 15 + Math.min(monthsWithData, 12);
+    }
 
     const nonEmptyRows = (sheet.grid || []).filter(r => r.some(c => String(c ?? '').trim() !== '')).length;
-    if (nonEmptyRows >= 5) score += 10;
+    if (nonEmptyRows >= 5) score += 5;
 
     if (score > bestScore) {
       bestScore = score;
@@ -227,7 +254,7 @@ export function chooseBestSheetIndex(sheets: ParsedSheetGrid[], utilityType?: Ut
 }
 
 function classifyHeaderCell(cellText: string): string | null {
-  const nh = normalizeHeaderText(cellText);
+  const nh = stripExcelAutoNumberSuffix(normalizeHeaderText(cellText));
   if (!nh || nh.length > 60) return null;
 
   if (nh === 'luc' || nh === 'suc' || /\bluc\b/.test(nh) || nh.includes('unidade') || nh === 'box' || nh === 'espaco' || nh === 'ponto') {
@@ -278,10 +305,10 @@ function classifyHeaderCell(cellText: string): string | null {
   if (nh.includes('virtual') || nh.includes('cons. virtual')) {
     return 'virtual';
   }
-  if (nh.includes('aj(+)') || nh.includes('ajuste add') || nh.includes('adicional')) {
+  if (nh.includes('aj(+)') || nh.includes('ajuste (+)') || nh.includes('ajuste(+)') || nh.includes('ajuste add') || nh.includes('adicional')) {
     return 'adjustmentAdd';
   }
-  if (nh === 'ajuste' || nh.includes('ajuste (x)') || nh === 'aj(x)' || nh.includes('fator ajuste')) {
+  if (nh === 'ajuste' || nh.includes('ajuste (x)') || nh.includes('ajuste(x)') || nh === 'aj(x)' || nh.includes('fator ajuste')) {
     return 'adjustment';
   }
   if (nh.includes('fcm') || nh.includes('fator correcao')) {
@@ -290,7 +317,15 @@ function classifyHeaderCell(cellText: string): string | null {
   if (nh.includes('rec. fluxo') || nh.includes('fluxo') || nh.includes('custo fluxo')) {
     return 'fluxoCost';
   }
-  if (nh === 'consumo' || nh.includes('consumo kwh') || nh.includes('consumo m3') || nh === 'consumo (kwh)' || nh === 'consumo (m3)') {
+  if (
+    nh === 'consumo' ||
+    nh.includes('consumo kwh') ||
+    nh.includes('consumo m3') ||
+    nh === 'consumo (kwh)' ||
+    nh === 'consumo (m3)' ||
+    nh.includes('consumo inicial') ||
+    nh.includes('consumo c/')
+  ) {
     return 'consumption';
   }
   if (nh.includes('custo') || nh === 'var (%)' || nh === 'var%') {
@@ -580,15 +615,18 @@ export function extractBillSummaryForBlock(
 
     // Detecta transição da seção de custos para consumo/resumo
     if (
+      normLabel === 'consumo' ||
       normLabel.includes('consumo (ponta') ||
       normLabel.startsWith('consumo ') ||
       normLabel === 'consumo total' ||
       normLabel === 'custo total' ||
       normLabel === 'valor do kwh' ||
+      normLabel.startsWith('valor do m') ||
       normLabel.includes('areas comuns') ||
       normLabel.includes('area comum') ||
       normLabel.includes('ar condicionado') ||
       normLabel.includes('incorridos') ||
+      normLabel.includes('medicao lojistas') ||
       normLabel.includes('valor sap')
     ) {
       inCostSection = false;
@@ -607,13 +645,13 @@ export function extractBillSummaryForBlock(
       continue;
     }
 
-    // Consumo BSS-1..BSS-4 (Energia)
-    if (normLabel.includes('consumo') && val !== null) {
+    // Consumo BSS-1..BSS-4 (Energia) ou Consumo Total (Água / Gás)
+    if ((normLabel === 'consumo' || normLabel.includes('consumo')) && val !== null) {
       if (/bss[\s-]*1\b/.test(normLabel)) { bss1 = val; hasBss = true; }
       else if (/bss[\s-]*2\b/.test(normLabel)) { bss2 = val; hasBss = true; }
       else if (/bss[\s-]*3\b/.test(normLabel)) { bss3 = val; hasBss = true; }
       else if (/bss[\s-]*4\b/.test(normLabel)) { bss4 = val; hasBss = true; }
-      else if (normLabel.includes('consumo total') && val > 0) {
+      else if ((normLabel === 'consumo' || normLabel.includes('consumo total')) && val > 0 && totalConsumption === undefined) {
         totalConsumption = val;
       }
     }
@@ -671,9 +709,9 @@ export function autoMapColumns(
     note: ''
   };
 
-  // Passada 1: Mapeamento semântico pelos cabeçalhos
+  // Passada 1: Mapeamento semântico pelos cabeçalhos (suporta sufixos numéricos de tabela Excel como LUC2, Leitura86, Ajuste88)
   headers.forEach(h => {
-    const nh = normalizeHeaderText(h);
+    const nh = stripExcelAutoNumberSuffix(normalizeHeaderText(h));
     if (!nh) return;
 
     if (!mappings.contrato && (nh.includes('contrato') || nh === 'contr' || nh.startsWith('contr.'))) {
@@ -734,11 +772,11 @@ export function autoMapColumns(
       mappings.virtual = h;
       return;
     }
-    if (!mappings.adjustmentAdd && (nh.includes('aj(+)') || nh.includes('ajuste add') || nh.includes('adicional'))) {
+    if (!mappings.adjustmentAdd && (nh.includes('aj(+)') || nh.includes('ajuste (+)') || nh.includes('ajuste(+)') || nh.includes('ajuste add') || nh.includes('adicional'))) {
       mappings.adjustmentAdd = h;
       return;
     }
-    if (!mappings.adjustment && (nh === 'ajuste' || nh.includes('ajuste (x)') || nh === 'aj(x)' || nh.includes('fator ajuste'))) {
+    if (!mappings.adjustment && (nh === 'ajuste' || nh.includes('ajuste (x)') || nh.includes('ajuste(x)') || nh === 'aj(x)' || nh.includes('fator ajuste'))) {
       mappings.adjustment = h;
       return;
     }
@@ -1043,7 +1081,15 @@ export function extractSmartTableFromGrid(
  */
 export function extractMonthlyStoreRowsFromGrid(grid: any[][]): SmartMonthlyStoreExtraction {
   if (!grid || grid.length === 0) {
-    return { rows: [], skippedLines: [], detectedHeaderRow: -1, detectedUtility: null, usedSmartMatrixParser: false };
+    return {
+      rows: [],
+      activeOnlyRows: [],
+      skippedLines: [],
+      detectedHeaderRow: -1,
+      detectedUtility: null,
+      usedSmartMatrixParser: false,
+      isMultiMonthMatrix: false
+    };
   }
 
   const headerRowIndex = findHeaderRowIndex(grid);
@@ -1060,16 +1106,19 @@ export function extractMonthlyStoreRowsFromGrid(grid: any[][]): SmartMonthlyStor
     const parsed = parseMonthlyStoreListText(tsv);
     return {
       rows: parsed.rows,
+      activeOnlyRows: parsed.rows,
       skippedLines: parsed.skippedLines,
       detectedHeaderRow: -1,
       detectedUtility,
-      usedSmartMatrixParser: false
+      usedSmartMatrixParser: false,
+      isMultiMonthMatrix: false
     };
   }
 
   const headerRow = grid[headerRowIndex] || [];
   const monthBlocks = detectMonthBlocks(grid, headerRowIndex);
-  const idColLimit = monthBlocks.length >= 2 ? monthBlocks[0].startCol : headerRow.length;
+  const isMultiMonthMatrix = monthBlocks.length >= 2;
+  const idColLimit = isMultiMonthMatrix ? monthBlocks[0].startCol : headerRow.length;
 
   let lucCol = -1;
   let contractCol = -1;
@@ -1092,9 +1141,21 @@ export function extractMonthlyStoreRowsFromGrid(grid: any[][]): SmartMonthlyStor
     }
   }
 
+  // Colunas de leitura/virtual nos meses (para filtrar lojas que realmente usam a utilidade — útil principalmente para Gás!)
+  const activityCols: number[] = [];
+  if (isMultiMonthMatrix) {
+    for (let c = idColLimit; c < headerRow.length; c++) {
+      const role = classifyHeaderCell(String(headerRow[c] ?? ''));
+      if (role === 'reading' || role === 'virtual') {
+        activityCols.push(c);
+      }
+    }
+  }
+
   // Se achou ao menos LUC e Nome (ou Contrato e Nome), extrai diretamente das colunas corretas
   if ((lucCol >= 0 || contractCol >= 0) && nameCol >= 0) {
     const rows: ParsedStoreRow[] = [];
+    const activeOnlyRows: ParsedStoreRow[] = [];
     const skippedLines: SkippedImportLine[] = [];
 
     for (let r = headerRowIndex + 1; r < grid.length; r++) {
@@ -1126,19 +1187,34 @@ export function extractMonthlyStoreRowsFromGrid(grid: any[][]): SmartMonthlyStor
         continue;
       }
 
-      rows.push({
+      const parsedRow: ParsedStoreRow = {
         luc: luc || contrato,
         contrato,
         name
-      });
+      };
+      rows.push(parsedRow);
+
+      if (activityCols.length > 0) {
+        const hasAnyActivity = activityCols.some(col => {
+          const val = parseCellNumber(row[col]);
+          return val !== null && val > 0;
+        });
+        if (hasAnyActivity) {
+          activeOnlyRows.push(parsedRow);
+        }
+      } else {
+        activeOnlyRows.push(parsedRow);
+      }
     }
 
     return {
       rows,
+      activeOnlyRows,
       skippedLines,
       detectedHeaderRow: headerRowIndex,
       detectedUtility,
-      usedSmartMatrixParser: true
+      usedSmartMatrixParser: true,
+      isMultiMonthMatrix
     };
   }
 
@@ -1150,9 +1226,11 @@ export function extractMonthlyStoreRowsFromGrid(grid: any[][]): SmartMonthlyStor
   const parsed = parseMonthlyStoreListText(tsv);
   return {
     rows: parsed.rows,
+    activeOnlyRows: parsed.rows,
     skippedLines: parsed.skippedLines,
     detectedHeaderRow: headerRowIndex,
     detectedUtility,
-    usedSmartMatrixParser: headerRowIndex > 0
+    usedSmartMatrixParser: headerRowIndex > 0,
+    isMultiMonthMatrix
   };
 }
