@@ -1565,20 +1565,28 @@ export class BillCalculatorComponent implements OnDestroy {
   ocrPending = this.ocrPhotoFacade.ocrPending;
   showOcrQuality = this.ocrPhotoFacade.showOcrQuality;
 
-  // Utility counts for header badges:
+  // Utility counts for header badges (escopo estrito do mês selecionado):
   utilityStats = computed(() => {
-    const all = this.storeService.stores();
+    const month = this.selectedMonth();
+    const activeType = this.utilityType();
     const reads = this.readings();
+    const bills = this.historyService.bills();
+    this.storeService.stores();
+    this.storeService.monthlyStoreLists();
 
     const countUtil = (type: 'luz' | 'agua' | 'gas') => {
-      const stores = all.filter(s => {
-        const uses = type === 'luz' ? s.usesLuz : (type === 'agua' ? s.usesAgua : s.usesGas);
-        return uses && s.active !== false;
-      });
-      const map = reads[type];
+      const stores = this.storeService.getStoresForMonth(type, month, false);
+      const activeMap = type === activeType ? reads[type] : null;
+      const savedReadings = bills[`${type}_${month}`]?.readings || {};
       const completed = stores.filter(s => {
-        const r = map?.get(s.id);
-        return r && r.reading > 0;
+        const r = activeMap ? activeMap.get(s.id) : savedReadings[s.id];
+        if (typeof r === 'number') return r > 0;
+        return Boolean(
+          r &&
+          (Number(r.reading) > 0 ||
+            (r.virtual !== undefined && r.virtual !== null) ||
+            r.isJustified)
+        );
       }).length;
       return { total: stores.length, completed };
     };
@@ -2164,7 +2172,9 @@ export class BillCalculatorComponent implements OnDestroy {
     this.resetFormValues(type);
 
     // 3. Remove definitivamente o registro do mês no histórico local e no Supabase
+    //    e limpa lojas órfãs que não participam de nenhum outro mês/utilidade
     await this.historyService.clearBillForMonth(type, month);
+    await this.storeService.pruneOrphanStores(type);
     await this.storeService.flushSyncToSupabase();
 
     // 4. Recarrega os dados do mês atual para refletir o estado limpo

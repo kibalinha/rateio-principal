@@ -246,6 +246,23 @@ import {
               title="Alternar entre ver mês selecionado ou ver cadastro geral de todas as lojas">
               {{ viewMode() === 'all' ? '📅 Ver por Mês' : '🌐 Todas (Geral)' }}
             </button>
+
+            @if (viewMode() === 'all' && authService.canManageStores() && totalUtilityCount() > 0) {
+              @if (orphanCountForTab() > 0) {
+                <button type="button"
+                  (click)="confirmPruneOrphanStores()"
+                  class="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800 font-bold text-[11px] transition-colors cursor-pointer"
+                  title="Remove de {{ getTabName() }} (e do Catálogo Geral se não usada em outro serviço) lojas que não estão em nenhum mês">
+                  🧹 Limpar {{ orphanCountForTab() }} sem mês
+                </button>
+              }
+              <button type="button"
+                (click)="confirmClearAllCatalog()"
+                class="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800 font-bold text-[11px] transition-colors cursor-pointer"
+                title="Zerar todo o Catálogo Geral de lojas">
+                🗑️ Zerar Catálogo
+              </button>
+            }
           </div>
         </div>
 
@@ -995,6 +1012,7 @@ export class StoreManagerComponent {
 
     this.storeService.clearMonthlyStoreList(type, month);
     await this.historyService.clearBillForMonth(type, month);
+    await this.storeService.pruneOrphanStores(type);
     await this.storeService.flushSyncToSupabase();
     this.indexedDb.showToast(`🗑️ Lojas e rateio de ${tabName} (${month}) apagados do sistema e do Supabase!`);
   }
@@ -1031,6 +1049,47 @@ export class StoreManagerComponent {
   totalUtilityCount = computed(() => {
     return this.allTabStores().length;
   });
+
+  orphanCountForTab = computed(() => {
+    const type = this.activeTab();
+    const lists = this.storeService.monthlyStoreLists();
+    const usedIds = new Set<string>();
+    for (const [key, ids] of Object.entries(lists)) {
+      if (key.startsWith(`${type}_`) && Array.isArray(ids)) {
+        ids.forEach(id => usedIds.add(id));
+      }
+    }
+    return this.storeService.storesByType(type, true)().filter(s => !usedIds.has(s.id)).length;
+  });
+
+  async confirmPruneOrphanStores() {
+    const tabName = this.getTabName();
+    const count = this.orphanCountForTab();
+    if (count === 0) return;
+
+    const confirmed = confirm(
+      `Deseja limpar ${count} loja(s) de ${tabName} que não pertencem a nenhum mês?\n\n` +
+      `• Lojas que também usam outras utilidades serão apenas desvinculadas de ${tabName}.\n` +
+      `• Lojas sem vínculo em nenhum mês/utilidade serão removidas do Catálogo Geral.`
+    );
+    if (!confirmed) return;
+
+    const res = await this.storeService.pruneOrphanStores(this.activeTab());
+    this.indexedDb.showToast(
+      `🧹 Limpeza concluída em ${tabName}: ${res.unlinkedCount} desvinculada(s), ${res.deletedCount} removida(s) do Catálogo Geral.`
+    );
+  }
+
+  async confirmClearAllCatalog() {
+    const confirmed = confirm(
+      `ATENÇÃO: Deseja ZERAR todo o Catálogo Geral de lojas (Luz, Água e Gás) e todas as listas mensais?\n\n` +
+      `Use esta opção apenas se quiser recomeçar todo o cadastro de lojas do zero.`
+    );
+    if (!confirmed) return;
+
+    await this.storeService.clearAllCatalogStores();
+    this.indexedDb.showToast(`🗑️ Catálogo Geral e listas mensais zerados com sucesso!`);
+  }
 
   hiddenFromTechCount = computed(() => {
     return this.allTabStores().filter(s => s.hiddenFromTech === true).length;

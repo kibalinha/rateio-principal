@@ -785,6 +785,107 @@ export class StoreService {
     } catch {}
   }
 
+  /**
+   * Remove do Catálogo Geral (ou desvincula da utilidade) lojas que não estão em nenhum mês
+   * daquela utilidade. Preserva 100% lojas presentes em outros meses ou em outras utilidades.
+   */
+  async pruneOrphanStores(utilityType?: 'luz' | 'agua' | 'gas'): Promise<{ unlinkedCount: number; deletedCount: number }> {
+    const lists = this.monthlyStoreListsSignal();
+    const typesToCheck: Array<'luz' | 'agua' | 'gas'> = utilityType ? [utilityType] : ['luz', 'agua', 'gas'];
+
+    const usedInType: Record<'luz' | 'agua' | 'gas', Set<string>> = {
+      luz: new Set<string>(),
+      agua: new Set<string>(),
+      gas: new Set<string>()
+    };
+
+    for (const [key, ids] of Object.entries(lists)) {
+      if (!Array.isArray(ids) || ids.length === 0) continue;
+      for (const t of ['luz', 'agua', 'gas'] as const) {
+        if (key.startsWith(`${t}_`)) {
+          ids.forEach(id => usedInType[t].add(id));
+        }
+      }
+    }
+
+    let unlinkedCount = 0;
+    const deletedIds: string[] = [];
+    let modified = false;
+
+    const nextStores: Store[] = [];
+    for (const store of this.storesSignal()) {
+      let updated = { ...store };
+      let changed = false;
+
+      for (const t of typesToCheck) {
+        const usesFlag = t === 'luz' ? updated.usesLuz : (t === 'agua' ? updated.usesAgua : updated.usesGas);
+        if (usesFlag && !usedInType[t].has(updated.id)) {
+          if (t === 'luz') updated.usesLuz = false;
+          else if (t === 'agua') updated.usesAgua = false;
+          else updated.usesGas = false;
+          changed = true;
+          unlinkedCount++;
+        }
+      }
+
+      if (!updated.usesLuz && !updated.usesAgua && !updated.usesGas) {
+        deletedIds.push(updated.id);
+        modified = true;
+        continue;
+      }
+
+      if (changed) modified = true;
+      nextStores.push(updated);
+    }
+
+    if (modified) {
+      this.isLocalWriteInFlight = true;
+      this.suppressRealtimeUntilMs = Date.now() + 3000;
+      try {
+        this.storesSignal.set(nextStores);
+        this.persistStores(nextStores, false);
+
+        for (const id of deletedIds) {
+          await this.indexedDb?.deleteStore?.(id);
+          await this.supabase?.deleteStore?.(id);
+        }
+        if (nextStores.length > 0 && typeof this.supabase?.syncStores === 'function') {
+          await this.syncStoresToSupabase();
+        }
+      } finally {
+        this.isLocalWriteInFlight = false;
+        this.suppressRealtimeUntilMs = Date.now() + 1500;
+      }
+    }
+
+    return { unlinkedCount, deletedCount: deletedIds.length };
+  }
+
+  /**
+   * Zera completamente o Catálogo Geral e todas as listas mensais (local e Supabase).
+   */
+  async clearAllCatalogStores(): Promise<void> {
+    this.isLocalWriteInFlight = true;
+    this.suppressRealtimeUntilMs = Date.now() + 4000;
+    try {
+      this.storesSignal.set([]);
+      this.persistStores([], false);
+      this.monthlyStoreListsSignal.set({});
+      this.persistMonthlyStoreLists({}, false);
+
+      await this.indexedDb?.saveStores?.([]);
+      if (typeof this.supabase?.clearAllStores === 'function') {
+        await this.supabase.clearAllStores();
+      }
+      if (typeof this.supabase?.syncMonthlyStoreLists === 'function') {
+        await this.supabase.syncMonthlyStoreLists({});
+      }
+    } finally {
+      this.isLocalWriteInFlight = false;
+      this.suppressRealtimeUntilMs = Date.now() + 1500;
+    }
+  }
+
   // Helper para filtrar lojas por tipo (com opção de incluir inativas)
   storesByType(type: 'luz' | 'agua' | 'gas', includeInactive: boolean = true) {
     return computed(() => {
