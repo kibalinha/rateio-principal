@@ -1,7 +1,8 @@
 import '@angular/compiler';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import * as XLSX from 'xlsx';
 import { ExcelImportModalComponent } from '../components/excel-import-modal.component';
+import { StoreService } from './store.service';
 import { Store } from '../models';
 
 describe('Excel Import Modal: Route Ordering & Intelligent Template Import', () => {
@@ -303,5 +304,125 @@ describe('Excel Import Modal: Route Ordering & Intelligent Template Import', () 
     expect(emitted.billSummary.totalBillFromItems).toBeCloseTo(662227.37, 2);
     expect(emitted.billSummary.luzConsumption.bss1).toBe(994683.48);
     expect(emitted.billSummary.acConsumption).toBe(162000);
+  });
+
+  it('Scenario 9: Importing Gás in an empty month auto-links existing catalog stores, auto-creates brand new stores, and hides non-gas empty rows', () => {
+    const comp = new ExcelImportModalComponent();
+    comp.utilityType = 'gas';
+    comp.selectedMonth = '2026-11';
+    comp.unit = 'm³';
+    comp.activeStores = []; // Mês completamente vazio em Gás!
+    comp.allStores = [
+      // KFC já existe em Luz, mas ainda NÃO está vinculado a Gás
+      { id: 'st-kfc', luc: '1078', contrato: '20000531', name: 'KFC', active: true, usesLuz: true, usesAgua: false, usesGas: false },
+      // Tramontina existe em Luz, não usa Gás (virá vazia na planilha)
+      { id: 'st-tram', luc: '1001/1002', contrato: '20000610', name: 'TRAMONTINA STORE', active: true, usesLuz: true, usesAgua: false, usesGas: false }
+    ];
+
+    const gasCsv = [
+      'RATEIO GÁS 2026,,,Outubro,,,,,,,,,,,,Novembro,,,,,,,,,,',
+      ',,Valor conta,138160.77,,,,,,,,,,,Valor conta,136093.69,,,,,,,,',
+      ',,Consumo,21252.96,,,,,,,,,,,Consumo,20907.71,,,,,,,,',
+      'LUC,Contrato,Nome Fantasia,Leitura,Cons. Virtual,Ajuste (x),Ajuste (+),FCM,Consumo Inicial,Consumo c/ FCC,Var (%),Custo R$,Rec. Fluxo,Custo total R$,,Leitura,Cons. Virtual,Ajuste (x),Ajuste (+),FCM,Consumo Inicial,Consumo c/ FCC,Var (%),Custo R$,Rec. Fluxo,Custo total R$',
+      '1001/1002,20000610,TRAMONTINA STORE,,,,,1.0727,0,0,0,0,0,0,,,,,,1.0727,0,0,0,0,0,0',
+      '1078,20000531,KFC,10983,,1.266,0.87,1.0727,611.48,655.93,0,4263.55,0,4263.55,,11477,,1.266,0.8702377,1.0727,625.404,670.87087,0,4367.74,0,4367.74',
+      '1095/1096,20000682,PETISKEIRA,809,2099,,,1.0727,2099,2099,0,13643.5,0,13643.5,,809,2099,,,1.0727,2099,2099,0,13662.93,0,13662.93'
+    ].join('\n');
+
+    comp.importPastedText.set(gasCsv);
+    comp.processPastedText();
+
+    // Tramontina (vazia) é ocultada automaticamente por skipEmptyReadings
+    expect(comp.hiddenEmptyRowsCount()).toBe(1);
+    const preview = comp.importPreviewList();
+    expect(preview.length).toBe(2);
+
+    const kfc = preview.find(p => p.luc === '1078')!;
+    expect(kfc.status).toBe('will_link');
+    expect(kfc.catalogStore?.id).toBe('st-kfc');
+    expect(kfc.reading).toBe(11477);
+    expect(kfc.prevReading).toBe(10983);
+    expect(kfc.adjustment).toBe(1.266);
+    expect(kfc.adjustmentAdd).toBeCloseTo(0.8702377, 6);
+    expect(kfc.fcm).toBe(1.0727);
+
+    const petiskeira = preview.find(p => p.luc === '1095/1096')!;
+    expect(petiskeira.status).toBe('will_create');
+    expect(petiskeira.storeName).toBe('PETISKEIRA');
+    expect(petiskeira.virtual).toBe(2099);
+
+    expect(comp.importStats().readyToImport).toBe(2);
+    expect(comp.importStats().willLink).toBe(1);
+    expect(comp.importStats().willCreate).toBe(1);
+    expect(comp.importStats().missingPrevBaselineCount).toBe(2);
+
+    let emitted: any = null;
+    comp.importSuccess.subscribe(ev => { emitted = ev; });
+    comp.confirmAndApplyImport();
+
+    expect(emitted).not.toBeNull();
+    expect(emitted.updatedReadings.length).toBe(2);
+    expect(emitted.updatedReadings[0].linkExistingStoreId).toBe('st-kfc');
+    expect(emitted.updatedReadings[0].prevReadingFromSheet).toBe(10983);
+    expect(emitted.updatedReadings[1].newStore).toEqual({
+      luc: '1095/1096',
+      name: 'PETISKEIRA',
+      contrato: '20000682',
+      meterNumber: undefined
+    });
+    expect(emitted.applyPreviousReadingsBaseline).toBe(true);
+    expect(emitted.billSummary.totalBillFromItems).toBeCloseTo(136093.69, 2);
+    expect(emitted.billSummary.totalConsumption).toBeCloseTo(20907.71, 2);
+  });
+
+  it('Scenario 10: StoreService.ensureStoresForUtilityImport creates/links stores strictly for Gás without touching Luz/Água', () => {
+    const storeService = Object.create(StoreService.prototype) as StoreService;
+    const initialStores: Store[] = [
+      { id: 'st-kfc', luc: '1078', contrato: '20000531', name: 'KFC', active: true, usesLuz: true, usesAgua: false, usesGas: false }
+    ];
+    let currentStores = [...initialStores];
+    let currentLists: Record<string, string[]> = { luz_2026_11: ['st-kfc'] };
+
+    (storeService as any).storesSignal = Object.assign(() => currentStores, {
+      set: (v: Store[]) => { currentStores = v; }
+    });
+    (storeService as any).monthlyStoreListsSignal = Object.assign(() => currentLists, {
+      update: (fn: (curr: Record<string, string[]>) => Record<string, string[]>) => { currentLists = fn(currentLists); }
+    });
+    (storeService as any).persistStores = () => {};
+    (storeService as any).persistMonthlyStoreLists = () => {};
+
+    const res = storeService.ensureStoresForUtilityImport(
+      [
+        { storeId: 'st-kfc', linkExistingStoreId: 'st-kfc' },
+        { newStore: { luc: '1095/1096', name: 'PETISKEIRA', contrato: '20000682' } }
+      ],
+      'gas',
+      '2026-11'
+    );
+
+    expect(res.linkedCount).toBe(1);
+    expect(res.createdCount).toBe(1);
+    expect(res.resolvedIds.length).toBe(2);
+    expect(res.resolvedIds[0]).toBe('st-kfc');
+    expect(res.resolvedIds[1]).toBeTruthy();
+
+    // KFC agora usa Gás E continua usando Luz (sem perder usesLuz e sem ganhar usesAgua)
+    const kfcAfter = currentStores.find(s => s.id === 'st-kfc')!;
+    expect(kfcAfter.usesGas).toBe(true);
+    expect(kfcAfter.usesLuz).toBe(true);
+    expect(kfcAfter.usesAgua).toBe(false);
+
+    // PETISKEIRA foi criada EXCLUSIVAMENTE para Gás
+    const petAfter = currentStores.find(s => s.id === res.resolvedIds[1])!;
+    expect(petAfter.luc).toBe('1095/1096');
+    expect(petAfter.name).toBe('PETISKEIRA');
+    expect(petAfter.usesGas).toBe(true);
+    expect(petAfter.usesLuz).toBe(false);
+    expect(petAfter.usesAgua).toBe(false);
+
+    // Lista mensal gas_2026-11 populada com ambas sem alterar outras utilidades
+    expect(currentLists['gas_2026-11']).toEqual(['st-kfc', res.resolvedIds[1]]);
+    expect(currentLists['agua_2026-11']).toBeUndefined();
   });
 });

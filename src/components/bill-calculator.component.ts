@@ -1899,11 +1899,29 @@ export class BillCalculatorComponent implements OnDestroy {
 
   onExcelImportApplied(event: ExcelImportSuccessEvent) {
     const type = this.utilityType();
+    const month = this.selectedMonth();
+
+    // 1. Garante que todas as lojas importadas existam no cadastro com este insumo ativado e na lista deste mês
+    const ensured = this.storeService.ensureStoresForUtilityImport(
+      event.updatedReadings.map(item => ({
+        storeId: item.storeId,
+        linkExistingStoreId: item.linkExistingStoreId,
+        newStore: item.newStore
+      })),
+      type,
+      month
+    );
+
     const currentReadingsMap = new Map(this.readings()[type] as Map<string, StoreReading>);
+    const storesById = new Map(this.storeService.stores().map(s => [s.id, s]));
+    const prevBaselineToSeed: Array<{ storeId: string; prevReading: number }> = [];
     let updatedCount = 0;
 
-    event.updatedReadings.forEach(item => {
-      const current = currentReadingsMap.get(item.storeId) || this.createDefaultReading();
+    event.updatedReadings.forEach((item, idx) => {
+      const resolvedId = ensured.resolvedIds[idx] || item.storeId;
+      if (!resolvedId) return;
+
+      const current = currentReadingsMap.get(resolvedId) || this.createDefaultReading();
       const updated: StoreReading = {
         ...current,
         reading: item.reading,
@@ -1918,22 +1936,74 @@ export class BillCalculatorComponent implements OnDestroy {
       if (item.fluxoCost !== undefined) updated.fluxoCost = item.fluxoCost;
       if (item.note) updated.note = item.note;
 
-      currentReadingsMap.set(item.storeId, updated);
+      currentReadingsMap.set(resolvedId, updated);
       updatedCount++;
+
+      if (
+        event.applyPreviousReadingsBaseline &&
+        !item.hasPrevInSystem &&
+        item.prevReadingFromSheet &&
+        item.prevReadingFromSheet > 0
+      ) {
+        prevBaselineToSeed.push({ storeId: resolvedId, prevReading: item.prevReadingFromSheet });
+      }
     });
+
+    // 2. Se a planilha trouxe Leitura Anterior para lojas sem histórico prévio no sistema, grava apenas a leitura-base no mês anterior
+    let seededBaselineCount = 0;
+    if (prevBaselineToSeed.length > 0) {
+      const prevMonth = this.getPreviousMonth(month);
+      if (prevMonth) {
+        const existingPrevBill = this.historyService.getBill(type, prevMonth);
+        const prevReadingsObj: Record<string, StoreReading | number> = existingPrevBill?.readings
+          ? { ...existingPrevBill.readings }
+          : {};
+
+        for (const seed of prevBaselineToSeed) {
+          const existingEntry = prevReadingsObj[seed.storeId];
+          const existingVal =
+            typeof existingEntry === 'number'
+              ? existingEntry
+              : (existingEntry && typeof existingEntry === 'object' ? Number(existingEntry.reading || 0) : 0);
+
+          if (existingVal <= 0) {
+            const st = storesById.get(seed.storeId);
+            prevReadingsObj[seed.storeId] = {
+              reading: seed.prevReading,
+              constant: 1,
+              adjustment: 1,
+              calculatedConsumption: 0,
+              luc: st?.luc,
+              contrato: st?.contrato,
+              storeName: st?.name
+            };
+            seededBaselineCount++;
+          }
+        }
+
+        if (seededBaselineCount > 0) {
+          const prevBillToSave: BillData = existingPrevBill
+            ? {
+                ...existingPrevBill,
+                readings: prevReadingsObj,
+                lastUpdated: new Date().toISOString()
+              }
+            : {
+                costItems: createDefaultCostItems(type),
+                consumptionInput: type === 'luz' ? { bss1: 0, bss2: 0, bss3: 0, bss4: 0 } : 0,
+                acInput: 0,
+                readings: prevReadingsObj,
+                lastUpdated: new Date().toISOString(),
+                gasAutoDistribute: type === 'gas' ? true : undefined
+              };
+          this.historyService.saveBill(type, prevMonth, prevBillToSave);
+        }
+      }
+    }
 
     this.readings.update(curr => ({ ...curr, [type]: currentReadingsMap }));
 
-    // Se o mês não tinha lista de lojas explícita definida, registra as lojas importadas como a lista oficial deste mês
-    const month = this.selectedMonth();
-    const importedStoreIds = event.updatedReadings.map(item => item.storeId);
-    if (!this.storeService.hasMonthlyList(type, month) && importedStoreIds.length > 0) {
-      this.storeService.setMonthlyStoreList(type, month, importedStoreIds);
-    } else if (importedStoreIds.length > 0) {
-      importedStoreIds.forEach(id => this.storeService.addStoreToMonth(type, month, id));
-    }
-
-    // Aplica custos da fatura, consumo da concessionária e AC se extraídos da planilha mestre e autorizados
+    // 3. Aplica custos da fatura, consumo da concessionária e AC se extraídos da planilha mestre e autorizados
     let appliedSummaryInfo = '';
     if (event.billSummary && this.authService.canConfigureBill()) {
       const bs = event.billSummary;
@@ -1941,7 +2011,7 @@ export class BillCalculatorComponent implements OnDestroy {
         if (type === 'luz') this.luzCostItems.set(bs.costItems);
         else if (type === 'agua') this.aguaCostItems.set(bs.costItems);
         else this.gasCostItems.set(bs.costItems);
-        appliedSummaryInfo += ` + fatura (${bs.costItems.length} itens)`;
+        appliedSummaryInfo += ` + fatura (${bs.costItems.length} ${bs.costItems.length === 1 ? 'item' : 'itens'})`;
       }
       if (type === 'luz' && bs.luzConsumption) {
         this.luzConsumption.set({ ...bs.luzConsumption });
@@ -1958,7 +2028,16 @@ export class BillCalculatorComponent implements OnDestroy {
 
     this.closeExcelImportModal();
     this.internalSave();
-    this.indexedDb.showToast(`🎉 ${updatedCount} lojas importadas${appliedSummaryInfo} com sucesso do Excel!`);
+    if (ensured.createdCount > 0 || ensured.linkedCount > 0 || updatedCount > 0) {
+      void this.storeService.flushSyncToSupabase();
+    }
+
+    const extraParts: string[] = [];
+    if (ensured.createdCount > 0) extraParts.push(`${ensured.createdCount} criada(s)`);
+    if (ensured.linkedCount > 0) extraParts.push(`${ensured.linkedCount} vinculada(s)`);
+    if (seededBaselineCount > 0) extraParts.push(`base anterior gravada`);
+    const detailSuffix = extraParts.length > 0 ? ` (${extraParts.join(', ')})` : '';
+    this.indexedDb.showToast(`🎉 ${updatedCount} loja(s) importada(s)${detailSuffix}${appliedSummaryInfo} com sucesso!`);
   }
 
   // --- HISTORY & PERSISTENCE ---

@@ -615,6 +615,150 @@ export class StoreService {
   }
 
   /**
+   * Garante em lote que lojas importadas de uma planilha existam no cadastro com a
+   * utilidade atual ativada (preservando 100% a independência das demais utilidades)
+   * e estejam vinculadas à lista mensal de `type_month`.
+   */
+  ensureStoresForUtilityImport(
+    requests: Array<{
+      storeId?: string;
+      linkExistingStoreId?: string;
+      newStore?: { luc: string; name: string; contrato?: string; meterNumber?: string };
+    }>,
+    type: 'luz' | 'agua' | 'gas',
+    month: string
+  ): { resolvedIds: string[]; createdCount: number; linkedCount: number } {
+    if (!requests || requests.length === 0) {
+      return { resolvedIds: [], createdCount: 0, linkedCount: 0 };
+    }
+
+    const list = [...this.storesSignal()];
+    let storesModified = false;
+    let createdCount = 0;
+    let linkedCount = 0;
+    const resolvedIds: string[] = [];
+
+    const setUtilityFlag = (store: Store): Store => {
+      const updated: Store = { ...store };
+      if (type === 'luz') updated.usesLuz = true;
+      else if (type === 'agua') updated.usesAgua = true;
+      else updated.usesGas = true;
+
+      if (updated.active === false) {
+        updated.active = true;
+        updated.deactivatedAt = undefined;
+        updated.deactivationReason = undefined;
+      }
+      return updated;
+    };
+
+    const usesUtility = (store: Store): boolean => {
+      return type === 'luz' ? store.usesLuz : (type === 'agua' ? store.usesAgua : store.usesGas);
+    };
+
+    for (const req of requests) {
+      // 1. Loja já vinculada ou indicada para vinculação por ID
+      const targetId = req.linkExistingStoreId || req.storeId;
+      if (targetId) {
+        const idx = list.findIndex(s => s.id === targetId);
+        if (idx > -1) {
+          const existing = list[idx];
+          const needsUtilityLink = !usesUtility(existing) || existing.active === false;
+          if (needsUtilityLink) {
+            list[idx] = setUtilityFlag(existing);
+            storesModified = true;
+            if (req.linkExistingStoreId || !usesUtility(existing)) {
+              linkedCount++;
+            }
+          }
+          resolvedIds.push(existing.id);
+          continue;
+        }
+      }
+
+      // 2. Loja nova vinda da planilha (com dupla verificação para evitar duplicatas)
+      if (req.newStore) {
+        const cleanLuc = (req.newStore.luc || '').trim();
+        const cleanName = (req.newStore.name || cleanLuc).trim();
+        const cleanContrato = (req.newStore.contrato || '').trim();
+        const cleanMeter = (req.newStore.meterNumber || '').trim();
+
+        const normLuc = normalizeLuc(cleanLuc);
+        const normContr = normalizeContract(cleanContrato);
+        const normName = normalizeStoreName(cleanName);
+
+        let existingIdx = -1;
+        if (normLuc && normContr) {
+          existingIdx = list.findIndex(
+            s => normalizeLuc(s.luc) === normLuc && normalizeContract(s.contrato) === normContr
+          );
+        }
+        if (existingIdx === -1 && normContr) {
+          existingIdx = list.findIndex(s => normalizeContract(s.contrato) === normContr);
+        }
+        if (existingIdx === -1 && normLuc) {
+          existingIdx = list.findIndex(
+            s => normalizeLuc(s.luc) === normLuc && (s.active !== false || normalizeStoreName(s.name) === normName)
+          );
+        }
+
+        if (existingIdx > -1) {
+          const existing = list[existingIdx];
+          const wasLinked = usesUtility(existing);
+          const updated = setUtilityFlag(existing);
+          if (!updated.contrato && cleanContrato) updated.contrato = cleanContrato;
+          if (!updated.meterNumber && cleanMeter) updated.meterNumber = cleanMeter;
+          list[existingIdx] = updated;
+          storesModified = true;
+          if (!wasLinked) linkedCount++;
+          resolvedIds.push(updated.id);
+        } else {
+          const newStore: Store = {
+            id: generateUUID(),
+            luc: cleanLuc || cleanContrato || 'SEM-LUC',
+            name: cleanName || cleanLuc || 'Nova Loja',
+            contrato: cleanContrato || undefined,
+            meterNumber: cleanMeter || undefined,
+            active: true,
+            usesLuz: type === 'luz',
+            usesAgua: type === 'agua',
+            usesGas: type === 'gas'
+          };
+          list.push(newStore);
+          storesModified = true;
+          createdCount++;
+          resolvedIds.push(newStore.id);
+        }
+        continue;
+      }
+
+      resolvedIds.push('');
+    }
+
+    if (storesModified) {
+      this.storesSignal.set(list);
+      this.persistStores(list);
+    }
+
+    const validUniqueIds = Array.from(new Set(resolvedIds.filter(Boolean)));
+    if (validUniqueIds.length > 0) {
+      const key = `${type}_${month}`;
+      this.monthlyStoreListsSignal.update(current => {
+        const existing = current[key] || [];
+        const merged = Array.from(new Set([...existing, ...validUniqueIds]));
+        const updated = {
+          ...current,
+          [key]: merged
+        };
+        this.persistMonthlyStoreLists(updated);
+        return updated;
+      });
+    }
+
+    return { resolvedIds, createdCount, linkedCount };
+  }
+
+  /**
    * Remove todas as lojas da lista mensal de uma utilidade e mês específicos.
    * Não afeta nenhum outro mês, nenhuma outra utilidade e não remove as lojas do catálogo global.
    */

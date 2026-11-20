@@ -68,11 +68,16 @@ export interface StorageQuotaInfo {
 export interface ExcelImportRowPreview {
   rawRow: Record<string, any>;
   matchedStore?: Store;
+  catalogStore?: Store;
   storeName: string;
   luc: string;
+  contrato?: string;
+  meterNumber?: string;
   routeOrder?: number;
   reading: number;
   prevReading: number;
+  sheetPrevReading?: number;
+  hasPrevInSystem?: boolean;
   consumptionPreview: number;
   constant?: number;
   adjustment?: number;
@@ -81,7 +86,8 @@ export interface ExcelImportRowPreview {
   fcm?: number;
   fluxoCost?: number;
   note?: string;
-  status: 'matched' | 'unmatched';
+  hasActivity?: boolean;
+  status: 'matched' | 'will_link' | 'will_create' | 'unmatched';
   message: string;
 }
 
