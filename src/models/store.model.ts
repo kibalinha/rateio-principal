@@ -26,8 +26,22 @@ export interface Store {
 export interface MonthlyImportResult {
   maintainedCount: number;
   newCount: number;
+  reactivatedCount?: number;
+  duplicateRowsIgnored?: number;
   replacements: { luc: string; oldName: string; oldContrato?: string; newName: string; newContrato?: string }[];
   inactivatedMissing: { luc: string; name: string; contrato?: string }[];
+}
+
+export type MonthlyImportRowAction = 'maintained' | 'reactivated' | 'replacement' | 'new' | 'duplicate';
+
+export interface MonthlyImportPreview {
+  maintained: ParsedStoreRow[];
+  reactivated: { row: ParsedStoreRow; existingStore: Store }[];
+  replacements: { luc: string; oldStore: Store; newName: string; newContrato: string; reactivatedStore?: Store }[];
+  brandNew: ParsedStoreRow[];
+  duplicateRows: ParsedStoreRow[];
+  missingStores: { store: Store; willInactivateGlobally: boolean; protectedByFutureMonth: boolean }[];
+  rowActions: MonthlyImportRowAction[];
 }
 
 export interface ParsedStoreRow {

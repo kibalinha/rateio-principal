@@ -223,6 +223,41 @@ describe('bill-audit.helpers', () => {
         prevMonthZero: true
       });
     });
+
+    it('ignora registros legados de odômetro gravado como consumo na média histórica (Luz, Água e Gás), preservando meses normais e virtuais', () => {
+      const storeLuz = makeStore({ id: 'luz-1', luc: '1001/1002', name: 'TRAMONTINA' });
+      const storeTc = makeStore({ id: 'luz-tc', luc: '1011/1012', name: 'BROOKSFIELD' });
+      const storeVirtual = makeStore({ id: 'luz-v', luc: '1008', name: 'SEPHORA' });
+
+      const allData: Record<string, BillData> = {
+        'luz_2026-10': makeBill({
+          'luz-1': { reading: 666669, constant: 1, adjustment: 1, calculatedConsumption: 666669 },
+          'luz-tc': { reading: 1286, constant: 1000, adjustment: 1, calculatedConsumption: 1286000 },
+          'luz-v': { reading: 157438, constant: 1, adjustment: 1, virtual: 1633, calculatedConsumption: 1633 }
+        }),
+        'luz_2026-11': makeBill({
+          'luz-1': { reading: 670743, constant: 1, adjustment: 1, calculatedConsumption: 4074 },
+          'luz-tc': { reading: 1290, constant: 1000, adjustment: 1, calculatedConsumption: 4000 },
+          'luz-v': { reading: 171522, constant: 1, adjustment: 1, calculatedConsumption: 14084 }
+        })
+      };
+
+      const stats = computeHistoricalStats({
+        allData,
+        type: 'luz',
+        currentMonth: '2026-12',
+        prevMonth: '2026-11',
+        activeStores: [storeLuz, storeTc, storeVirtual],
+        allStores: [storeLuz, storeTc, storeVirtual]
+      });
+
+      // Para Tramontina e Brooksfield, 2026-10 (odômetro inteiro) é descartado da média
+      expect(stats.get('luz-1')).toEqual({ avgConsumption: 4074, count: 1, prevMonthZero: false });
+      expect(stats.get('luz-tc')).toEqual({ avgConsumption: 4000, count: 1, prevMonthZero: false });
+      // Para Sephora, 2026-10 tinha virtual=1633 (válido), entra na média com 2026-11
+      expect(stats.get('luz-v')?.count).toBe(2);
+      expect(stats.get('luz-v')?.avgConsumption).toBeCloseTo((1633 + 14084) / 2, 2);
+    });
   });
 
   describe('computeZeroConsumptionLearning', () => {

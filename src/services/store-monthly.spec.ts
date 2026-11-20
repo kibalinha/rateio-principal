@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { StoreService, generateUUID } from './store.service';
+import { StoreService, generateUUID, normalizeLuc } from './store.service';
+import { SupabaseService } from './supabase.service';
 
 describe('StoreService - Monthly Store Isolation & Consultation', () => {
   let service: StoreService;
@@ -22,6 +23,7 @@ describe('StoreService - Monthly Store Isolation & Consultation', () => {
 
     mockIndexedDb = {
       saveStores: vi.fn().mockResolvedValue(undefined),
+      saveMonthlyStoreLists: vi.fn().mockResolvedValue(undefined),
       deleteStore: vi.fn().mockResolvedValue(undefined),
     };
 
@@ -29,6 +31,7 @@ describe('StoreService - Monthly Store Isolation & Consultation', () => {
       subscribeToStores: vi.fn(),
       fetchStores: vi.fn().mockResolvedValue([]),
       syncStores: vi.fn().mockResolvedValue(true),
+      syncMonthlyStoreLists: vi.fn().mockResolvedValue(true),
       deleteStore: vi.fn().mockResolvedValue(true),
       clearAllStores: vi.fn().mockResolvedValue(true),
     };
@@ -347,6 +350,264 @@ describe('StoreService - Monthly Store Isolation & Consultation', () => {
     expect(typeof id1).toBe('string');
     expect(id1.length).toBeGreaterThan(5);
     expect(id1).not.toBe(id2);
+  });
+
+  it('normalizeLuc deve remover acentos para evitar duplicidade entre DEPÓSITO/DEPOSITO e PRAÇA/PRACA', () => {
+    expect(normalizeLuc('DEPÓSITO 12A')).toBe('deposito12a');
+    expect(normalizeLuc('DEPOSITO 12A')).toBe('deposito12a');
+    expect(normalizeLuc('PRAÇA/CENTRAL')).toBe('pracacentral');
+    expect(normalizeLuc('PRACA/CENTRAL')).toBe('pracacentral');
+
+    service.processMonthlyStoreImport([
+      { luc: 'DEPÓSITO 12A', contrato: '50001591', name: 'DEPÓSITO RI HAPPY' }
+    ], 'luz', '2026-10', false);
+    const id1 = service.getStoresForMonth('luz', '2026-10')[0].id;
+
+    const res = service.processMonthlyStoreImport([
+      { luc: 'DEPOSITO 12A', contrato: '50001591', name: 'DEPOSITO RI HAPPY' }
+    ], 'luz', '2026-11', false);
+
+    expect(res.maintainedCount).toBe(1);
+    expect(res.newCount).toBe(0);
+    expect(service.getStoresForMonth('luz', '2026-11')[0].id).toBe(id1);
+  });
+
+  it('deve preservar C&A (2120 | C&A | 0000020000561) mesmo se contrato/nome vierem invertidos e manter luz_2026-12 intacta', () => {
+    service.processMonthlyStoreImport([
+      { luc: '2120', contrato: '0000020000561', name: 'C&A' }
+    ], 'luz', '2026-12', false);
+
+    const luzId = service.getStoresForMonth('luz', '2026-12')[0].id;
+
+    // Simula importação em Água 2026-12 com nome/contrato invertidos
+    const res = service.processMonthlyStoreImport([
+      { luc: '2120', contrato: 'C&A', name: '0000020000561' }
+    ], 'agua', '2026-12', false);
+
+    expect(res.maintainedCount).toBe(1);
+    expect(res.replacements).toHaveLength(0);
+    const caAgua = service.getStoresForMonth('agua', '2026-12', false)[0];
+    expect(caAgua.id).toBe(luzId);
+    expect(caAgua.name).toBe('C&A');
+    expect(caAgua.contrato).toBe('0000020000561');
+    expect(caAgua.active).toBe(true);
+    expect(service.getStoresForMonth('luz', '2026-12', false)).toHaveLength(1);
+  });
+
+  it('deve suportar múltiplos eventos/contratos simultâneos no mesmo LUC (MULTIPLAN HALL) sem descarte nem clones', () => {
+    // Mês 1: dois eventos diferentes no mesmo LUC na mesma planilha
+    const res1 = service.processMonthlyStoreImport([
+      { luc: 'MULTIPLAN HALL', contrato: '50001539', name: 'JIU-JITSU CHAMPIONSHIP' },
+      { luc: 'MULTIPLAN HALL', contrato: '50001540', name: 'CAFESTIVAL - 4ª EDIÇÃO' }
+    ], 'luz', '2026-10', false);
+
+    expect(res1.newCount).toBe(2);
+    expect(res1.replacements).toHaveLength(0);
+    expect(service.getStoresForMonth('luz', '2026-10', false)).toHaveLength(2);
+
+    // Mês 2: reimportação dos mesmos 2 eventos em ordem invertida -> mantém ambos sem substituir nem clonar
+    const res2 = service.processMonthlyStoreImport([
+      { luc: 'MULTIPLAN HALL', contrato: '50001540', name: 'CAFESTIVAL - 4ª EDIÇÃO' },
+      { luc: 'MULTIPLAN HALL', contrato: '50001539', name: 'JIU-JITSU CHAMPIONSHIP' }
+    ], 'luz', '2026-11', true);
+
+    expect(res2.maintainedCount).toBe(2);
+    expect(res2.replacements).toHaveLength(0);
+    expect(service.stores()).toHaveLength(2);
+    expect(service.getStoresForMonth('luz', '2026-11', false)).toHaveLength(2);
+  });
+
+  it('deve reativar contrato antigo no mesmo LUC reutilizando o ID existente sem criar clones', () => {
+    service.processMonthlyStoreImport([
+      { luc: 'MULTIPLAN HALL', contrato: '50001539', name: 'JIU-JITSU CHAMPIONSHIP' }
+    ], 'luz', '2026-10', false);
+    const jiuId = service.stores()[0].id;
+
+    // Em novembro entra CAFESTIVAL (substitui JIU-JITSU)
+    service.processMonthlyStoreImport([
+      { luc: 'MULTIPLAN HALL', contrato: '50001540', name: 'CAFESTIVAL - 4ª EDIÇÃO' }
+    ], 'luz', '2026-11', true);
+
+    // Em dezembro volta JIU-JITSU -> deve reutilizar jiuId sem criar um 3º registro
+    const resDec = service.processMonthlyStoreImport([
+      { luc: 'MULTIPLAN HALL', contrato: '50001539', name: 'JIU-JITSU CHAMPIONSHIP' }
+    ], 'luz', '2026-12', true);
+
+    expect(resDec.replacements).toHaveLength(1);
+    expect(service.stores()).toHaveLength(2);
+    const decActive = service.getStoresForMonth('luz', '2026-12', false);
+    expect(decActive).toHaveLength(1);
+    expect(decActive[0].id).toBe(jiuId);
+  });
+
+  it('previewMonthlyStoreImport em mês em branco deve refletir exatamente processMonthlyStoreImport', () => {
+    service.processMonthlyStoreImport([
+      { luc: '101', contrato: '111', name: 'Loja Antiga' },
+      { luc: '102', contrato: '222', name: 'Loja Mantida' }
+    ], 'agua', '2026-10', false);
+
+    // Mês 2026-11 está em branco, mas catálogo já possui 101 e 102
+    const novItems = [
+      { luc: '101', contrato: '999', name: 'Loja Nova Substituta' },
+      { luc: '102', contrato: '000222', name: 'Loja Mantida' },
+      { luc: '103', contrato: '333', name: 'Loja Inédita' }
+    ];
+
+    const preview = service.previewMonthlyStoreImport(novItems, 'agua', '2026-11', true);
+    expect(preview.replacements).toHaveLength(1);
+    expect(preview.maintained).toHaveLength(1);
+    expect(preview.brandNew).toHaveLength(1);
+    expect(preview.rowActions).toEqual(['replacement', 'maintained', 'new']);
+
+    const result = service.processMonthlyStoreImport(novItems, 'agua', '2026-11', true);
+    expect(result.replacements).toHaveLength(1);
+    expect(result.maintainedCount).toBe(1);
+    expect(result.newCount).toBe(1);
+  });
+
+  it('substituição em água no mês 2026-12 deve manter Luz e Gás 100% independentes (sem inativar nem alterar luz_2026-12)', () => {
+    service.addStore({
+      luc: '1050',
+      contrato: '100',
+      name: 'Inquilino Antigo',
+      active: true,
+      usesLuz: true,
+      usesAgua: true,
+      usesGas: false
+    }, '2026-11');
+
+    const oldId = service.stores()[0].id;
+    service.setMonthlyStoreList('luz', '2026-12', [oldId]);
+
+    // Substituição no LUC 1050 via Água em 2026-12
+    const res = service.processMonthlyStoreImport([
+      { luc: '1050', contrato: '200', name: 'Inquilino Novo' }
+    ], 'agua', '2026-12', false);
+
+    expect(res.replacements).toHaveLength(1);
+
+    // Água 2026-11 preserva Inquilino Antigo; Água 2026-12 recebe Inquilino Novo (somente usesAgua!)
+    expect(service.getStoresForMonth('agua', '2026-11', false)[0].id).toBe(oldId);
+    const decAgua = service.getStoresForMonth('agua', '2026-12', false);
+    expect(decAgua).toHaveLength(1);
+    expect(decAgua[0].name).toBe('Inquilino Novo');
+    expect(decAgua[0].usesAgua).toBe(true);
+    expect(decAgua[0].usesLuz).toBe(false);
+    expect(decAgua[0].usesGas).toBe(false);
+
+    // CRUCIAL: Luz 2026-11 e Luz 2026-12 permanecem 100% INTACTAS com Inquilino Antigo ativo!
+    const novLuz = service.getStoresForMonth('luz', '2026-11', false);
+    const decLuz = service.getStoresForMonth('luz', '2026-12', false);
+    expect(novLuz).toHaveLength(1);
+    expect(novLuz[0].id).toBe(oldId);
+    expect(decLuz).toHaveLength(1);
+    expect(decLuz[0].id).toBe(oldId);
+    expect(decLuz[0].active).toBe(true);
+  });
+
+  it('subir lista de Água com contrato diferente no mesmo LUC jamais deve substituir ou inativar loja exclusiva de Luz', () => {
+    service.processMonthlyStoreImport([
+      { luc: '2038', contrato: '20000543', name: 'HOPE' }
+    ], 'luz', '2026-12', false);
+
+    const hopeId = service.getStoresForMonth('luz', '2026-12', false)[0].id;
+
+    // Água sobe outro lojista no LUC 2038 (HOPE só usa Luz!)
+    const resAgua = service.processMonthlyStoreImport([
+      { luc: '2038', contrato: '20000717', name: 'AZUL VIAGENS' }
+    ], 'agua', '2026-12', true);
+
+    expect(resAgua.replacements).toHaveLength(0);
+    expect(resAgua.newCount).toBe(1);
+
+    // HOPE continua 100% ativa em Luz!
+    const luzDec = service.getStoresForMonth('luz', '2026-12', false);
+    expect(luzDec).toHaveLength(1);
+    expect(luzDec[0].id).toBe(hopeId);
+    expect(luzDec[0].active).toBe(true);
+
+    // AZUL VIAGENS existe somente em Água!
+    const aguaDec = service.getStoresForMonth('agua', '2026-12', false);
+    expect(aguaDec).toHaveLength(1);
+    expect(aguaDec[0].name).toBe('AZUL VIAGENS');
+    expect(aguaDec[0].usesLuz).toBe(false);
+    expect(aguaDec[0].usesAgua).toBe(true);
+    expect(aguaDec[0].usesGas).toBe(false);
+  });
+
+  it('unlinkStoreFromUtility deve remover a loja apenas da utilidade selecionada sem afetar Luz/Água', () => {
+    service.addStore({
+      luc: '1093',
+      contrato: '20000712',
+      name: 'BURGER KING',
+      active: true,
+      usesLuz: true,
+      usesAgua: true,
+      usesGas: true
+    }, '2026-11');
+
+    const bkId = service.stores()[0].id;
+    service.unlinkStoreFromUtility(bkId, 'gas', '2026-11');
+
+    expect(service.getStoresForMonth('gas', '2026-11', false)).toHaveLength(0);
+    expect(service.getStoresForMonth('luz', '2026-11', false)).toHaveLength(1);
+    expect(service.getStoresForMonth('agua', '2026-11', false)).toHaveLength(1);
+    expect(service.stores()[0].usesGas).toBe(false);
+    expect(service.stores()[0].usesLuz).toBe(true);
+    expect(service.stores()[0].usesAgua).toBe(true);
+  });
+
+  it('importação retroativa com inactivateMissing=true não deve inativar lojas presentes em meses futuros', () => {
+    service.processMonthlyStoreImport([
+      { luc: '101', contrato: '111', name: 'Loja Existente' },
+      { luc: '102', contrato: '222', name: 'Loja Futura' }
+    ], 'luz', '2026-12', false);
+
+    // Reimporta outubro apenas com a Loja 101 e inactivateMissing=true
+    service.processMonthlyStoreImport([
+      { luc: '101', contrato: '111', name: 'Loja Existente' }
+    ], 'luz', '2026-10', true);
+
+    // Loja 102 continua ativa em dezembro!
+    const decStores = service.getStoresForMonth('luz', '2026-12', false);
+    expect(decStores.map(s => s.luc).sort()).toEqual(['101', '102']);
+    expect(service.stores().find(s => s.luc === '102')?.active).toBe(true);
+  });
+
+  it('clearAllStores deve limpar também as listas mensais no Supabase', async () => {
+    service.processMonthlyStoreImport([
+      { luc: '101', contrato: '111', name: 'Loja A' }
+    ], 'luz', '2026-10', false);
+
+    await service.clearAllStores();
+    expect(service.stores()).toEqual([]);
+    expect(service.monthlyStoreLists()).toEqual({});
+    expect(mockSupabase.clearAllStores).toHaveBeenCalledTimes(1);
+    expect(mockSupabase.syncMonthlyStoreLists).toHaveBeenCalledWith({});
+  });
+
+  it('SupabaseService.fetchAllBills deve ignorar registros config (__monthly_store_lists_v1__, __system_ai_keys__, etc.)', async () => {
+    const supa = Object.create(SupabaseService.prototype) as SupabaseService;
+    (supa as any).isTableReady = { set: vi.fn() };
+    (supa as any).getClient = () => ({
+      from: () => ({
+        select: () => ({
+          range: vi.fn().mockResolvedValue({
+            data: [
+              { id: 'agua_2026-11', type: 'agua', month: '2026-11', data: { costItems: [], consumptionInput: 100, acInput: 0, readings: {}, lastUpdated: '' } },
+              { id: '__monthly_store_lists_v1__', type: 'config', month: 'global', data: { lists: {} } },
+              { id: '__system_ai_keys__', type: 'config', month: 'global', data: { geminiKey: 'x' } },
+              { id: '__ocr_feedbacks_v1__', type: 'config', month: 'global', data: { entries: [] } }
+            ],
+            error: null
+          })
+        })
+      })
+    });
+
+    const bills = await supa.fetchAllBills();
+    expect(bills).not.toBeNull();
+    expect(Object.keys(bills!)).toEqual(['agua_2026-11']);
   });
 });
 

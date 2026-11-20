@@ -2,15 +2,23 @@ import { Injectable, signal, computed, inject } from '@angular/core';
 import { IndexedDbService } from './indexed-db.service';
 import { SupabaseService } from './supabase.service';
 
-import { Store, MonthlyImportResult } from '../models';
+import {
+  Store,
+  MonthlyImportResult,
+  MonthlyImportPreview,
+  MonthlyImportRowAction
+} from '../models';
+import { normalizeContractAndNameOrder } from './store-import.helpers';
 
-export type { Store, MonthlyImportResult };
+export type { Store, MonthlyImportResult, MonthlyImportPreview, MonthlyImportRowAction };
 
 /**
- * Normaliza o LUC para comparações seguras (ex: 'L-101', 'LUC 101', 'LUC-101' -> '101', 'Q-012' -> 'q012')
+ * Normaliza o LUC para comparações seguras (remove acentos, ex: 'L-101', 'LUC 101', 'DEPÓSITO 12A' -> '101', 'deposito12a')
  */
 export function normalizeLuc(luc?: string | null): string {
   return (luc || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .trim()
     .toLowerCase()
     .replace(/^luc\s*[-_./]?\s*/i, '')
@@ -92,6 +100,10 @@ export class StoreService {
   private monthlyStoreListsSignal = signal<Record<string, string[]>>(this.loadInitialMonthlyLists());
   readonly monthlyStoreLists = computed(() => this.monthlyStoreListsSignal());
 
+  private isLocalWriteInFlight = false;
+  private suppressRealtimeUntilMs = 0;
+  private realtimeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
   constructor() {
     try {
       this.indexedDb = inject(IndexedDbService);
@@ -123,8 +135,20 @@ export class StoreService {
   }
 
   private setupRealtimeSync() {
-    this.supabase.subscribeToStores(async () => {
-      await this.refreshStoresFromSupabase();
+    this.supabase.subscribeToStores(() => {
+      if (this.isLocalWriteInFlight || Date.now() < this.suppressRealtimeUntilMs) {
+        return;
+      }
+      if (this.realtimeDebounceTimer) {
+        clearTimeout(this.realtimeDebounceTimer);
+      }
+      this.realtimeDebounceTimer = setTimeout(() => {
+        this.realtimeDebounceTimer = null;
+        if (this.isLocalWriteInFlight || Date.now() < this.suppressRealtimeUntilMs) {
+          return;
+        }
+        this.refreshStoresFromSupabase().catch(() => {});
+      }, 800);
     });
 
     if (typeof window !== 'undefined') {
@@ -139,6 +163,7 @@ export class StoreService {
   async syncStoresToSupabase(): Promise<boolean> {
     const list = this.storesSignal();
     if (list && list.length > 0) {
+      this.suppressRealtimeUntilMs = Math.max(this.suppressRealtimeUntilMs, Date.now() + 2000);
       const ok = await this.supabase.syncStores(list);
       if (ok) {
         const cleaned = list.map(s => {
@@ -149,16 +174,50 @@ export class StoreService {
         if (typeof localStorage !== 'undefined') {
           localStorage.setItem(this.STORAGE_KEY, JSON.stringify(cleaned));
         }
-        await this.indexedDb.saveStores(cleaned);
+        await this.indexedDb?.saveStores?.(cleaned);
       }
       return ok;
     }
     return true;
   }
 
+  async flushSyncToSupabase(): Promise<{ storesOk: boolean; listsOk: boolean; hiddenOk: boolean }> {
+    this.isLocalWriteInFlight = true;
+    this.suppressRealtimeUntilMs = Date.now() + 4000;
+    if (this.realtimeDebounceTimer) {
+      clearTimeout(this.realtimeDebounceTimer);
+      this.realtimeDebounceTimer = null;
+    }
+
+    let storesOk = true;
+    let listsOk = true;
+    let hiddenOk = true;
+
+    try {
+      if (typeof this.supabase?.syncStores === 'function') {
+        storesOk = await this.syncStoresToSupabase();
+      }
+      if (typeof this.supabase?.syncMonthlyStoreLists === 'function') {
+        listsOk = await this.supabase.syncMonthlyStoreLists(this.monthlyStoreListsSignal());
+      }
+      const hiddenStores = this.storesSignal().filter(s => s.hiddenFromTech === true);
+      if (hiddenStores.length > 0 && typeof this.supabase?.syncHiddenFromTech === 'function') {
+        const hiddenIds = hiddenStores.map(s => s.id);
+        const hiddenLucs = Array.from(new Set(hiddenStores.map(s => normalizeLuc(s.luc)).filter(Boolean)));
+        hiddenOk = await this.supabase.syncHiddenFromTech(hiddenIds, hiddenLucs);
+      }
+      return { storesOk, listsOk, hiddenOk };
+    } finally {
+      this.isLocalWriteInFlight = false;
+      this.suppressRealtimeUntilMs = Date.now() + 1500;
+    }
+  }
+
   async refreshStoresFromSupabase() {
+    if (this.isLocalWriteInFlight) return;
     try {
       const remoteStores = await this.supabase.fetchStores();
+      if (this.isLocalWriteInFlight) return;
       if (remoteStores !== null) {
         const local = this.storesSignal();
         const remoteIds = new Set(remoteStores.map(s => String(s.id)));
@@ -178,6 +237,7 @@ export class StoreService {
         if (typeof this.supabase?.fetchHiddenFromTech === 'function') {
           remoteHidden = await this.supabase.fetchHiddenFromTech();
         }
+        if (this.isLocalWriteInFlight) return;
         const hiddenIdSet = remoteHidden !== null ? new Set(remoteHidden.hiddenIds.map(String)) : localHiddenIds;
         const hiddenLucSet = remoteHidden !== null ? new Set(remoteHidden.hiddenLucs.map(normalizeLuc).filter(Boolean)) : localHiddenLucs;
 
@@ -190,16 +250,17 @@ export class StoreService {
         if (typeof localStorage !== 'undefined') {
           localStorage.setItem(this.STORAGE_KEY, JSON.stringify(finalStores));
         }
-        await this.indexedDb.saveStores(finalStores);
+        await this.indexedDb?.saveStores?.(finalStores);
 
-        // Também atualiza listas mensais caso tenham sido modificadas remotamente
+        // Também atualiza listas mensais caso tenham sido modificadas remotamente (aceitando arrays vazios [] limpos remotamente)
         if (typeof this.supabase?.fetchMonthlyStoreLists === 'function') {
           const remoteLists = await this.supabase.fetchMonthlyStoreLists();
-          if (remoteLists && Object.keys(remoteLists).length > 0) {
+          if (this.isLocalWriteInFlight) return;
+          if (remoteLists && typeof remoteLists === 'object') {
             this.monthlyStoreListsSignal.update(curr => {
               const merged: Record<string, string[]> = { ...curr };
               for (const [key, remoteList] of Object.entries(remoteLists)) {
-                if (Array.isArray(remoteList) && (remoteList.length > 0 || !(key in merged))) {
+                if (Array.isArray(remoteList)) {
                   merged[key] = remoteList;
                 }
               }
@@ -221,30 +282,6 @@ export class StoreService {
 
   private async syncWithSupabaseOnStart() {
     await this.refreshStoresFromSupabase();
-    if (typeof this.supabase?.fetchMonthlyStoreLists === 'function') {
-      try {
-        const remoteLists = await this.supabase.fetchMonthlyStoreLists();
-        if (remoteLists && Object.keys(remoteLists).length > 0) {
-          this.monthlyStoreListsSignal.update(curr => {
-            const merged: Record<string, string[]> = { ...curr };
-            for (const [key, remoteList] of Object.entries(remoteLists)) {
-              if (Array.isArray(remoteList) && (remoteList.length > 0 || !(key in merged))) {
-                merged[key] = remoteList;
-              }
-            }
-            if (typeof localStorage !== 'undefined') {
-              try {
-                localStorage.setItem(this.MONTHLY_LISTS_STORAGE_KEY, JSON.stringify(merged));
-              } catch {}
-            }
-            this.indexedDb?.saveMonthlyStoreLists?.(merged);
-            return merged;
-          });
-        }
-      } catch (err) {
-        console.warn('Erro ao carregar listas mensais do Supabase:', err);
-      }
-    }
   }
 
   private loadInitialStores(): Store[] {
@@ -316,7 +353,7 @@ export class StoreService {
     }
   }
 
-  private persistMonthlyStoreLists(lists: Record<string, string[]>) {
+  private persistMonthlyStoreLists(lists: Record<string, string[]>, syncToCloud: boolean = true) {
     if (typeof localStorage !== 'undefined') {
       try {
         localStorage.setItem(this.MONTHLY_LISTS_STORAGE_KEY, JSON.stringify(lists));
@@ -325,7 +362,9 @@ export class StoreService {
       }
     }
     this.indexedDb?.saveMonthlyStoreLists?.(lists);
-    this.supabase?.syncMonthlyStoreLists?.(lists).catch(() => {});
+    if (syncToCloud) {
+      this.supabase?.syncMonthlyStoreLists?.(lists)?.catch?.(() => {});
+    }
   }
 
   private getHistoryBillsFallback(): Record<string, any> {
@@ -338,7 +377,7 @@ export class StoreService {
     }
   }
 
-  private persistStores(list: Store[]) {
+  private persistStores(list: Store[], syncToCloud: boolean = true) {
     if (typeof localStorage !== 'undefined') {
       try {
         localStorage.setItem(this.STORAGE_KEY, JSON.stringify(list));
@@ -347,7 +386,8 @@ export class StoreService {
       }
     }
     this.indexedDb?.saveStores?.(list)?.catch?.(() => {});
-    if (list.length > 0) {
+    if (syncToCloud && list.length > 0) {
+      this.suppressRealtimeUntilMs = Math.max(this.suppressRealtimeUntilMs, Date.now() + 2000);
       this.supabase?.syncStores?.(list)?.catch?.(() => {});
     }
   }
@@ -394,14 +434,23 @@ export class StoreService {
    * Zera todas as lojas no app, IndexedDB e no Supabase
    */
   async clearAllStores() {
-    this.storesSignal.set([]);
-    this.monthlyStoreListsSignal.set({});
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify([]));
-      localStorage.removeItem(this.MONTHLY_LISTS_STORAGE_KEY);
+    this.isLocalWriteInFlight = true;
+    this.suppressRealtimeUntilMs = Date.now() + 4000;
+    try {
+      this.storesSignal.set([]);
+      this.monthlyStoreListsSignal.set({});
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(this.STORAGE_KEY, JSON.stringify([]));
+        localStorage.removeItem(this.MONTHLY_LISTS_STORAGE_KEY);
+      }
+      await this.indexedDb?.saveStores?.([]);
+      await this.indexedDb?.saveMonthlyStoreLists?.({});
+      await this.supabase?.clearAllStores?.();
+      await this.supabase?.syncMonthlyStoreLists?.({});
+    } finally {
+      this.isLocalWriteInFlight = false;
+      this.suppressRealtimeUntilMs = Date.now() + 1500;
     }
-    await this.indexedDb.saveStores([]);
-    await this.supabase.clearAllStores();
   }
 
   /**
@@ -720,241 +769,506 @@ export class StoreService {
     }
   }
 
-  // Processa a importação mensal com detecção automática de substituições
-  // Exemplo: LUC 1020 Burger King contrato 333 -> LUC 1020 Madero contrato 444:
-  // Burger King vira inativo (histórico preservado) e Madero é criado como ativo.
-  processMonthlyStoreImport(
+  private isSameStoreIdentity(existing: Store, normContrato: string, normName: string): boolean {
+    const existingNormContrato = normalizeContract((existing.contrato || '').trim());
+    const existingNormName = normalizeStoreName(existing.name || '');
+
+    const sameContract = !!(normContrato && existingNormContrato && normContrato === existingNormContrato);
+    const namesMatch = !!(normName && existingNormName && (
+      normName === existingNormName ||
+      (normName.length >= 3 && existingNormName.length >= 3 && (
+        normName.includes(existingNormName) ||
+        existingNormName.includes(normName)
+      ))
+    ));
+    const contractEmptyAndNamesMatch = (!normContrato || !existingNormContrato) &&
+      (namesMatch || !normName || !existingNormName);
+
+    return sameContract || contractEmptyAndNamesMatch || namesMatch;
+  }
+
+  private computeMonthlyImportPlan(
+    currentList: Store[],
+    monthlyLists: Record<string, string[]>,
     items: { luc: string; contrato: string; name: string }[],
     type: 'luz' | 'agua' | 'gas',
     referenceMonth: string,
-    inactivateMissing: boolean = false
-  ): MonthlyImportResult {
+    inactivateMissing: boolean
+  ): {
+    nextList: Store[];
+    monthStoreIds: string[];
+    result: MonthlyImportResult;
+    preview: MonthlyImportPreview;
+  } {
+    const usesThisUtil = (s: Store): boolean =>
+      type === 'luz' ? s.usesLuz : (type === 'agua' ? s.usesAgua : s.usesGas);
+    const usesOtherUtil = (s: Store): boolean =>
+      (type !== 'luz' && s.usesLuz) ||
+      (type !== 'agua' && s.usesAgua) ||
+      (type !== 'gas' && s.usesGas);
+
+    // Encontra a lista mensal mais recente desta utilidade (<= referenceMonth) para isolar substituições e ausências por utilidade
+    let latestPriorListIds: Set<string> | null = null;
+    const priorMonthsForType = Object.entries(monthlyLists)
+      .filter(([k, ids]) => k.startsWith(`${type}_`) && Array.isArray(ids) && ids.length > 0)
+      .map(([k, ids]) => ({ month: k.substring(type.length + 1), ids }))
+      .filter(entry => /^\d{4}-\d{2}$/.test(entry.month) && entry.month <= referenceMonth)
+      .sort((a, b) => b.month.localeCompare(a.month));
+    if (priorMonthsForType.length > 0) {
+      latestPriorListIds = new Set(priorMonthsForType[0].ids);
+    }
+
+    const isPresentInFutureMonthOfType = (storeId: string): boolean => {
+      for (const [key, ids] of Object.entries(monthlyLists)) {
+        if (!key.startsWith(`${type}_`) || !Array.isArray(ids)) continue;
+        const m = key.substring(type.length + 1);
+        if (m > referenceMonth && ids.includes(storeId)) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    let list = currentList.map(s => ({ ...s }));
+    const processedStoreIds = new Set<string>();
+    const monthStoreIds: string[] = [];
+
     const result: MonthlyImportResult = {
       maintainedCount: 0,
       newCount: 0,
+      reactivatedCount: 0,
+      duplicateRowsIgnored: 0,
       replacements: [],
       inactivatedMissing: []
     };
 
-    const processedStoreIds = new Set<string>();
+    const preview: MonthlyImportPreview = {
+      maintained: [],
+      reactivated: [],
+      replacements: [],
+      brandNew: [],
+      duplicateRows: [],
+      missingStores: [],
+      rowActions: []
+    };
 
-    this.storesSignal.update(currentList => {
-      let list = [...currentList];
-      const importedLucSet = new Set<string>();
+    interface PreparedItem {
+      idx: number;
+      cleanLuc: string;
+      cleanContrato: string;
+      cleanName: string;
+      normLuc: string;
+      normContrato: string;
+      normName: string;
+      isDuplicate: boolean;
+    }
 
-      for (const item of items) {
-        const cleanLuc = item.luc.trim();
-        let cleanContrato = item.contrato.trim();
-        let cleanName = item.name.trim();
-        if (!cleanLuc) continue;
+    const preparedItems: PreparedItem[] = [];
+    const seenBatchKeys = new Set<string>();
 
-        // Auto-correção para colunas invertidas acidentalmente (ex: Nome no Contrato e Contrato no Nome)
-        if (cleanContrato && cleanName) {
-          const isNamePureCode = /^[0-9\-\.\/]{2,15}$/.test(cleanName);
-          const isContratoTextual = /[a-zA-ZÀ-ÿ]{3,}/.test(cleanContrato) && !/^[0-9\-\.\/]+$/.test(cleanContrato);
-          if (isNamePureCode && isContratoTextual) {
-            const temp = cleanContrato;
-            cleanContrato = cleanName;
-            cleanName = temp;
-          }
-        }
+    items.forEach((item, idx) => {
+      const cleanLuc = (item.luc || '').trim();
+      const normalizedPair = normalizeContractAndNameOrder(item.contrato, item.name);
+      const cleanContrato = normalizedPair.contrato;
+      const cleanName = normalizedPair.name;
 
-        const normLuc = normalizeLuc(cleanLuc);
-        const normContrato = normalizeContract(cleanContrato);
-        const normName = normalizeStoreName(cleanName);
-
-        importedLucSet.add(normLuc);
-
-        // 1. Procura loja ativa existente com o mesmo LUC normalizado
-        const existingActiveIndex = list.findIndex(s => 
-          s.active !== false && normalizeLuc(s.luc) === normLuc
-        );
-
-        if (existingActiveIndex > -1) {
-          const existingStore = list[existingActiveIndex];
-
-          // Se este ID já foi processado nesta mesma importação (linha duplicada na planilha), ignora duplicata
-          if (processedStoreIds.has(existingStore.id)) {
-            continue;
-          }
-
-          const existingContrato = (existingStore.contrato || '').trim();
-          const existingNormContrato = normalizeContract(existingContrato);
-          const existingNormName = normalizeStoreName(existingStore.name || '');
-
-          // Critérios para considerar a MESMA LOJA MANTIDA (preserva o mesmo ID e todo o histórico):
-          // a) Contratos normalizados idênticos (se ambos preenchidos)
-          const sameContract = !!(normContrato && existingNormContrato && normContrato === existingNormContrato);
-          
-          // b) Nomes idênticos ou compatíveis (um contém o outro)
-          const namesMatch = !!(normName && existingNormName && (
-            normName === existingNormName ||
-            normName.includes(existingNormName) ||
-            existingNormName.includes(normName)
-          ));
-
-          // c) Um dos contratos (ou ambos) está vazio, mas o nome é compatível ou não há conflito
-          const contractEmptyAndNamesMatch = (!normContrato || !existingNormContrato) && 
-            (namesMatch || !normName || !existingNormName);
-
-          // d) Mesmo que o número do contrato tenha mudado (ex.: renovação/aditivo), se o nome da loja é o mesmo, é o mesmo lojista
-          const sameStoreEvenIfContractChanged = namesMatch;
-
-          const isSameStore = sameContract || contractEmptyAndNamesMatch || sameStoreEvenIfContractChanged;
-
-          if (isSameStore) {
-            // Caso 1: Mesma loja e mesmo lojista mantidos! Preserva o ID original intacto!
-            const updatedStore = { ...existingStore };
-            if (cleanName) updatedStore.name = cleanName;
-            if (cleanContrato) updatedStore.contrato = cleanContrato;
-            if (type === 'luz') updatedStore.usesLuz = true;
-            if (type === 'agua') updatedStore.usesAgua = true;
-            if (type === 'gas') updatedStore.usesGas = true;
-            
-            list[existingActiveIndex] = updatedStore;
-            processedStoreIds.add(updatedStore.id);
-            result.maintainedCount++;
-
-            // Desativa quaisquer registros duplicados remanescentes do mesmo LUC para evitar clones
-            for (let k = 0; k < list.length; k++) {
-              if (k !== existingActiveIndex && list[k].active !== false && normalizeLuc(list[k].luc) === normLuc) {
-                list[k] = {
-                  ...list[k],
-                  active: false,
-                  deactivatedAt: referenceMonth,
-                  deactivationReason: `Registro duplicado unificado com loja principal (${updatedStore.id})`
-                };
-              }
-            }
-          } else {
-            // Caso 2: SUBSTITUIÇÃO REAL! Mesmo LUC, mas NOVO CONTRATO E NOVO LOJISTA!
-            // Ex: Burger King contrato 333 -> Madero contrato 444
-            // A loja antiga é INATIVADA com histórico 100% preservado pelo seu ID
-            const deactivatedOldStore: Store = {
-              ...existingStore,
-              active: false,
-              deactivatedAt: referenceMonth,
-              deactivationReason: `Substituída por ${cleanName} (Contrato ${cleanContrato || 'S/N'})`
-            };
-            list[existingActiveIndex] = deactivatedOldStore;
-
-            // Criamos a nova loja ativa com novo ID, herdando posição na rota e visibilidade do técnico do mesmo LUC
-            const newStore: Store = {
-              id: generateUUID(),
-              luc: cleanLuc,
-              contrato: cleanContrato,
-              name: cleanName,
-              routeOrder: existingStore.routeOrder,
-              hiddenFromTech: existingStore.hiddenFromTech,
-              active: true,
-              usesLuz: type === 'luz' || existingStore.usesLuz,
-              usesAgua: type === 'agua' || existingStore.usesAgua,
-              usesGas: type === 'gas' || existingStore.usesGas
-            };
-            list.push(newStore);
-            processedStoreIds.add(newStore.id);
-
-            result.replacements.push({
-              luc: cleanLuc,
-              oldName: existingStore.name,
-              oldContrato: existingStore.contrato,
-              newName: cleanName,
-              newContrato: cleanContrato
-            });
-          }
-        } else {
-          // 2. Não há loja ativa neste LUC.
-          // Verifica se já existia uma loja inativa com esse exato LUC para reativar
-          const existingInactiveIndex = list.findIndex(s => 
-            s.active === false && 
-            normalizeLuc(s.luc) === normLuc &&
-            (
-              (normContrato && normalizeContract(s.contrato || '') === normContrato) ||
-              (!normContrato && (!s.contrato || normalizeStoreName(s.name) === normName || !normName)) ||
-              (normalizeStoreName(s.name) === normName)
-            )
-          );
-
-          if (existingInactiveIndex > -1) {
-            // Reativa a loja existente preservando seu ID original
-            const reactivatedStore: Store = {
-              ...list[existingInactiveIndex],
-              active: true,
-              name: cleanName || list[existingInactiveIndex].name,
-              contrato: cleanContrato || list[existingInactiveIndex].contrato,
-              deactivatedAt: undefined,
-              deactivationReason: undefined
-            };
-            if (type === 'luz') reactivatedStore.usesLuz = true;
-            if (type === 'agua') reactivatedStore.usesAgua = true;
-            if (type === 'gas') reactivatedStore.usesGas = true;
-
-            list[existingInactiveIndex] = reactivatedStore;
-            processedStoreIds.add(reactivatedStore.id);
-            result.maintainedCount++;
-          } else {
-            // Caso 3: Loja completamente NOVA no shopping (preserva ocultação do técnico caso o mesmo LUC já estivesse oculto)
-            const wasLucHidden = list.some(s => normalizeLuc(s.luc) === normLuc && s.hiddenFromTech === true);
-            const newStore: Store = {
-              id: generateUUID(),
-              luc: cleanLuc,
-              contrato: cleanContrato,
-              name: cleanName,
-              active: true,
-              usesLuz: type === 'luz',
-              usesAgua: type === 'agua',
-              usesGas: type === 'gas',
-              hiddenFromTech: wasLucHidden ? true : undefined
-            };
-            list.push(newStore);
-            processedStoreIds.add(newStore.id);
-            result.newCount++;
-          }
-        }
+      if (!cleanLuc) {
+        preview.rowActions[idx] = 'duplicate';
+        return;
       }
 
-      // 3. Se solicitado, inativa ou desvincula lojas da utilidade que não estavam presentes na planilha deste mês
-      if (inactivateMissing) {
-        list = list.map(store => {
-          const usesUtil = type === 'luz' ? store.usesLuz : (type === 'agua' ? store.usesAgua : store.usesGas);
-          if (store.active !== false && usesUtil && !importedLucSet.has(normalizeLuc(store.luc))) {
-            result.inactivatedMissing.push({
-              luc: store.luc,
-              name: store.name,
-              contrato: store.contrato
-            });
+      const normLuc = normalizeLuc(cleanLuc);
+      const normContrato = normalizeContract(cleanContrato);
+      const normName = normalizeStoreName(cleanName);
+      const dedupKey = normContrato ? `${normLuc}|ctr:${normContrato}` : `${normLuc}|name:${normName}`;
 
-            // Verifica se a loja ainda utiliza outras utilidades ativas (ex.: ainda usa Luz ou Gás)
-            const usesOther = (type !== 'luz' && store.usesLuz) ||
-                              (type !== 'agua' && store.usesAgua) ||
-                              (type !== 'gas' && store.usesGas);
-
-            if (usesOther) {
-              // A loja continua 100% ativa no shopping para as outras utilidades.
-              // Para este mês nesta utilidade, ela simplesmente não entra na lista mensal deste mês.
-              return store;
-            } else {
-              // A loja não utiliza mais nenhuma outra utilidade no shopping: inativação completa
-              return {
-                ...store,
-                active: false,
-                deactivatedAt: referenceMonth,
-                deactivationReason: `Não constava na planilha mensal de ${type.toUpperCase()} (${referenceMonth})`
-              };
-            }
-          }
-          return store;
+      if (seenBatchKeys.has(dedupKey)) {
+        result.duplicateRowsIgnored = (result.duplicateRowsIgnored || 0) + 1;
+        preview.duplicateRows.push({ luc: cleanLuc, contrato: cleanContrato, name: cleanName });
+        preview.rowActions[idx] = 'duplicate';
+        preparedItems.push({
+          idx, cleanLuc, cleanContrato, cleanName, normLuc, normContrato, normName, isDuplicate: true
         });
+        return;
       }
 
-      this.persistStores(list);
-      return list;
+      seenBatchKeys.add(dedupKey);
+      preparedItems.push({
+        idx, cleanLuc, cleanContrato, cleanName, normLuc, normContrato, normName, isDuplicate: false
+      });
     });
 
-    // Registra a lista de lojas pertencentes a este mês de vigência
-    this.setMonthlyStoreList(type, referenceMonth, Array.from(processedStoreIds));
+    // Pré-calcula quais lojas ativas já existentes pertencem ao lote (evita que eventos simultâneos no mesmo LUC se substituam)
+    const matchedActiveIdsInBatch = new Set<string>();
+    for (const p of preparedItems) {
+      if (p.isDuplicate) continue;
+      const activeMatch = list.find(s =>
+        s.active !== false &&
+        !matchedActiveIdsInBatch.has(s.id) &&
+        normalizeLuc(s.luc) === p.normLuc &&
+        this.isSameStoreIdentity(s, p.normContrato, p.normName)
+      );
+      if (activeMatch) {
+        matchedActiveIdsInBatch.add(activeMatch.id);
+      }
+    }
 
-    return result;
+    const findDisplacedActiveIndexForUtility = (normLuc: string): number => {
+      // 1. Prioriza loja ativa desta utilidade que estava na última lista mensal de `type`
+      if (latestPriorListIds !== null) {
+        const idxInPrior = list.findIndex(s =>
+          s.active !== false &&
+          usesThisUtil(s) &&
+          latestPriorListIds!.has(s.id) &&
+          !matchedActiveIdsInBatch.has(s.id) &&
+          !processedStoreIds.has(s.id) &&
+          normalizeLuc(s.luc) === normLuc
+        );
+        if (idxInPrior > -1) return idxInPrior;
+      }
+
+      // 2. Fallback: loja ativa desta utilidade (nunca mexe em lojas exclusivas de outra utilidade!)
+      return list.findIndex(s =>
+        s.active !== false &&
+        usesThisUtil(s) &&
+        (latestPriorListIds === null || !usesOtherUtil(s)) &&
+        !matchedActiveIdsInBatch.has(s.id) &&
+        !processedStoreIds.has(s.id) &&
+        normalizeLuc(s.luc) === normLuc
+      );
+    };
+
+    for (const p of preparedItems) {
+      if (p.isDuplicate) continue;
+      const rowPayload = { luc: p.cleanLuc, contrato: p.cleanContrato, name: p.cleanName };
+
+      // 1. Procura loja ativa existente compatível (mesmo LUC + mesmo contrato ou mesmo lojista)
+      const existingActiveIndex = list.findIndex(s =>
+        s.active !== false &&
+        !processedStoreIds.has(s.id) &&
+        normalizeLuc(s.luc) === p.normLuc &&
+        this.isSameStoreIdentity(s, p.normContrato, p.normName)
+      );
+
+      if (existingActiveIndex > -1) {
+        const existingStore = list[existingActiveIndex];
+        const updatedStore: Store = { ...existingStore };
+        if (p.cleanName) updatedStore.name = p.cleanName;
+        if (p.cleanContrato) updatedStore.contrato = p.cleanContrato;
+        if (type === 'luz') updatedStore.usesLuz = true;
+        if (type === 'agua') updatedStore.usesAgua = true;
+        if (type === 'gas') updatedStore.usesGas = true;
+
+        list[existingActiveIndex] = updatedStore;
+        processedStoreIds.add(updatedStore.id);
+        monthStoreIds.push(updatedStore.id);
+        result.maintainedCount++;
+        preview.maintained.push(rowPayload);
+        preview.rowActions[p.idx] = 'maintained';
+
+        // Unifica apenas clones duplicados idênticos exclusivos desta utilidade no mesmo LUC
+        for (let k = 0; k < list.length; k++) {
+          if (
+            k !== existingActiveIndex &&
+            list[k].active !== false &&
+            usesThisUtil(list[k]) &&
+            !usesOtherUtil(list[k]) &&
+            !matchedActiveIdsInBatch.has(list[k].id) &&
+            !processedStoreIds.has(list[k].id) &&
+            normalizeLuc(list[k].luc) === p.normLuc &&
+            this.isSameStoreIdentity(list[k], p.normContrato, p.normName)
+          ) {
+            list[k] = {
+              ...list[k],
+              active: false,
+              deactivatedAt: referenceMonth,
+              deactivationReason: `Registro duplicado unificado com loja principal (${updatedStore.id})`
+            };
+          }
+        }
+        continue;
+      }
+
+      // 2. Procura loja inativa existente com mesmo LUC + mesma identidade (evita criar clones no efeito gangorra)
+      const existingInactiveIndex = list.findIndex(s =>
+        s.active === false &&
+        !processedStoreIds.has(s.id) &&
+        normalizeLuc(s.luc) === p.normLuc &&
+        this.isSameStoreIdentity(s, p.normContrato, p.normName)
+      );
+
+      // Verifica se existe alguma loja ativa NESTA MESMA UTILIDADE no mesmo LUC que não está no lote
+      const displacedActiveIndex = findDisplacedActiveIndexForUtility(p.normLuc);
+
+      if (existingInactiveIndex > -1) {
+        const prevInactive = list[existingInactiveIndex];
+        const displacedStore = displacedActiveIndex > -1 ? list[displacedActiveIndex] : null;
+
+        const reactivatedStore: Store = {
+          ...prevInactive,
+          luc: p.cleanLuc,
+          active: true,
+          name: p.cleanName || prevInactive.name,
+          contrato: p.cleanContrato || prevInactive.contrato,
+          deactivatedAt: undefined,
+          deactivationReason: undefined,
+          routeOrder: prevInactive.routeOrder ?? displacedStore?.routeOrder,
+          hiddenFromTech: prevInactive.hiddenFromTech ?? displacedStore?.hiddenFromTech
+        };
+        // Habilita APENAS a utilidade que está sendo importada (independência entre Água, Gás e Luz)
+        if (type === 'luz') reactivatedStore.usesLuz = true;
+        if (type === 'agua') reactivatedStore.usesAgua = true;
+        if (type === 'gas') reactivatedStore.usesGas = true;
+
+        list[existingInactiveIndex] = reactivatedStore;
+        processedStoreIds.add(reactivatedStore.id);
+        monthStoreIds.push(reactivatedStore.id);
+
+        if (displacedStore && displacedActiveIndex > -1) {
+          // Só inativa globalmente se a loja antiga NÃO participar de outras utilidades e não estiver em mês futuro
+          if (!usesOtherUtil(displacedStore) && !isPresentInFutureMonthOfType(displacedStore.id)) {
+            list[displacedActiveIndex] = {
+              ...displacedStore,
+              active: false,
+              deactivatedAt: referenceMonth,
+              deactivationReason: `Substituída em ${type.toUpperCase()} por ${p.cleanName} (Contrato ${p.cleanContrato || 'S/N'})`
+            };
+          }
+          result.replacements.push({
+            luc: p.cleanLuc,
+            oldName: displacedStore.name,
+            oldContrato: displacedStore.contrato,
+            newName: p.cleanName,
+            newContrato: p.cleanContrato
+          });
+          preview.replacements.push({
+            luc: p.cleanLuc,
+            oldStore: displacedStore,
+            newName: p.cleanName,
+            newContrato: p.cleanContrato,
+            reactivatedStore
+          });
+          preview.rowActions[p.idx] = 'replacement';
+        } else {
+          result.maintainedCount++;
+          result.reactivatedCount = (result.reactivatedCount || 0) + 1;
+          preview.reactivated.push({ row: rowPayload, existingStore: reactivatedStore });
+          preview.rowActions[p.idx] = 'reactivated';
+        }
+        continue;
+      }
+
+      // 3. Não há loja ativa nem inativa compatível -> Substituição nesta utilidade OU Nova loja
+      if (displacedActiveIndex > -1) {
+        const existingStore = list[displacedActiveIndex];
+        // Independência estrita: se a loja antiga ainda participa de outras utilidades (Luz/Água/Gás),
+        // ela NÃO é inativada globalmente — apenas sai da lista mensal desta utilidade!
+        if (!usesOtherUtil(existingStore) && !isPresentInFutureMonthOfType(existingStore.id)) {
+          list[displacedActiveIndex] = {
+            ...existingStore,
+            active: false,
+            deactivatedAt: referenceMonth,
+            deactivationReason: `Substituída em ${type.toUpperCase()} por ${p.cleanName} (Contrato ${p.cleanContrato || 'S/N'})`
+          };
+        }
+
+        // Nova loja nasce habilitada APENAS na utilidade atual (não contamina Luz/Água/Gás)
+        const newStore: Store = {
+          id: generateUUID(),
+          luc: p.cleanLuc,
+          contrato: p.cleanContrato,
+          name: p.cleanName,
+          routeOrder: existingStore.routeOrder,
+          hiddenFromTech: existingStore.hiddenFromTech,
+          active: true,
+          usesLuz: type === 'luz',
+          usesAgua: type === 'agua',
+          usesGas: type === 'gas',
+          _offlineCreated: true as any
+        };
+        list.push(newStore);
+        processedStoreIds.add(newStore.id);
+        monthStoreIds.push(newStore.id);
+
+        result.replacements.push({
+          luc: p.cleanLuc,
+          oldName: existingStore.name,
+          oldContrato: existingStore.contrato,
+          newName: p.cleanName,
+          newContrato: p.cleanContrato
+        });
+        preview.replacements.push({
+          luc: p.cleanLuc,
+          oldStore: existingStore,
+          newName: p.cleanName,
+          newContrato: p.cleanContrato
+        });
+        preview.rowActions[p.idx] = 'replacement';
+      } else {
+        const wasLucHidden = list.some(s => normalizeLuc(s.luc) === p.normLuc && s.hiddenFromTech === true);
+        const newStore: Store = {
+          id: generateUUID(),
+          luc: p.cleanLuc,
+          contrato: p.cleanContrato,
+          name: p.cleanName,
+          active: true,
+          usesLuz: type === 'luz',
+          usesAgua: type === 'agua',
+          usesGas: type === 'gas',
+          hiddenFromTech: wasLucHidden ? true : undefined,
+          _offlineCreated: true as any
+        };
+        list.push(newStore);
+        processedStoreIds.add(newStore.id);
+        monthStoreIds.push(newStore.id);
+        result.newCount++;
+        preview.brandNew.push(rowPayload);
+        preview.rowActions[p.idx] = 'new';
+      }
+    }
+
+    // 4. Lojas ausentes na planilha deste mês (isoladas estritamente na utilidade `type` e protegendo meses futuros)
+    if (inactivateMissing) {
+      list = list.map(store => {
+        if (store.active !== false && usesThisUtil(store) && !processedStoreIds.has(store.id)) {
+          const otherActive = usesOtherUtil(store);
+
+          // Se a loja pertence a outras utilidades e já NÃO estava na última lista desta utilidade, ignora
+          if (otherActive && latestPriorListIds !== null && !latestPriorListIds.has(store.id)) {
+            return store;
+          }
+
+          result.inactivatedMissing.push({
+            luc: store.luc,
+            name: store.name,
+            contrato: store.contrato
+          });
+
+          const isPresentInFutureMonth = isPresentInFutureMonthOfType(store.id);
+          const willInactivateGlobally = !otherActive && !isPresentInFutureMonth;
+          preview.missingStores.push({
+            store,
+            willInactivateGlobally,
+            protectedByFutureMonth: isPresentInFutureMonth
+          });
+
+          if (!willInactivateGlobally) {
+            return store;
+          }
+
+          return {
+            ...store,
+            active: false,
+            deactivatedAt: referenceMonth,
+            deactivationReason: `Não constava na planilha mensal de ${type.toUpperCase()} (${referenceMonth})`
+          };
+        }
+        return store;
+      });
+    }
+
+    return {
+      nextList: list,
+      monthStoreIds,
+      result,
+      preview
+    };
+  }
+
+  /**
+   * Simula exatamente o que processMonthlyStoreImport fará, sem alterar sinais ou persistir dados.
+   */
+  previewMonthlyStoreImport(
+    items: { luc: string; contrato: string; name: string }[],
+    type: 'luz' | 'agua' | 'gas',
+    referenceMonth: string,
+    inactivateMissing: boolean = false
+  ): MonthlyImportPreview {
+    return this.computeMonthlyImportPlan(
+      this.storesSignal(),
+      this.monthlyStoreListsSignal(),
+      items,
+      type,
+      referenceMonth,
+      inactivateMissing
+    ).preview;
+  }
+
+  // Processa a importação mensal com independência estrita entre Luz, Água e Gás
+  processMonthlyStoreImport(
+    items: { luc: string; contrato: string; name: string }[],
+    type: 'luz' | 'agua' | 'gas',
+    referenceMonth: string,
+    inactivateMissing: boolean = false,
+    deferCloudSync: boolean = false
+  ): MonthlyImportResult {
+    const plan = this.computeMonthlyImportPlan(
+      this.storesSignal(),
+      this.monthlyStoreListsSignal(),
+      items,
+      type,
+      referenceMonth,
+      inactivateMissing
+    );
+
+    this.storesSignal.set(plan.nextList);
+    this.persistStores(plan.nextList, !deferCloudSync);
+
+    // Atualiza EXCLUSIVAMENTE a lista mensal da utilidade `type` no mês `referenceMonth`
+    this.monthlyStoreListsSignal.update(current => {
+      const updated: Record<string, string[]> = {
+        ...current,
+        [`${type}_${referenceMonth}`]: plan.monthStoreIds
+      };
+      this.persistMonthlyStoreLists(updated, !deferCloudSync);
+      return updated;
+    });
+
+    return plan.result;
+  }
+
+  /**
+   * Remove/desvincula uma loja APENAS da utilidade selecionada (e opcionalmente apenas de um mês),
+   * sem afetar nenhuma das outras utilidades (Luz, Água ou Gás).
+   */
+  unlinkStoreFromUtility(
+    id: string,
+    utilityType: 'luz' | 'agua' | 'gas',
+    referenceMonth?: string
+  ) {
+    let stillInAnyMonthOfUtility = false;
+
+    this.monthlyStoreListsSignal.update(current => {
+      const updated: Record<string, string[]> = { ...current };
+      const prefix = `${utilityType}_`;
+      for (const [key, ids] of Object.entries(updated)) {
+        if (!key.startsWith(prefix) || !Array.isArray(ids)) continue;
+        if (!referenceMonth || key === `${utilityType}_${referenceMonth}`) {
+          updated[key] = ids.filter(storeId => storeId !== id);
+        }
+        if (updated[key].includes(id)) {
+          stillInAnyMonthOfUtility = true;
+        }
+      }
+      this.persistMonthlyStoreLists(updated);
+      return updated;
+    });
+
+    if (!stillInAnyMonthOfUtility) {
+      this.storesSignal.update(list => {
+        const updated = list.map(s => {
+          if (s.id !== id) return s;
+          return {
+            ...s,
+            usesLuz: utilityType === 'luz' ? false : s.usesLuz,
+            usesAgua: utilityType === 'agua' ? false : s.usesAgua,
+            usesGas: utilityType === 'gas' ? false : s.usesGas
+          };
+        });
+        this.persistStores(updated);
+        return updated;
+      });
+    }
   }
 
   // Importação Simples (Upsert)
@@ -992,7 +1306,15 @@ export class StoreService {
 
   updateStore(updatedStore: Store) {
     this.storesSignal.update(list => {
-      const updated = list.map(s => s.id === updatedStore.id ? updatedStore : s);
+      const updated = list.map(s => {
+        if (s.id !== updatedStore.id) return s;
+        return {
+          ...s,
+          ...updatedStore,
+          hiddenFromTech: updatedStore.hiddenFromTech !== undefined ? updatedStore.hiddenFromTech : s.hiddenFromTech,
+          meterNumber: updatedStore.meterNumber !== undefined ? updatedStore.meterNumber : s.meterNumber
+        };
+      });
       this.persistStores(updated);
       return updated;
     });

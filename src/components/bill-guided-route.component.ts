@@ -162,7 +162,13 @@ import {
                                     }
                                   </span>
                                   <span class="text-[11px] text-teal-700 dark:text-teal-400 font-sans font-semibold">
-                                    Consumo Ant: <strong>{{ stepStore.prevConsumption | number:'1.0-2' }} {{ unit }}</strong>
+                                    @if (stepStore.prevConsumption > 0) {
+                                      Consumo Ant: <strong>{{ stepStore.prevConsumption | number:'1.0-2' }} {{ unit }}</strong>
+                                    } @else if (stepStore.prevReading > 0) {
+                                      Consumo Ant: <strong>Base inicial</strong>
+                                    } @else {
+                                      Consumo Ant: <strong>—</strong>
+                                    }
                                   </span>
                                   @if (stepStore.prevCost) {
                                     <span class="text-[11px] text-slate-600 dark:text-slate-300 font-sans font-semibold">
@@ -185,7 +191,13 @@ import {
                                   }
                                 </span>
                                 <span class="text-xs text-teal-700 dark:text-teal-400 font-sans font-semibold block mt-0.5">
-                                  Consumo Anterior: <strong>{{ stepStore.prevConsumption | number:'1.0-2' }} {{ unit }}</strong>
+                                  @if (stepStore.prevConsumption > 0) {
+                                    Consumo Anterior: <strong>{{ stepStore.prevConsumption | number:'1.0-2' }} {{ unit }}</strong>
+                                  } @else if (stepStore.prevReading > 0) {
+                                    Consumo Anterior: <strong>Base inicial</strong>
+                                  } @else {
+                                    Consumo Anterior: <strong>—</strong>
+                                  }
                                 </span>
                                 @if (stepStore.prevCost) {
                                   <span class="text-xs text-slate-600 dark:text-slate-300 font-sans font-semibold block mt-0.5">

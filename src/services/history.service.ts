@@ -4,7 +4,7 @@ import { SupabaseService } from './supabase.service';
 
 import { StoreReading, BillData, Store } from '../models';
 import { StoreService, normalizeLuc, normalizeContract, normalizeStoreName } from './store.service';
-import { parsePtBrNumber } from './apportionment-engine.service';
+import { parsePtBrNumber, isLikelyOdometerAsConsumption } from './apportionment-engine.service';
 
 export type { StoreReading, BillData };
 
@@ -190,8 +190,14 @@ export class HistoryService {
       const remoteBills = await this.supabase.fetchAllBills();
       if (remoteBills !== null) {
         const local = this.billsSignal();
-        const merged: Record<string, BillData> = { ...remoteBills };
+        const merged: Record<string, BillData> = {};
+        for (const [k, v] of Object.entries(remoteBills)) {
+          if (!k.startsWith('__')) {
+            merged[k] = v;
+          }
+        }
         for (const [k, v] of Object.entries(local)) {
+          if (k.startsWith('__')) continue;
           const remoteItem = merged[k];
           if (remoteItem) {
             const { merged: mergedBill, shouldSyncRemote } = mergeBillData(v, remoteItem);
@@ -234,7 +240,16 @@ export class HistoryService {
         return {};
       }
       const data = localStorage.getItem(this.STORAGE_KEY);
-      return data ? JSON.parse(data) : {};
+      if (!data) return {};
+      const parsed = JSON.parse(data);
+      if (!parsed || typeof parsed !== 'object') return {};
+      const cleaned: Record<string, BillData> = {};
+      for (const [k, v] of Object.entries(parsed)) {
+        if (!k.startsWith('__')) {
+          cleaned[k] = v as BillData;
+        }
+      }
+      return cleaned;
     } catch {
       return {};
     }
@@ -452,7 +467,19 @@ export class HistoryService {
         if (typeof r === 'object' && r !== null) {
           reading = Number((r as any).reading) || 0;
           consumption = Number((r as any).calculatedConsumption ?? (r as any).consumption) || 0;
-          if ((r as any).cost !== undefined && (r as any).cost !== null && !isNaN(Number((r as any).cost))) {
+          const rawCons = Number((r as any).rawConsumption) || 0;
+          const consToCheck = rawCons > 0 ? rawCons : consumption;
+          const c = Number((r as any).constant) || 1;
+          const adj = Number((r as any).adjustment) || (type === 'gas' ? 1.347 : 1);
+          const fcm = type === 'gas' ? (Number((r as any).fcm) || 1.0727) : 1;
+          const hasVirtual = (r as any).virtual !== undefined && (r as any).virtual !== null && (r as any).virtual !== '';
+
+          if (isLikelyOdometerAsConsumption(reading, consToCheck, c, adj, fcm, hasVirtual)) {
+            // Registro histórico de mês-base onde o ponteiro inteiro foi gravado como consumo:
+            // preserva o ponteiro (reading) como referência do próximo mês, mas zera consumo/custo anterior.
+            consumption = 0;
+            cost = 0;
+          } else if ((r as any).cost !== undefined && (r as any).cost !== null && !isNaN(Number((r as any).cost))) {
             cost = Number((r as any).cost);
           } else {
             const fluxo = Number((r as any).fluxoCost) || 0;

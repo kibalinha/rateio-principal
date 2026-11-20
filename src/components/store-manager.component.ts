@@ -5,10 +5,11 @@ import { StoreService, isStoreActiveInMonth } from '../services/store.service';
 import { AuthService } from '../services/auth.service';
 import { IndexedDbService } from '../services/indexed-db.service';
 import { HistoryService } from '../services/history.service';
+import { parseMonthlyStoreListText, SkippedImportLine } from '../services/store-import.helpers';
 
 import { 
   Store,
-  MonthlyImportResult,
+  MonthlyImportPreview,
   UtilityType as TabType, 
   StoreStatusFilter as StatusFilter, 
   ParsedStoreRow 
@@ -348,11 +349,14 @@ import {
           <div class="mb-8 p-5 bg-teal-50/70 rounded-xl border border-teal-200 animate-fade-in shadow-xs">
             <div class="flex justify-between items-start mb-3">
               <div>
-                <h3 class="font-bold text-teal-900 text-base flex items-center gap-2">
+                <h3 class="font-bold text-teal-900 text-base flex items-center gap-2 flex-wrap">
                   <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                   </svg>
-                  Importação Mensal com Detecção Automática de Mudança de Lojas
+                  <span>Importação Mensal com Detecção Automática de Mudança de Lojas</span>
+                  <span class="px-2 py-0.5 rounded-full text-xs font-extrabold bg-white border border-teal-300 text-teal-800">
+                    @if (activeTab() === 'luz') { ⚡ Luz } @else if (activeTab() === 'agua') { 💧 Água } @else { 🔥 Gás }
+                  </span>
                 </h3>
                 <p class="text-xs text-teal-700 mt-1">
                   Cole a lista mensal completa das lojas cadastradas (<strong>LUC</strong>, <strong>CONTRATO</strong> e <strong>NOME</strong>).
@@ -363,20 +367,27 @@ import {
             </div>
 
             <!-- Controles do Mês de Referência e Regra de Ausentes -->
-            <div class="bg-white p-3.5 rounded-lg border border-teal-200 mb-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs">
-              <div class="flex items-center gap-2">
-                <label class="font-bold text-teal-900 whitespace-nowrap">📅 Mês de Vigência desta Lista:</label>
-                <input 
-                  type="month" 
-                  [ngModel]="importReferenceMonth()" 
-                  (ngModelChange)="importReferenceMonth.set($event)"
-                  class="px-2.5 py-1.5 border border-teal-300 rounded font-bold text-teal-900 bg-teal-50/50 outline-none">
-              </div>
+            <div class="bg-white p-3.5 rounded-lg border border-teal-200 mb-4 flex flex-col gap-2 text-xs">
+              <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+                <div class="flex items-center gap-2">
+                  <label class="font-bold text-teal-900 whitespace-nowrap">📅 Mês de Vigência desta Lista:</label>
+                  <input 
+                    type="month" 
+                    [ngModel]="importReferenceMonth()" 
+                    (ngModelChange)="importReferenceMonth.set($event)"
+                    class="px-2.5 py-1.5 border border-teal-300 rounded font-bold text-teal-900 bg-teal-50/50 outline-none">
+                </div>
 
-              <label class="flex items-center gap-2 cursor-pointer font-medium text-teal-800">
-                <input type="checkbox" [ngModel]="inactivateMissing()" (ngModelChange)="inactivateMissing.set($event)" class="rounded text-teal-600">
-                <span>Inativar lojas ativas de {{ getTabName() }} que <strong>não constam</strong> nesta lista mensal</span>
-              </label>
+                <label class="flex items-center gap-2 cursor-pointer font-medium text-teal-800">
+                  <input type="checkbox" [ngModel]="inactivateMissing()" (ngModelChange)="inactivateMissing.set($event)" class="rounded text-teal-600">
+                  <span>Inativar lojas ativas de {{ getTabName() }} que <strong>não constam</strong> nesta lista mensal</span>
+                </label>
+              </div>
+              @if (inactivateMissing() && hasFutureMonthsAfterImport()) {
+                <div class="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5">
+                  ℹ️ Já existem listas cadastradas em meses posteriores a <strong>{{ importReferenceMonth() }}</strong>. Lojas presentes em meses futuros serão protegidas contra inativação global automática.
+                </div>
+              }
             </div>
             
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -393,7 +404,12 @@ import {
                   placeholder="1020	444	Madero&#10;1021	550	Renner&#10;1022	612	McDonalds"></textarea>
                 
                 <div class="mt-2 flex items-center justify-between text-xs text-teal-700">
-                  <span>{{ parsedImportData().length }} linhas detectadas</span>
+                  <span>
+                    {{ parsedImportData().length }} linhas detectadas
+                    @if (skippedImportLines().length > 0) {
+                      <span class="text-amber-700 font-semibold ml-1">({{ skippedImportLines().length }} ignorada(s))</span>
+                    }
+                  </span>
                   @if (importText()) {
                     <button (click)="clearImport()" class="text-teal-600 hover:text-teal-800 underline">Limpar texto</button>
                   }
@@ -405,8 +421,8 @@ import {
                 <div class="bg-teal-100/90 px-4 py-2.5 text-xs font-bold text-teal-900 flex justify-between items-center border-b border-teal-200">
                   <span>Diagnóstico da Importação Mensal</span>
                   @if (parsedImportData().length > 0) {
-                    <button (click)="confirmMonthlyImport()" class="px-3.5 py-1.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors shadow-sm font-bold text-xs uppercase tracking-wide">
-                      Confirmar Atualização
+                    <button (click)="confirmMonthlyImport()" [disabled]="isImporting()" class="px-3.5 py-1.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-wait transition-colors shadow-sm font-bold text-xs uppercase tracking-wide">
+                      {{ isImporting() ? 'Salvando...' : 'Confirmar Atualização' }}
                     </button>
                   }
                 </div>
@@ -421,7 +437,10 @@ import {
                     <div class="grid grid-cols-3 gap-2 text-center">
                       <div class="p-2 rounded bg-emerald-50 border border-emerald-200">
                         <div class="text-[10px] uppercase font-bold text-emerald-700">Mantidas</div>
-                        <div class="text-lg font-extrabold text-emerald-800">{{ importAnalysis().maintained.length }}</div>
+                        <div class="text-lg font-extrabold text-emerald-800">{{ importAnalysis().maintained.length + importAnalysis().reactivated.length }}</div>
+                        @if (importAnalysis().reactivated.length > 0) {
+                          <div class="text-[10px] text-emerald-700">({{ importAnalysis().reactivated.length }} reativ.)</div>
+                        }
                       </div>
                       <div class="p-2 rounded bg-amber-50 border border-amber-200">
                         <div class="text-[10px] uppercase font-bold text-amber-700">Substituições</div>
@@ -433,7 +452,22 @@ import {
                       </div>
                     </div>
 
-                    <!-- Highlight Substituições Detectadas (o cerne do problema do usuário) -->
+                    @if (importAnalysis().duplicateRows.length > 0) {
+                      <div class="p-2 bg-slate-50 rounded-lg border border-slate-200 text-slate-600 text-[11px]">
+                        ℹ️ <strong>{{ importAnalysis().duplicateRows.length }} linha(s) duplicada(s)</strong> na planilha serão ignoradas automaticamente.
+                      </div>
+                    }
+
+                    @if (skippedImportLines().length > 0) {
+                      <div class="p-2.5 bg-rose-50 rounded-lg border border-rose-200 text-rose-800 text-[11px] space-y-1">
+                        <div class="font-bold">⚠️ {{ skippedImportLines().length }} linha(s) do texto não puderam ser lidas:</div>
+                        @for (sk of skippedImportLines().slice(0, 3); track sk.lineNumber) {
+                          <div class="font-mono text-[10px] truncate">Linha {{ sk.lineNumber }}: {{ sk.reason }} — "{{ sk.content }}"</div>
+                        }
+                      </div>
+                    }
+
+                    <!-- Highlight Substituições Detectadas -->
                     @if (importAnalysis().replacements.length > 0) {
                       <div class="p-3 bg-amber-50/90 rounded-lg border border-amber-300">
                         <div class="font-bold text-amber-900 flex items-center gap-1.5 mb-1.5">
@@ -441,11 +475,13 @@ import {
                           <span>{{ importAnalysis().replacements.length }} Substituição(ões) no mesmo espaço (LUC):</span>
                         </div>
                         <div class="space-y-1.5">
-                          @for (rep of importAnalysis().replacements; track rep.luc) {
+                          @for (rep of importAnalysis().replacements; track $index) {
                             <div class="bg-white p-2 rounded border border-amber-200 text-[11px] flex flex-col gap-0.5">
                               <div class="flex items-center justify-between font-mono">
                                 <span class="font-bold text-slate-800">LUC: {{ rep.luc }}</span>
-                                <span class="text-amber-700 font-semibold text-[10px] bg-amber-100 px-1.5 py-0.2 rounded">Mudança de Contrato</span>
+                                <span class="text-amber-700 font-semibold text-[10px] bg-amber-100 px-1.5 py-0.2 rounded">
+                                  {{ rep.reactivatedStore ? 'Retorno / Troca de Contrato' : 'Mudança de Contrato' }}
+                                </span>
                               </div>
                               <div class="flex items-center gap-1.5 text-slate-600">
                                 <span class="text-red-600 line-through">Antiga: <strong>{{ rep.oldStore.name }}</strong> (Ctr: {{ rep.oldStore.contrato || '-' }})</span>
@@ -453,7 +489,7 @@ import {
                                 <span class="text-emerald-700 font-bold">Nova: {{ rep.newName }} (Ctr: {{ rep.newContrato || '-' }})</span>
                               </div>
                               <span class="text-[10px] text-slate-400 italic">
-                                * A loja {{ rep.oldStore.name }} será inativada mantendo todo o histórico até {{ importReferenceMonth() }}.
+                                * Em {{ getTabName() }}, {{ rep.oldStore.name }} será substituída a partir de {{ importReferenceMonth() }} mantendo todo o histórico e sem afetar as demais utilidades.
                               </span>
                             </div>
                           }
@@ -464,7 +500,7 @@ import {
                     <!-- Lojas Ausentes a Inativar -->
                     @if (inactivateMissing() && importAnalysis().missingStores.length > 0) {
                       <div class="p-2.5 bg-slate-100 rounded-lg border border-slate-200 text-slate-700 text-[11px]">
-                        <span class="font-bold text-slate-800">⚠️ {{ importAnalysis().missingStores.length }} lojas ativas não constam nesta lista</span> e serão inativadas em {{ importReferenceMonth() }} (histórico preservado).
+                        <span class="font-bold text-slate-800">⚠️ {{ importAnalysis().missingStores.length }} loja(s) ativas de {{ getTabName() }} não constam nesta lista</span> e serão removidas da lista de {{ importReferenceMonth() }} (histórico preservado).
                       </div>
                     }
 
@@ -481,16 +517,22 @@ import {
                         </thead>
                         <tbody class="divide-y divide-slate-100">
                           @for (item of parsedImportData(); track $index) {
-                            @let rep = getReplacementForLuc(item.luc);
-                            <tr class="hover:bg-slate-50" [class.bg-amber-50]="!!rep">
+                            @let action = importAnalysis().rowActions[$index];
+                            <tr class="hover:bg-slate-50" [class.bg-amber-50]="action === 'replacement'">
                               <td class="p-2 font-mono font-bold text-slate-700">{{ item.luc }}</td>
                               <td class="p-2 font-mono text-slate-600">{{ item.contrato || '-' }}</td>
                               <td class="p-2 text-slate-800 font-medium">{{ item.name }}</td>
                               <td class="p-2 text-right">
-                                @if (rep) {
+                                @if (action === 'replacement') {
                                   <span class="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-bold">Substitui</span>
+                                } @else if (action === 'reactivated') {
+                                  <span class="text-[10px] bg-teal-100 text-teal-800 px-1.5 py-0.5 rounded font-bold">Reativar</span>
+                                } @else if (action === 'new') {
+                                  <span class="text-[10px] bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded font-bold">Nova</span>
+                                } @else if (action === 'duplicate') {
+                                  <span class="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-bold">Duplicada</span>
                                 } @else {
-                                  <span class="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">Ativa</span>
+                                  <span class="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">Mantida</span>
                                 }
                               </td>
                             </tr>
@@ -504,8 +546,8 @@ import {
                 @if (parsedImportData().length > 0) {
                   <div class="p-2.5 bg-teal-50 border-t border-teal-100 text-[11px] text-teal-800 flex justify-between items-center px-4">
                     <span>Vigência: <strong>{{ importReferenceMonth() }}</strong> em <strong>{{ getTabName() }}</strong></span>
-                    <button (click)="confirmMonthlyImport()" class="font-bold text-teal-800 hover:text-teal-900 underline">
-                      Aplicar Atualizações Agora →
+                    <button (click)="confirmMonthlyImport()" [disabled]="isImporting()" class="font-bold text-teal-800 hover:text-teal-900 disabled:opacity-50 underline">
+                      {{ isImporting() ? 'Sincronizando...' : 'Aplicar Atualizações Agora →' }}
                     </button>
                   </div>
                 }
@@ -533,7 +575,7 @@ import {
             </thead>
             <tbody class="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
               @for (store of filteredStores(); track store.id) {
-                <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group" [class.bg-slate-50/50]="store.active === false" [class.dark:bg-slate-800/30]="store.active === false">
+                <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group" [class.bg-slate-50/50]="!isStoreActiveInSelectedMonth(store)" [class.dark:bg-slate-800/30]="!isStoreActiveInSelectedMonth(store)">
                   <td class="p-3.5 pl-4 text-center">
                     @if (store.routeOrder) {
                       <span class="inline-flex items-center justify-center min-w-7 px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 shadow-2xs" title="Posição {{ store.routeOrder }} na rota de leitura">
@@ -558,7 +600,7 @@ import {
                     }
                   </td>
                   <td class="p-3.5">
-                    <div class="font-medium flex items-center gap-2 flex-wrap" [class.text-slate-800]="store.active !== false" [class.dark:text-slate-100]="store.active !== false" [class.text-slate-400]="store.active === false" [class.dark:text-slate-500]="store.active === false">
+                    <div class="font-medium flex items-center gap-2 flex-wrap" [class.text-slate-800]="isStoreActiveInSelectedMonth(store)" [class.dark:text-slate-100]="isStoreActiveInSelectedMonth(store)" [class.text-slate-400]="!isStoreActiveInSelectedMonth(store)" [class.dark:text-slate-500]="!isStoreActiveInSelectedMonth(store)">
                       <span>{{ store.name }}</span>
                       @if (store.hiddenFromTech) {
                         <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 dark:bg-purple-950/70 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-800" title="Oculta para o Técnico em Campo — mantida no rateio e SAP para ADM">
@@ -566,7 +608,7 @@ import {
                         </span>
                       }
                     </div>
-                    @if (store.active === false && store.deactivationReason) {
+                    @if (!isStoreActiveInSelectedMonth(store) && store.deactivationReason) {
                       <div class="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
                         ↳ {{ store.deactivationReason }}
                       </div>
@@ -618,7 +660,7 @@ import {
                           Editar
                         </button>
                         
-                        @if (store.active !== false) {
+                        @if (isStoreActiveInSelectedMonth(store)) {
                           <button (click)="inactivateStore(store)" title="Inativar loja preservando histórico" class="px-2.5 py-1 text-amber-700 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30 rounded-md transition-colors text-xs font-semibold border border-amber-200 dark:border-amber-800">
                             Inativar
                           </button>
@@ -715,6 +757,19 @@ import {
               💡 <strong>Dica:</strong> Se o lojista apenas desocupou a loja, recomendamos <strong>"Inativar"</strong> para preservar o histórico de faturas passadas.
             </p>
 
+            @if (getOtherUtilityNames(st).length > 0) {
+              <div class="text-xs text-rose-800 dark:text-rose-200 bg-rose-50 dark:bg-rose-950/40 p-2.5 rounded-lg border border-rose-200 dark:border-rose-800 space-y-2">
+                <div>
+                  🔒 <strong>Independência entre utilidades:</strong> esta loja também está vinculada a <strong>{{ getOtherUtilityNames(st).join(' e ') }}</strong>.
+                  "Excluir de Tudo" apagará a loja de todas as utilidades.
+                </div>
+                <button type="button" (click)="unlinkFromCurrentUtility(st)"
+                  class="w-full py-2 px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer">
+                  Remover apenas de {{ getTabName() }}@if (viewMode() === 'month') { ({{ consultationMonth() }}) } (manter em {{ getOtherUtilityNames(st).join(' / ') }})
+                </button>
+              </div>
+            }
+
             <div class="flex flex-col sm:flex-row gap-2 pt-2">
               <button type="button" (click)="cancelRemoveStore()" 
                 class="flex-1 py-2.5 px-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs rounded-xl transition-colors cursor-pointer text-center">
@@ -728,7 +783,7 @@ import {
 
               <button type="button" (click)="executeRemoveStore()" 
                 class="flex-1 py-2.5 px-3 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer shadow-sm text-center">
-                Sim, Excluir
+                {{ getOtherUtilityNames(st).length > 0 ? 'Excluir de Tudo' : 'Sim, Excluir' }}
               </button>
             </div>
           </div>
@@ -773,6 +828,9 @@ export class StoreManagerComponent {
   showImport = signal(false);
   importText = signal('');
   parsedImportData = signal<ParsedStoreRow[]>([]);
+  skippedImportLines = signal<SkippedImportLine[]>([]);
+  detectedImportOrder = signal<string>('auto');
+  isImporting = signal(false);
   importReferenceMonth = signal<string>(new Date().toISOString().substring(0, 7));
   inactivateMissing = signal<boolean>(true);
 
@@ -822,7 +880,10 @@ export class StoreManagerComponent {
   }
 
   openImportForSelectedMonth() {
+    if (!this.authService.canManageStores()) return;
+    this.showForm.set(false);
     this.importReferenceMonth.set(this.consultationMonth());
+    this.clearImport();
     this.showImport.set(true);
   }
 
@@ -938,56 +999,20 @@ export class StoreManagerComponent {
      });
   });
 
-  // Real-time analysis of the imported data compared with current active stores
-  importAnalysis = computed(() => {
-    const parsed = this.parsedImportData();
-    const type = this.activeTab();
-    const currentActive = this.allTabStores().filter(s => s.active !== false);
-
-    const replacements: { luc: string; oldStore: Store; newName: string; newContrato: string }[] = [];
-    const maintained: ParsedStoreRow[] = [];
-    const brandNew: ParsedStoreRow[] = [];
-    const importedLucs = new Set<string>();
-
-    for (const item of parsed) {
-      importedLucs.add(item.luc.toLowerCase());
-      const match = currentActive.find(s => s.luc.toLowerCase() === item.luc.toLowerCase());
-
-      if (match) {
-        const itemCtr = item.contrato.trim();
-        const matchCtr = (match.contrato || '').trim();
-        const sameCtr = itemCtr && matchCtr && itemCtr.toLowerCase() === matchCtr.toLowerCase();
-        const sameName = !itemCtr && !matchCtr && item.name.toLowerCase() === match.name.toLowerCase();
-
-        if (sameCtr || sameName) {
-          maintained.push(item);
-        } else {
-          // Replaced!
-          replacements.push({
-            luc: item.luc,
-            oldStore: match,
-            newName: item.name,
-            newContrato: item.contrato
-          });
-        }
-      } else {
-        brandNew.push(item);
-      }
-    }
-
-    const missingStores = currentActive.filter(s => !importedLucs.has(s.luc.toLowerCase()));
-
-    return {
-      replacements,
-      maintained,
-      brandNew,
-      missingStores
-    };
+  hasFutureMonthsAfterImport = computed(() => {
+    const refMonth = this.importReferenceMonth();
+    return this.availableMonths().some(m => m > refMonth);
   });
 
-  getReplacementForLuc(luc: string) {
-    return this.importAnalysis().replacements.find(r => r.luc.toLowerCase() === luc.toLowerCase());
-  }
+  // Pré-visualização 100% fiel ao motor de importação do StoreService
+  importAnalysis = computed<MonthlyImportPreview>(() => {
+    return this.storeService.previewMonthlyStoreImport(
+      this.parsedImportData(),
+      this.activeTab(),
+      this.importReferenceMonth(),
+      this.inactivateMissing()
+    );
+  });
 
   constructor() {
      // Reset form defaults when tab changes
@@ -1040,14 +1065,19 @@ export class StoreManagerComponent {
     this.showForm.set(false);
     this.showImport.update(v => !v);
     if (this.showImport()) {
+      this.importReferenceMonth.set(this.consultationMonth());
       this.importText.set('');
       this.parsedImportData.set([]);
+      this.skippedImportLines.set([]);
+      this.detectedImportOrder.set('auto');
     }
   }
 
   clearImport() {
     this.importText.set('');
     this.parsedImportData.set([]);
+    this.skippedImportLines.set([]);
+    this.detectedImportOrder.set('auto');
   }
 
   resetForm() {
@@ -1101,9 +1131,21 @@ export class StoreManagerComponent {
       };
 
       if (this.editingId()) {
+        const id = this.editingId()!;
+        const existing = this.storeService.stores().find(s => s.id === id);
+        const deactivatedAt = storePayload.active
+          ? undefined
+          : (existing?.deactivatedAt || this.consultationMonth());
+        const deactivationReason = storePayload.active
+          ? undefined
+          : (existing?.deactivationReason || 'Inativada manualmente');
+
         this.storeService.updateStore({
-            id: this.editingId()!,
-            ...storePayload
+          ...(existing || {}),
+          id,
+          ...storePayload,
+          deactivatedAt,
+          deactivationReason
         });
       } else {
         this.storeService.addStore(storePayload, this.consultationMonth());
@@ -1132,6 +1174,25 @@ export class StoreManagerComponent {
     this.storeToDelete.set(null);
   }
 
+  getOtherUtilityNames(store: Store): string[] {
+    const tab = this.activeTab();
+    const others: string[] = [];
+    if (tab !== 'luz' && store.usesLuz) others.push('Luz');
+    if (tab !== 'agua' && store.usesAgua) others.push('Água');
+    if (tab !== 'gas' && store.usesGas) others.push('Gás');
+    return others;
+  }
+
+  unlinkFromCurrentUtility(store: Store) {
+    const tab = this.activeTab();
+    const month = this.viewMode() === 'month' ? this.consultationMonth() : undefined;
+    this.storeToDelete.set(null);
+    this.storeService.unlinkStoreFromUtility(store.id, tab, month);
+    this.indexedDb.showToast(
+      `✂️ Loja "${store.name}" (${store.luc}) removida apenas de ${this.getTabName()}${month ? ` (${month})` : ''} — demais utilidades preservadas.`
+    );
+  }
+
   async executeRemoveStore() {
     const store = this.storeToDelete();
     if (!store) return;
@@ -1153,141 +1214,71 @@ export class StoreManagerComponent {
 
   updateImportPreview(text: string) {
     this.importText.set(text);
-    
+
     if (!text.trim()) {
       this.parsedImportData.set([]);
+      this.skippedImportLines.set([]);
+      this.detectedImportOrder.set('auto');
       return;
     }
 
-    const rows = text.split(/\r?\n/);
-    const parsed: ParsedStoreRow[] = [];
-
-    let headerLucIdx = -1;
-    let headerNameIdx = -1;
-    let headerContratoIdx = -1;
-
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i].trim();
-      if (!row) continue;
-
-      let parts: string[] = [];
-      if (row.includes('\t')) {
-        parts = row.split('\t');
-      } else if (row.includes(';')) {
-        parts = row.split(';');
-      } else if (row.includes(',') && !row.includes('\t')) {
-        parts = row.split(',');
-      } else {
-        parts = [row];
-      }
-
-      const cleanParts = parts.map(p => p.trim());
-
-      // Detecção dinâmica de cabeçalho (somente nas primeiras 3 linhas e com termos específicos de cabeçalho)
-      const isHeaderRow = i < 3 && cleanParts.some(p => {
-        const lp = p.toLowerCase().trim();
-        return lp === 'luc' || lp === 'luc2' || lp === 'código' || lp === 'codigo' || lp === 'unidade' || 
-               lp === 'contrato' || lp === 'nome' || lp === 'loja' || lp === 'razão social' ||
-               lp === 'nome da loja' || lp === 'nome fantasia' || lp === 'fantasia' || lp === 'descrição';
-      });
-
-      if (isHeaderRow && headerLucIdx === -1) {
-        cleanParts.forEach((p, idx) => {
-          const lp = p.toLowerCase().trim();
-          if (lp === 'luc' || lp === 'luc2' || lp.includes('código') || lp.includes('codigo') || lp.includes('unidade') || lp === 'sala') {
-            headerLucIdx = idx;
-          } else if (lp.includes('contrato') || lp.includes('contr')) {
-            headerContratoIdx = idx;
-          } else if (lp.includes('nome') || lp.includes('loja') || lp.includes('fantasia') || lp.includes('razão') || lp.includes('razao') || lp.includes('descrição')) {
-            headerNameIdx = idx;
-          }
-        });
-        continue;
-      }
-
-      let luc = '';
-      let contrato = '';
-      let name = '';
-
-      if (headerLucIdx !== -1 && headerNameIdx !== -1) {
-        // Colunas identificadas pelo cabeçalho
-        luc = cleanParts[headerLucIdx] || '';
-        name = cleanParts[headerNameIdx] || '';
-        contrato = headerContratoIdx !== -1 ? (cleanParts[headerContratoIdx] || '') : '';
-      } else if (cleanParts.length >= 3) {
-        luc = cleanParts[0];
-        const p1 = cleanParts[1];
-        const p2 = cleanParts.slice(2).join(' ').trim();
-
-        const p1IsNumericCode = /^[0-9\-\.\/]{2,15}$/.test(p1);
-        const p2IsNumericCode = /^[0-9\-\.\/]{2,15}$/.test(p2);
-        const p1HasWords = /[a-zA-ZÀ-ÿ]{3,}/.test(p1);
-        const p2HasWords = /[a-zA-ZÀ-ÿ]{3,}/.test(p2);
-
-        if (p1IsNumericCode && p2HasWords) {
-          // Formato: LUC | CONTRATO | NOME
-          contrato = p1;
-          name = p2;
-        } else if (p1HasWords && p2IsNumericCode) {
-          // Formato: LUC | NOME | CONTRATO
-          name = p1;
-          contrato = p2;
-        } else if (p1HasWords) {
-          // P1 tem palavras -> mais provável ser nome
-          name = p1;
-          contrato = p2;
-        } else {
-          // Padrão do sistema: LUC | CONTRATO | NOME
-          contrato = p1;
-          name = p2;
-        }
-      } else if (cleanParts.length === 2) {
-        luc = cleanParts[0];
-        name = cleanParts[1];
-        contrato = '';
-      }
-
-      if (luc && name) {
-        parsed.push({ luc, contrato, name });
-      }
-    }
-    
-    this.parsedImportData.set(parsed);
+    const parsedResult = parseMonthlyStoreListText(text);
+    this.parsedImportData.set(parsedResult.rows);
+    this.skippedImportLines.set(parsedResult.skippedLines);
+    this.detectedImportOrder.set(parsedResult.detectedOrder);
   }
 
-  confirmMonthlyImport() {
+  async confirmMonthlyImport() {
+    if (this.isImporting()) return;
     const data = this.parsedImportData();
     const type = this.activeTab();
     const refMonth = this.importReferenceMonth();
     const inactivate = this.inactivateMissing();
-    
+
     if (data.length === 0) return;
 
-    const result = this.storeService.processMonthlyStoreImport(data, type, refMonth, inactivate);
-    this.consultationMonth.set(refMonth);
+    this.isImporting.set(true);
+    try {
+      const result = this.storeService.processMonthlyStoreImport(data, type, refMonth, inactivate, true);
+      const syncRes = await this.storeService.flushSyncToSupabase();
+      this.consultationMonth.set(refMonth);
 
-    this.importText.set('');
-    this.parsedImportData.set([]);
-    this.showImport.set(false);
+      this.importText.set('');
+      this.parsedImportData.set([]);
+      this.skippedImportLines.set([]);
+      this.detectedImportOrder.set('auto');
+      this.showImport.set(false);
 
-    let msg = `✅ Importação de ${this.getTabName()} concluída com sucesso para ${refMonth}!\n\n`;
-    msg += `• Lojas mantidas ativas: ${result.maintainedCount}\n`;
-    msg += `• Lojas novas criadas: ${result.newCount}\n`;
+      const syncedFull = syncRes.storesOk && syncRes.listsOk;
+      let msg = syncedFull
+        ? `✅ Importação de ${this.getTabName()} concluída e sincronizada com a nuvem para ${refMonth}!\n\n`
+        : `⚠️ Importação de ${this.getTabName()} salva localmente para ${refMonth}, mas houve falha ao sincronizar com a nuvem (verifique sua conexão e clique em Atualizar).\n\n`;
+      msg += `• Lojas mantidas ativas: ${result.maintainedCount}\n`;
+      if (result.reactivatedCount && result.reactivatedCount > 0) {
+        msg += `  (incluindo ${result.reactivatedCount} reativada(s) preservando histórico)\n`;
+      }
+      msg += `• Lojas novas criadas: ${result.newCount}\n`;
+      if (result.duplicateRowsIgnored && result.duplicateRowsIgnored > 0) {
+        msg += `• Linhas duplicadas na planilha ignoradas: ${result.duplicateRowsIgnored}\n`;
+      }
 
-    if (result.replacements.length > 0) {
-      msg += `\n🔄 ${result.replacements.length} Substituição(ões) efetuadas (lojas anteriores inativadas com histórico preservado):\n`;
-      result.replacements.forEach(r => {
-        msg += `  - LUC ${r.luc}: ${r.oldName} (Ctr: ${r.oldContrato || '-'}) ➔ Inativada | ${r.newName} (Ctr: ${r.newContrato || '-'}) ➔ Nova Ativa\n`;
-      });
+      if (result.replacements.length > 0) {
+        msg += `\n🔄 ${result.replacements.length} Substituição(ões) efetuadas (lojas anteriores inativadas com histórico preservado):\n`;
+        result.replacements.forEach(r => {
+          msg += `  - LUC ${r.luc}: ${r.oldName} (Ctr: ${r.oldContrato || '-'}) ➔ Inativada | ${r.newName} (Ctr: ${r.newContrato || '-'}) ➔ Nova Ativa\n`;
+        });
+      }
+
+      if (result.inactivatedMissing.length > 0) {
+        msg += `\n⚠️ ${result.inactivatedMissing.length} loja(s) ausentes desvinculada(s)/inativada(s):\n`;
+        result.inactivatedMissing.forEach(m => {
+          msg += `  - ${m.name} (${m.luc})\n`;
+        });
+      }
+
+      alert(msg);
+    } finally {
+      this.isImporting.set(false);
     }
-
-    if (result.inactivatedMissing.length > 0) {
-      msg += `\n⚠️ ${result.inactivatedMissing.length} loja(s) ausentes inativada(s):\n`;
-      result.inactivatedMissing.forEach(m => {
-        msg += `  - ${m.name} (${m.luc})\n`;
-      });
-    }
-
-    alert(msg);
   }
 }

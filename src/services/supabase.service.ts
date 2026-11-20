@@ -59,6 +59,8 @@ CREATE TABLE IF NOT EXISTS public.stores (
   luc TEXT NOT NULL,
   contrato TEXT,
   name TEXT NOT NULL,
+  route_order INTEGER,
+  meter_number TEXT,
   active BOOLEAN DEFAULT TRUE,
   deactivated_at TEXT,
   deactivation_reason TEXT,
@@ -68,6 +70,10 @@ CREATE TABLE IF NOT EXISTS public.stores (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Garante colunas de rota e medidor em bancos já criados
+ALTER TABLE public.stores ADD COLUMN IF NOT EXISTS route_order INTEGER;
+ALTER TABLE public.stores ADD COLUMN IF NOT EXISTS meter_number TEXT;
 
 -- 2. Tabela de Fechamentos Mensais de Rateio (bills)
 CREATE TABLE IF NOT EXISTS public.bills (
@@ -140,6 +146,9 @@ CREATE POLICY "Public access for meter_photos" ON public.meter_photos FOR ALL US
 
 DROP POLICY IF EXISTS "Public access for sync_queue" ON public.sync_queue;
 CREATE POLICY "Public access for sync_queue" ON public.sync_queue FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public access for ocr_feedbacks" ON public.ocr_feedbacks;
+CREATE POLICY "Public access for ocr_feedbacks" ON public.ocr_feedbacks FOR ALL USING (true) WITH CHECK (true);
 
 -- 6. Habilitar Realtime nas Tabelas
 ALTER PUBLICATION supabase_realtime ADD TABLE public.stores;
@@ -605,6 +614,9 @@ FOR ALL USING (bucket_id = 'meter-photos') WITH CHECK (bucket_id = 'meter-photos
 
       const map: Record<string, BillData> = {};
       for (const row of allRows) {
+        if (row.type === 'config' || String(row.id || '').startsWith('__')) {
+          continue;
+        }
         map[row.id] = row.data as BillData;
       }
       return map;
@@ -668,6 +680,11 @@ FOR ALL USING (bucket_id = 'meter-photos') WITH CHECK (bucket_id = 'meter-photos
         'postgres_changes',
         { event: '*', schema: 'public', table: 'bills' },
         (payload) => {
+          const recId = String((payload.new as any)?.id || (payload.old as any)?.id || '');
+          const recType = (payload.new as any)?.type || (payload.old as any)?.type;
+          if (recType === 'config' || recId.startsWith('__')) {
+            return;
+          }
           this.addLog(`⚡ Alteração em tempo real recebida na tabela "bills" (${payload.eventType}).`);
           onChange();
         }

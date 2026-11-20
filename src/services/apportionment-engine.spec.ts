@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   calculateUnitPrice,
   calculateReadingDifference,
+  isLikelyOdometerAsConsumption,
   calculateGasFactor,
   calculateStoreConsumption,
   calculateStoreCost,
@@ -59,6 +60,28 @@ describe('ApportionmentEngineService - Cálculos Matemáticos de Rateio', () => 
       // 998500 para 1000000 = 1500 + 150 = 1650
       const diff = calculateReadingDifference(150, 998500, true);
       expect(diff).toBe(1650);
+    });
+
+    it('deve retornar 0 na 1ª leitura / mês-base (prevReading <= 0) para não cobrar o odômetro inteiro', () => {
+      expect(calculateReadingDifference(666669, 0)).toBe(0);
+      expect(calculateReadingDifference(782524, 0, true)).toBe(0);
+      expect(calculateReadingDifference(1286, -10)).toBe(0);
+    });
+
+    it('deve identificar corretamente registros legados de odômetro gravado como consumo (isLikelyOdometerAsConsumption)', () => {
+      // Luz (constante 1 e constante 1000)
+      expect(isLikelyOdometerAsConsumption(666669, 666669, 1, 1, 1, false)).toBe(true);
+      expect(isLikelyOdometerAsConsumption(1286, 1286000, 1000, 1, 1, false)).toBe(true);
+      // Gás (fcm 1.0727)
+      expect(isLikelyOdometerAsConsumption(85237, 91433.7299, 1, 1, 1.0727, false)).toBe(true);
+      // Água
+      expect(isLikelyOdometerAsConsumption(18595, 18595, 1, 1, 1, false)).toBe(true);
+      // Consumo normal (não é odômetro)
+      expect(isLikelyOdometerAsConsumption(670743, 4074, 1, 1, 1, false)).toBe(false);
+      // Medidor novo que começou em 5 e foi para 105 (consumo 100 != 105)
+      expect(isLikelyOdometerAsConsumption(105, 100, 1, 1, 1, false)).toBe(false);
+      // Quando há consumo virtual explícito, nunca classifica como erro de odômetro
+      expect(isLikelyOdometerAsConsumption(1633, 1633, 1, 1, 1, true)).toBe(false);
     });
   });
 
@@ -202,6 +225,44 @@ describe('ApportionmentEngineService - Cálculos Matemáticos de Rateio', () => 
       // 10 m³ a R$ 5,00/m³ + R$ 25,00 de adicional (Aj+ ou Fluxo) = R$ 75,00
       const cost = calculateStoreCost(10, 5, 25);
       expect(cost).toBe(75);
+    });
+
+    it('deve retornar consumo 0 na 1ª leitura (prevReading = 0) em Luz, Água e Gás quando não houver Virtual, mas respeitar Virtual se informado', () => {
+      const luzBase = calculateStoreConsumption({
+        utilityType: 'luz',
+        currentReading: 666669,
+        prevReading: 0,
+        constant: 1,
+        adjustment: 1
+      });
+      expect(luzBase.diff).toBe(0);
+      expect(luzBase.consumption).toBe(0);
+
+      const aguaBase = calculateStoreConsumption({
+        utilityType: 'agua',
+        currentReading: 18595,
+        prevReading: 0
+      });
+      expect(aguaBase.consumption).toBe(0);
+
+      const gasBase = calculateStoreConsumption({
+        utilityType: 'gas',
+        currentReading: 85237,
+        prevReading: 0,
+        adjustment: 1.347,
+        fcm: 1.0727
+      });
+      expect(gasBase.consumption).toBe(0);
+
+      // Se houver consumo virtual (ex: Sephora no 1º mês), deve faturar o virtual normalmente
+      const luzVirtual = calculateStoreConsumption({
+        utilityType: 'luz',
+        currentReading: 157438,
+        prevReading: 0,
+        virtual: 1633
+      });
+      expect(luzVirtual.consumption).toBe(1633);
+      expect(luzVirtual.isVirtual).toBe(true);
     });
   });
 

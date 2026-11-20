@@ -105,6 +105,13 @@ export function calculateReadingDifference(currentReading: number, prevReading: 
   const curr = Number(currentReading) || 0;
   const prev = Number(prevReading) || 0;
 
+  // Regra de 1ª Leitura / Mês-Base: sem leitura anterior válida (> 0), o ponteiro acumulado do medidor
+  // serve apenas como referência inicial para o próximo mês e nunca deve ser cobrado como consumo.
+  // Caso precise faturar no 1º mês, utiliza-se o campo "Consumo Virtual".
+  if (prev <= 0) {
+    return 0;
+  }
+
   if (isRollover && curr < prev && prev > 0) {
     const digitsCount = Math.max(3, Math.floor(Math.abs(prev)).toString().length);
     const digitsBase = Math.pow(10, digitsCount);
@@ -113,6 +120,29 @@ export function calculateReadingDifference(currentReading: number, prevReading: 
 
   const diff = curr - prev;
   return diff < 0 ? 0 : diff;
+}
+
+/**
+ * Identifica registros históricos antigos em que a leitura inteira do relógio (odômetro)
+ * foi gravada por engano como consumo mensal (sem leitura anterior e sem override virtual).
+ */
+export function isLikelyOdometerAsConsumption(
+  reading: number,
+  consumption: number,
+  constant: number = 1,
+  adjustment: number = 1,
+  fcm: number = 1,
+  hasVirtual: boolean = false
+): boolean {
+  if (hasVirtual) return false;
+  const rd = Number(reading) || 0;
+  const cons = Number(consumption) || 0;
+  if (rd <= 50 || cons <= 0) return false;
+  const c = constant > 0 ? constant : 1;
+  const adj = adjustment > 0 ? adjustment : 1;
+  const mfcm = fcm > 0 ? fcm : 1;
+  const expectedFullOdometer = rd * c * adj * mfcm;
+  return Math.abs(cons - expectedFullOdometer) <= Math.max(0.05, expectedFullOdometer * 0.002);
 }
 
 export function calculateGasFactor(

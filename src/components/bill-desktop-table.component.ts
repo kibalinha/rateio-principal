@@ -223,9 +223,19 @@ import {
                         <div class="font-bold text-slate-700 dark:text-slate-300 text-xs tabular-nums" [title]="'Leitura registrada no medidor no mês anterior (' + (item.prevReadingMonth || 'mês anterior') + ')'">
                           {{ item.prevReading | number:'1.0-0' }}
                         </div>
-                        <div class="text-[10px] font-sans font-semibold text-teal-700 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/60 px-1.5 py-0.5 rounded border border-teal-200 dark:border-teal-800/80 mt-1 inline-block" [title]="'Consumo faturado no mês anterior (' + (item.prevReadingMonth || 'mês anterior') + ')'">
-                          Ant: {{ item.prevConsumption | number:'1.0-2' }} {{ unit }}
-                        </div>
+                        @if (item.prevConsumption > 0) {
+                          <div class="text-[10px] font-sans font-semibold text-teal-700 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/60 px-1.5 py-0.5 rounded border border-teal-200 dark:border-teal-800/80 mt-1 inline-block" [title]="'Consumo faturado no mês anterior (' + (item.prevReadingMonth || 'mês anterior') + ')'">
+                            Ant: {{ item.prevConsumption | number:'1.0-2' }} {{ unit }}
+                          </div>
+                        } @else if (item.prevReading > 0) {
+                          <div class="text-[10px] font-sans font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 mt-1 inline-block" [title]="'Leitura base registrada em ' + (item.prevReadingMonth || 'mês anterior') + ' (sem consumo faturado)'">
+                            Base: {{ item.prevReadingMonth || 'Inicial' }}
+                          </div>
+                        } @else {
+                          <div class="text-[10px] font-sans font-medium text-slate-400 dark:text-slate-500 mt-1">
+                            Sem leitura ant.
+                          </div>
+                        }
                         @if (item.prevReadingMonth && item.prevReadingMonth !== prevMonth && item.prevReading > 0) {
                           <span class="block text-[9px] text-indigo-600 dark:text-indigo-400 font-bold font-sans mt-0.5" [title]="'Última leitura válida no histórico (' + item.prevReadingMonth + ')'">
                             Ref: {{ item.prevReadingMonth }}
@@ -330,9 +340,15 @@ import {
                         <div class="font-black text-slate-800 dark:text-slate-100 text-sm tabular-nums" [title]="'Consumo atual faturado: ' + (item.consumption | number:'1.0-4') + ' ' + unit + (item.prevConsumption ? ' (Mês anterior: ' + (item.prevConsumption | number:'1.0-2') + ' ' + unit + ')' : '')">
                           {{ item.consumption | number:'1.0-4' }}
                         </div>
-                        <div class="text-[10px] text-slate-400 dark:text-slate-500 font-sans font-medium mt-0.5" title="Consumo registrado no mês anterior">
-                          ant: {{ item.prevConsumption | number:'1.0-2' }}
-                        </div>
+                        @if (item.isRead && item.prevReading <= 0 && item.virtual === undefined) {
+                          <div class="text-[9px] text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 rounded px-1 py-0.2 font-sans font-bold mt-0.5 inline-block" title="1ª leitura sem mês anterior: ponteiro gravado como base inicial. Para cobrar neste mês, informe Consumo Virtual.">
+                            🆕 1ª Leitura (Base)
+                          </div>
+                        } @else if (item.prevConsumption > 0) {
+                          <div class="text-[10px] text-slate-400 dark:text-slate-500 font-sans font-medium mt-0.5" title="Consumo registrado no mês anterior">
+                            ant: {{ item.prevConsumption | number:'1.0-2' }}
+                          </div>
+                        }
                         @if (item.isGasDistributed) {
                           <div class="text-[10px] text-orange-600 dark:text-orange-400 font-sans font-bold" [title]="'Medição bruta em campo: ' + (item.rawConsumption | number:'1.0-4') + ' m³ (ajustado pelo fator ' + (item.gasFactor | number:'1.4-4') + 'x)'">
                             bruto: {{ item.rawConsumption | number:'1.0-2' }}

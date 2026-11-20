@@ -175,5 +175,64 @@ describe('HistoryService - Busca Retroativa da Última Leitura Válida', () => {
     expect(lojaLegada).toBeDefined();
     expect(lojaLegada!.cost).toBe(150);
   });
+
+  it('deve preservar a leitura do relógio mas zerar consumo/custo anterior quando o mês-base gravou o odômetro inteiro como consumo', () => {
+    service.saveBill('luz', '2026-10', {
+      costItems: [],
+      consumptionInput: { bss1: 0, bss2: 0, bss3: 0, bss4: 0 },
+      acInput: 0,
+      lastUpdated: '2026-10-31T20:00:00.000Z',
+      readings: {
+        'tramontina': {
+          reading: 666669,
+          constant: 1,
+          adjustment: 1,
+          rawConsumption: 666669,
+          calculatedConsumption: 666669,
+          cost: 0
+        },
+        'brooksfield': {
+          reading: 1286,
+          constant: 1000,
+          adjustment: 1,
+          rawConsumption: 1286000,
+          calculatedConsumption: 1286000,
+          cost: 0
+        },
+        'sephora': {
+          reading: 157438,
+          constant: 1,
+          adjustment: 1,
+          virtual: 1633,
+          rawConsumption: 1633,
+          calculatedConsumption: 1633,
+          cost: 0
+        }
+      }
+    });
+
+    const prevReadings = service.getLastValidReadings('luz', '2026-11');
+
+    // Ponteiro preservado para calcular (670743 - 666669 = 4074), mas consumo anterior zerado (mês-base)
+    expect(prevReadings.get('tramontina')).toEqual({
+      reading: 666669,
+      consumption: 0,
+      cost: 0,
+      month: '2026-10'
+    });
+    expect(prevReadings.get('brooksfield')).toEqual({
+      reading: 1286,
+      consumption: 0,
+      cost: 0,
+      month: '2026-10'
+    });
+    // Sephora tinha consumo virtual explícito (1633): deve ser mantido
+    expect(prevReadings.get('sephora')).toEqual({
+      reading: 157438,
+      consumption: 1633,
+      cost: 0,
+      month: '2026-10'
+    });
+  });
 });
 

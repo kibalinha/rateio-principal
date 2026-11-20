@@ -1,5 +1,6 @@
 import { BillData, Store } from '../models';
 import { normalizeContract, normalizeLuc, normalizeStoreName } from './store.service';
+import { isLikelyOdometerAsConsumption } from './apportionment-engine.service';
 
 export type AuditUtilityType = 'luz' | 'agua' | 'gas';
 
@@ -142,6 +143,18 @@ export function computeHistoricalStats(params: {
         Object.entries(bill.readings).forEach(([storeId, r]) => {
           const cons = extractReadingConsumption(r);
           if (cons > 0) {
+            if (typeof r === 'object' && r !== null) {
+              const rd = Number((r as any).reading) || 0;
+              const raw = Number((r as any).rawConsumption) || 0;
+              const consToCheck = raw > 0 ? raw : cons;
+              const c = Number((r as any).constant) || 1;
+              const adj = Number((r as any).adjustment) || (bType === 'gas' ? 1.347 : 1);
+              const fcm = bType === 'gas' ? (Number((r as any).fcm) || 1.0727) : 1;
+              const hasVirtual = (r as any).virtual !== undefined && (r as any).virtual !== null && (r as any).virtual !== '';
+              if (isLikelyOdometerAsConsumption(rd, consToCheck, c, adj, fcm, hasVirtual)) {
+                return;
+              }
+            }
             const curr = map.get(storeId) || { total: 0, count: 0 };
             curr.total += cons;
             curr.count += 1;
