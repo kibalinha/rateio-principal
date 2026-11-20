@@ -1656,6 +1656,13 @@ export class BillCalculatorComponent implements OnDestroy {
     // Obtém as lojas pertencentes a este mês específico (ou vazio se o mês não tem lista importada)
     const monthStores = [...this.storeService.getStoresForMonth(type, month, false)];
 
+    // Se o mês foi explicitamente limpo (lista mensal existe e está vazia []), não ressuscita lojas a partir de readingsMap
+    const lists = this.storeService.monthlyStoreLists();
+    const listKey = `${type}_${month}`;
+    if (listKey in lists && (!lists[listKey] || lists[listKey].length === 0)) {
+      return [];
+    }
+
     // Se houver leituras salvas para lojas (ex.: lojas que estavam no rateio antes de serem inativadas),
     // inclui-as para manter a integridade dos cálculos e histórico apenas se tiverem medição/consumo real
     // e sem duplicar LUCs já presentes na lista mensal
@@ -2144,14 +2151,17 @@ export class BillCalculatorComponent implements OnDestroy {
 
     if (!confirmed) return;
 
+    this.isProgrammaticLoading = true;
+    if (this.autoSaveTimer) {
+      clearTimeout(this.autoSaveTimer);
+      this.autoSaveTimer = null;
+    }
+
     // 1. Limpa a lista mensal específica desta utilidade e mês
     this.storeService.clearMonthlyStoreList(type, month);
 
-    // 2. Limpa as leituras na calculadora para esta utilidade e mês
-    this.readings.update(prev => ({
-      ...prev,
-      [type]: new Map()
-    }));
+    // 2. Limpa leituras, custos e consumos da calculadora para impedir auto-save fantasma
+    this.resetFormValues(type);
 
     // 3. Remove definitivamente o registro do mês no histórico local e no Supabase
     await this.historyService.clearBillForMonth(type, month);
