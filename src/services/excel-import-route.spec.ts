@@ -237,4 +237,71 @@ describe('Excel Import Modal: Route Ordering & Intelligent Template Import', () 
     expect(emittedEvent.updatedReadings[0].constant).toBeUndefined();
     expect(emittedEvent.updatedReadings[0].adjustment).toBeUndefined();
   });
+
+  it('Scenario 8: Pasting messy multi-month matrix selects active month block, matches multi-contract LUCs and extracts billSummary', () => {
+    const comp = new ExcelImportModalComponent();
+    comp.utilityType = 'luz';
+    comp.selectedMonth = '2026-11';
+    comp.activeStores = [
+      { id: 'st-tram', luc: '1001/1002', contrato: '0000020000610', name: 'TRAMONTINA STORE', active: true, usesLuz: true },
+      { id: 'st-seph', luc: '1008', contrato: '0000020000715', name: 'SEPHORA', active: true, usesLuz: true },
+      { id: 'st-mh1', luc: 'MULTIPLAN HALL', contrato: '0000050001539', name: 'JIU-JITSU CHAMPIONSHIP', active: true, usesLuz: true },
+      { id: 'st-mh2', luc: 'MULTIPLAN HALL', contrato: '0000050001540', name: 'CAFESTIVAL', active: true, usesLuz: true }
+    ];
+
+    const matrixCsv = [
+      'RATEIO ENERGIA 2026,,,Outubro,,,,,,,,,,Novembro,,,,,,,,',
+      ',,Valor conta CEEE BSS-1,344508.51,,,,,,,,,Valor conta CEEE BSS-1,368377.16,,,,,,,,',
+      ',,Valor conta CEMIG BSS-1,267277.57,,,,,,,,,Valor conta CEMIG BSS-1,293850.21,,,,,,,,',
+      ',,Consumo (ponta e fora ponta) BSS-1,924819,,,,,,,,,Consumo (ponta e fora ponta) BSS-1,994683.48,,,,,,,,',
+      ',,Consumo (ponta e fora ponta) BSS-2,29918.7,,,,,,,,,Consumo (ponta e fora ponta) BSS-2,56889.59,,,,,,,,',
+      ',,Ar Condicionado,81151.76,,,,,,,,,Ar Condicionado,114338.09,,,,,,,,',
+      ',,,0.11,,,,,,,,,,0.14,,,,,,,,',
+      ',,,114000,,,,,,,,,,162000,,,,,,,,',
+      'LUC,Contrato,Nome Fantasia,Leitura,Const. Medidor,Cons. Virtual,Ajuste,Consumo,Var (%),Custo R$,Rec. Fluxo,Custo Total,,Leitura,Const. Medidor,Cons. Virtual,Ajuste,Consumo,Var (%),Custo R$,Rec. Fluxo,Custo Total',
+      '1001/1002,20000610,TRAMONTINA STORE,666669,1,,,3499,0,2490,,2490,,670743,1,,,4074,0,2875,,2875',
+      '1008,20000715,SEPHORA,157438,1,1633,,1633,0,1162,,1162,,171522,1,1633,,1633,0,1152,,1152',
+      'MULTIPLAN HALL,50001539,JIU-JITSU CHAMPIONSHIP,100,1,,,10,0,7,,7,,120,1,,,20,0,14,,14',
+      'MULTIPLAN HALL,50001540,CAFESTIVAL,500,1,,,50,0,35,,35,,540,1,,,40,0,28,,28',
+      'TOTAL GERAL,,Soma,,,,,,,,,,,,,,,,,,,'
+    ].join('\n');
+
+    comp.importPastedText.set(matrixCsv);
+    comp.processPastedText();
+
+    expect(comp.isMultiMonthMatrix()).toBe(true);
+    expect(comp.selectedMonthBlockId()).toBe('11');
+    expect(comp.ignoredNoiseRows()).toBe(1);
+
+    const preview = comp.importPreviewList();
+    expect(preview.length).toBe(4);
+    expect(preview.every(p => p.status === 'matched')).toBe(true);
+
+    const tram = preview.find(p => p.matchedStore?.id === 'st-tram')!;
+    expect(tram.reading).toBe(670743);
+    expect(tram.prevReading).toBe(666669);
+    expect(tram.consumptionPreview).toBe(4074);
+
+    const seph = preview.find(p => p.matchedStore?.id === 'st-seph')!;
+    expect(seph.reading).toBe(171522);
+    expect(seph.virtual).toBe(1633);
+    expect(seph.consumptionPreview).toBe(1633);
+
+    const mh1 = preview.find(p => p.matchedStore?.id === 'st-mh1')!;
+    const mh2 = preview.find(p => p.matchedStore?.id === 'st-mh2')!;
+    expect(mh1.reading).toBe(120);
+    expect(mh2.reading).toBe(540);
+
+    let emitted: any = null;
+    comp.importSuccess.subscribe(ev => { emitted = ev; });
+    comp.confirmAndApplyImport();
+
+    expect(emitted).not.toBeNull();
+    expect(emitted.updatedReadings.length).toBe(4);
+    expect(emitted.billSummary).toBeDefined();
+    expect(emitted.billSummary.costItems.length).toBe(2);
+    expect(emitted.billSummary.totalBillFromItems).toBeCloseTo(662227.37, 2);
+    expect(emitted.billSummary.luzConsumption.bss1).toBe(994683.48);
+    expect(emitted.billSummary.acConsumption).toBe(162000);
+  });
 });

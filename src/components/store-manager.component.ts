@@ -1,11 +1,19 @@
 import { Component, inject, signal, computed, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import * as XLSX from 'xlsx';
 import { StoreService, isStoreActiveInMonth } from '../services/store.service';
 import { AuthService } from '../services/auth.service';
 import { IndexedDbService } from '../services/indexed-db.service';
 import { HistoryService } from '../services/history.service';
 import { parseMonthlyStoreListText, SkippedImportLine } from '../services/store-import.helpers';
+import {
+  ParsedSheetGrid,
+  extractSheetsFromWorkbook,
+  chooseBestSheetIndex,
+  parseTextToGrid,
+  extractMonthlyStoreRowsFromGrid
+} from '../services/spreadsheet-smart-parser';
 
 import { 
   Store,
@@ -391,27 +399,83 @@ import {
             </div>
             
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              <!-- Área de Colagem -->
-              <div class="flex flex-col">
-                <div class="flex justify-between items-center mb-1.5">
-                  <span class="text-xs font-bold text-teal-800 uppercase tracking-wide">Cole aqui os dados da sua planilha (Ctrl+V)</span>
-                  <span class="text-[11px] text-teal-600">LUC [TAB] CONTRATO [TAB] NOME</span>
+              <!-- Área de Upload ou Colagem -->
+              <div class="flex flex-col gap-2.5">
+                <!-- Upload direto de Planilha (.xlsx, .xls, .csv) -->
+                <div
+                  (dragover)="$event.preventDefault(); isDraggingStoreFile.set(true)"
+                  (dragleave)="isDraggingStoreFile.set(false)"
+                  (drop)="onStoreFileDrop($event)"
+                  [class]="isDraggingStoreFile() ? 'border-teal-600 bg-teal-100/70' : 'border-teal-300 bg-white/90 hover:border-teal-500'"
+                  class="relative border-2 border-dashed rounded-xl px-3.5 py-2.5 transition-colors cursor-pointer flex items-center justify-between gap-2">
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    (change)="onStoreFileSelected($event)"
+                    class="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
+                  <div class="flex items-center gap-2.5 pointer-events-none min-w-0">
+                    <span class="text-xl shrink-0">📊</span>
+                    <div class="text-xs min-w-0">
+                      <div class="font-bold text-teal-900 truncate">
+                        {{ importFileName() ? ('Arquivo: ' + importFileName()) : 'Subir planilha Excel (.xlsx, .xls, .csv) — mesmo desorganizada' }}
+                      </div>
+                      <div class="text-[11px] text-teal-700">
+                        Arraste ou clique aqui · detecta automaticamente cabeçalho, abas e colunas LUC/Contrato/Nome
+                      </div>
+                    </div>
+                  </div>
+                  <span class="px-2.5 py-1 rounded-lg bg-teal-600 text-white text-[11px] font-bold shrink-0 pointer-events-none">
+                    Selecionar
+                  </span>
+                </div>
+
+                <!-- Seletor de Aba (quando o Excel possui múltiplas abas) -->
+                @if (importWorkbookSheets().length > 1) {
+                  <div class="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-teal-200 text-xs">
+                    <span class="font-bold text-teal-900 whitespace-nowrap">📑 Aba do Excel:</span>
+                    <select
+                      [ngModel]="selectedImportSheetIndex()"
+                      (ngModelChange)="onSelectImportSheet($event)"
+                      class="flex-1 bg-teal-50/50 border border-teal-200 rounded px-2 py-1 text-xs font-bold text-teal-900">
+                      @for (sheet of importWorkbookSheets(); track sheet.name; let i = $index) {
+                        <option [ngValue]="i">{{ sheet.name }}</option>
+                      }
+                    </select>
+                  </div>
+                }
+
+                @if (importSmartInfo()) {
+                  <div class="text-[11px] px-2.5 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 font-medium flex items-center gap-1.5">
+                    <span>✨</span>
+                    <span>{{ importSmartInfo() }}</span>
+                  </div>
+                }
+
+                @if (importDetectedUtility() && importDetectedUtility() !== activeTab()) {
+                  <div class="text-[11px] px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 font-semibold">
+                    ⚠️ Atenção: esta planilha parece ser de <strong>{{ importDetectedUtility() === 'luz' ? 'Energia/Luz' : (importDetectedUtility() === 'agua' ? 'Água' : 'Gás') }}</strong>, mas você está na aba <strong>{{ getTabName() }}</strong>. Confirme se está na aba correta!
+                  </div>
+                }
+
+                <div class="flex justify-between items-center">
+                  <span class="text-xs font-bold text-teal-800 uppercase tracking-wide">Ou cole os dados da planilha (Ctrl+V)</span>
+                  <span class="text-[11px] text-teal-600">Aceita planilha inteira ou LUC / CONTRATO / NOME</span>
                 </div>
                 <textarea 
                   [ngModel]="importText()" 
                   (ngModelChange)="updateImportPreview($event)"
-                  class="w-full h-64 p-3 border border-teal-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 font-mono text-xs bg-white shadow-inner resize-none" 
+                  class="w-full h-44 p-3 border border-teal-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 font-mono text-xs bg-white shadow-inner resize-none" 
                   placeholder="1020	444	Madero&#10;1021	550	Renner&#10;1022	612	McDonalds"></textarea>
                 
-                <div class="mt-2 flex items-center justify-between text-xs text-teal-700">
+                <div class="flex items-center justify-between text-xs text-teal-700">
                   <span>
-                    {{ parsedImportData().length }} linhas detectadas
+                    {{ parsedImportData().length }} lojas detectadas
                     @if (skippedImportLines().length > 0) {
-                      <span class="text-amber-700 font-semibold ml-1">({{ skippedImportLines().length }} ignorada(s))</span>
+                      <span class="text-amber-700 font-semibold ml-1">({{ skippedImportLines().length }} linha(s) ignorada(s))</span>
                     }
                   </span>
-                  @if (importText()) {
-                    <button (click)="clearImport()" class="text-teal-600 hover:text-teal-800 underline">Limpar texto</button>
+                  @if (importText() || importFileName()) {
+                    <button (click)="clearImport()" class="text-teal-600 hover:text-teal-800 underline">Limpar importação</button>
                   }
                 </div>
               </div>
@@ -827,6 +891,12 @@ export class StoreManagerComponent {
   // Monthly Import State
   showImport = signal(false);
   importText = signal('');
+  importFileName = signal('');
+  importWorkbookSheets = signal<ParsedSheetGrid[]>([]);
+  selectedImportSheetIndex = signal<number>(0);
+  importSmartInfo = signal<string>('');
+  importDetectedUtility = signal<TabType | null>(null);
+  isDraggingStoreFile = signal(false);
   parsedImportData = signal<ParsedStoreRow[]>([]);
   skippedImportLines = signal<SkippedImportLine[]>([]);
   detectedImportOrder = signal<string>('auto');
@@ -1075,6 +1145,11 @@ export class StoreManagerComponent {
 
   clearImport() {
     this.importText.set('');
+    this.importFileName.set('');
+    this.importWorkbookSheets.set([]);
+    this.selectedImportSheetIndex.set(0);
+    this.importSmartInfo.set('');
+    this.importDetectedUtility.set(null);
     this.parsedImportData.set([]);
     this.skippedImportLines.set([]);
     this.detectedImportOrder.set('auto');
@@ -1212,13 +1287,110 @@ export class StoreManagerComponent {
 
   // --- PARSE DA IMPORTAÇÃO (LUC, CONTRATO, NOME) ---
 
+  onStoreFileSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (!input.files || input.files.length === 0) return;
+    this.parseStoreSpreadsheetFile(input.files[0]);
+    input.value = '';
+  }
+
+  onStoreFileDrop(event: DragEvent) {
+    event.preventDefault();
+    this.isDraggingStoreFile.set(false);
+    if (!event.dataTransfer?.files || event.dataTransfer.files.length === 0) return;
+    this.parseStoreSpreadsheetFile(event.dataTransfer.files[0]);
+  }
+
+  parseStoreSpreadsheetFile(file: File) {
+    this.importFileName.set(file.name);
+    const isCsv = file.name.toLowerCase().endsWith('.csv');
+    const reader = new FileReader();
+
+    reader.onload = (e: any) => {
+      try {
+        if (isCsv) {
+          const text = String(e.target?.result || '');
+          const grid = parseTextToGrid(text);
+          this.importWorkbookSheets.set([{ name: file.name, grid }]);
+          this.selectedImportSheetIndex.set(0);
+          this.applyStoreSheetGrid(grid, file.name);
+        } else {
+          const data = new Uint8Array(e.target.result);
+          const wb = XLSX.read(data, { type: 'array' });
+          const sheets = extractSheetsFromWorkbook(wb);
+          if (sheets.length === 0) {
+            alert('A planilha selecionada está vazia.');
+            return;
+          }
+          const bestIdx = chooseBestSheetIndex(sheets, this.activeTab());
+          this.importWorkbookSheets.set(sheets);
+          this.selectedImportSheetIndex.set(bestIdx);
+          this.applyStoreSheetGrid(sheets[bestIdx].grid, sheets[bestIdx].name);
+        }
+      } catch (err) {
+        console.error('Erro ao ler planilha de lojas:', err);
+        alert('Não foi possível ler o arquivo. Certifique-se de que é um arquivo .xlsx, .xls ou .csv válido.');
+      }
+    };
+
+    if (isCsv) {
+      reader.readAsText(file, 'UTF-8');
+    } else {
+      reader.readAsArrayBuffer(file);
+    }
+  }
+
+  onSelectImportSheet(idx: number) {
+    const sheets = this.importWorkbookSheets();
+    const safeIdx = Number(idx);
+    if (!sheets[safeIdx]) return;
+    this.selectedImportSheetIndex.set(safeIdx);
+    this.applyStoreSheetGrid(sheets[safeIdx].grid, sheets[safeIdx].name);
+  }
+
+  private applyStoreSheetGrid(grid: any[][], sourceLabel: string) {
+    const extracted = extractMonthlyStoreRowsFromGrid(grid);
+    this.parsedImportData.set(extracted.rows);
+    this.skippedImportLines.set(extracted.skippedLines);
+    this.detectedImportOrder.set(extracted.usedSmartMatrixParser ? 'smart-header' : 'auto');
+    this.importDetectedUtility.set(extracted.detectedUtility);
+
+    if (extracted.usedSmartMatrixParser && extracted.detectedHeaderRow >= 0) {
+      this.importSmartInfo.set(
+        `Planilha inteligente (${sourceLabel}): cabeçalho encontrado na linha ${extracted.detectedHeaderRow + 1} · ${extracted.rows.length} lojas extraídas automaticamente.`
+      );
+    } else {
+      this.importSmartInfo.set(
+        `Arquivo lido (${sourceLabel}): ${extracted.rows.length} lojas detectadas.`
+      );
+    }
+  }
+
   updateImportPreview(text: string) {
     this.importText.set(text);
+    this.importFileName.set('');
+    this.importWorkbookSheets.set([]);
+    this.importSmartInfo.set('');
+    this.importDetectedUtility.set(null);
 
     if (!text.trim()) {
       this.parsedImportData.set([]);
       this.skippedImportLines.set([]);
       this.detectedImportOrder.set('auto');
+      return;
+    }
+
+    // Tenta detecção inteligente primeiro (suporta colar planilha mestre com linhas de resumo no topo e dezenas de colunas)
+    const grid = parseTextToGrid(text);
+    const smart = extractMonthlyStoreRowsFromGrid(grid);
+    if (smart.usedSmartMatrixParser && smart.rows.length > 0) {
+      this.parsedImportData.set(smart.rows);
+      this.skippedImportLines.set(smart.skippedLines);
+      this.detectedImportOrder.set('smart-header');
+      this.importDetectedUtility.set(smart.detectedUtility);
+      this.importSmartInfo.set(
+        `Cabeçalho detectado automaticamente na linha ${smart.detectedHeaderRow + 1} · ${smart.rows.length} lojas extraídas (linhas de resumo e colunas extras ignoradas).`
+      );
       return;
     }
 
@@ -1243,10 +1415,7 @@ export class StoreManagerComponent {
       const syncRes = await this.storeService.flushSyncToSupabase();
       this.consultationMonth.set(refMonth);
 
-      this.importText.set('');
-      this.parsedImportData.set([]);
-      this.skippedImportLines.set([]);
-      this.detectedImportOrder.set('auto');
+      this.clearImport();
       this.showImport.set(false);
 
       const syncedFull = syncRes.storesOk && syncRes.listsOk;

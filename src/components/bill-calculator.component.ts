@@ -1933,9 +1933,32 @@ export class BillCalculatorComponent implements OnDestroy {
       importedStoreIds.forEach(id => this.storeService.addStoreToMonth(type, month, id));
     }
 
+    // Aplica custos da fatura, consumo da concessionária e AC se extraídos da planilha mestre e autorizados
+    let appliedSummaryInfo = '';
+    if (event.billSummary && this.authService.canConfigureBill()) {
+      const bs = event.billSummary;
+      if (bs.costItems && bs.costItems.length > 0) {
+        if (type === 'luz') this.luzCostItems.set(bs.costItems);
+        else if (type === 'agua') this.aguaCostItems.set(bs.costItems);
+        else this.gasCostItems.set(bs.costItems);
+        appliedSummaryInfo += ` + fatura (${bs.costItems.length} itens)`;
+      }
+      if (type === 'luz' && bs.luzConsumption) {
+        this.luzConsumption.set({ ...bs.luzConsumption });
+      } else if (type === 'agua' && bs.totalConsumption && bs.totalConsumption > 0) {
+        this.aguaTotalReading.set(bs.totalConsumption);
+      } else if (type === 'gas' && bs.totalConsumption && bs.totalConsumption > 0) {
+        this.gasTotalReading.set(bs.totalConsumption);
+      }
+      if (bs.acConsumption && bs.acConsumption > 0) {
+        if (type === 'luz') this.luzAC.set(bs.acConsumption);
+        else if (type === 'agua') this.aguaAC.set(bs.acConsumption);
+      }
+    }
+
     this.closeExcelImportModal();
     this.internalSave();
-    this.indexedDb.showToast(`🎉 ${updatedCount} lojas importadas e atualizadas com sucesso do Excel!`);
+    this.indexedDb.showToast(`🎉 ${updatedCount} lojas importadas${appliedSummaryInfo} com sucesso do Excel!`);
   }
 
   // --- HISTORY & PERSISTENCE ---

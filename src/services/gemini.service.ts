@@ -626,6 +626,100 @@ Se a imagem estiver sem medidor, com desfoque total ou ilegível:
       return 'Erro ao conectar com a IA. Verifique sua chave de API ou tente novamente.';
     }
   }
+
+  /**
+   * Usa IA (Gemini ou Groq) como assistente opcional para mapear colunas de planilhas
+   * muito desorganizadas ou com nomes fora do padrão.
+   * Envia apenas os nomes das colunas e até 6 linhas de amostra.
+   */
+  async suggestSpreadsheetMapping(
+    headers: string[],
+    sampleRows: Record<string, any>[],
+    utilityType: 'luz' | 'agua' | 'gas'
+  ): Promise<Record<string, string> | null> {
+    if (!headers || headers.length === 0) return null;
+    const validHeaders = new Set(headers);
+    const trimmedSample = (sampleRows || []).slice(0, 6).map(row => {
+      const compact: Record<string, string> = {};
+      for (const h of headers) {
+        compact[h] = String(row?.[h] ?? '').slice(0, 40);
+      }
+      return compact;
+    });
+
+    const prompt = `Você é um assistente especialista em planilhas de rateio de shopping center (${utilityType.toUpperCase()}).
+Receba os cabeçalhos exatos e uma amostra de até 6 linhas e retorne APENAS um objeto JSON válido (sem markdown) mapeando cada campo para o NOME EXATO de um cabeçalho da lista (ou "" se não existir):
+Campos permitidos:
+- "luc": código da loja/espaço (ex: LUC, SUC, Unidade, 1001/1002)
+- "contrato": número de contrato (ex: 20000610)
+- "storeName": nome fantasia / lojista
+- "meterNumber": número do medidor / hidrômetro
+- "prevReading": leitura anterior do medidor
+- "reading": leitura ATUAL do medidor (ponteiro atual, NÃO o consumo nem leitura anterior)
+- "constant": constante / fator TC do medidor (ex: 1, 40, 50, 1000)
+- "virtual": consumo virtual / estimado
+- "adjustment": fator de ajuste multiplicativo
+- "fluxoCost": recuperação de fluxo (R$)
+- "note": observação / anotação de campo
+
+Cabeçalhos disponíveis: ${JSON.stringify(headers)}
+Amostra: ${JSON.stringify(trimmedSample)}`;
+
+    const parseSafeJson = (rawText: string): Record<string, string> | null => {
+      const match = rawText.match(/\{[\s\S]*\}/);
+      if (!match) return null;
+      const parsed = JSON.parse(match[0]);
+      const allowedKeys = ['luc', 'contrato', 'storeName', 'meterNumber', 'prevReading', 'reading', 'constant', 'virtual', 'adjustment', 'fluxoCost', 'note'];
+      const clean: Record<string, string> = {};
+      for (const key of allowedKeys) {
+        const val = typeof parsed[key] === 'string' ? parsed[key] : '';
+        clean[key] = validHeaders.has(val) ? val : '';
+      }
+      return clean;
+    };
+
+    const geminiClient = this.initGeminiClient();
+    if (geminiClient) {
+      try {
+        const response = await geminiClient.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: prompt
+        });
+        const mapped = parseSafeJson(response.text || '');
+        if (mapped) return mapped;
+      } catch (err) {
+        console.warn('Gemini mapping fallback falhou, tentando Groq se disponível:', err);
+      }
+    }
+
+    const groqKey = this.getGroqApiKey();
+    if (groqKey) {
+      try {
+        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${groqKey}`
+          },
+          body: JSON.stringify({
+            model: 'llama-3.3-70b-versatile',
+            temperature: 0,
+            messages: [{ role: 'user', content: prompt }]
+          })
+        });
+        if (res.ok) {
+          const payload = await res.json();
+          const content = payload?.choices?.[0]?.message?.content || '';
+          const mapped = parseSafeJson(content);
+          if (mapped) return mapped;
+        }
+      } catch (err) {
+        console.warn('Groq mapping falhou:', err);
+      }
+    }
+
+    return null;
+  }
 }
 
 /**

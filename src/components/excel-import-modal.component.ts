@@ -1,11 +1,22 @@
-import { Component, Input, Output, EventEmitter, signal, computed } from '@angular/core';
-import { CommonModule, DecimalPipe } from '@angular/common';
+import { Component, Input, Output, EventEmitter, Optional, signal, computed } from '@angular/core';
+import { CommonModule, DecimalPipe, CurrencyPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import * as XLSX from 'xlsx';
 
 import { Store, UtilityType, ExcelImportRowPreview } from '../models';
 import { normalizeLuc, normalizeContract, normalizeStoreName } from '../services/store.service';
 import { calculateReadingDifference } from '../services/apportionment-engine.service';
+import { GeminiService } from '../services/gemini.service';
+import {
+  ParsedSheetGrid,
+  DetectedMonthBlock,
+  ExtractedBillSummary,
+  extractSheetsFromWorkbook,
+  chooseBestSheetIndex,
+  parseTextToGrid,
+  extractSmartTableFromGrid,
+  autoMapColumns
+} from '../services/spreadsheet-smart-parser';
 
 export interface ExcelImportSuccessEvent {
   updatedReadings: Array<{
@@ -20,12 +31,13 @@ export interface ExcelImportSuccessEvent {
     fluxoCost?: number;
     note?: string;
   }>;
+  billSummary?: ExtractedBillSummary;
 }
 
 @Component({
   selector: 'app-excel-import-modal',
   standalone: true,
-  imports: [CommonModule, FormsModule, DecimalPipe],
+  imports: [CommonModule, FormsModule, DecimalPipe, CurrencyPipe],
   template: `
     @if (isOpen) {
       <div class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
@@ -168,17 +180,137 @@ export interface ExcelImportSuccessEvent {
               </div>
             }
 
+            <!-- BANNER DE DETECÇÃO INTELIGENTE (ABAS, MATRIZ ANUAL E FATURA) -->
+            @if (workbookSheets().length > 1 || isMultiMonthMatrix() || detectedHeaderRowIndex() > 0 || (detectedUtility() && detectedUtility() !== utilityType)) {
+              <div class="space-y-2.5 p-3.5 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/50 text-xs">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <div class="flex items-center gap-2 font-bold text-indigo-900 dark:text-indigo-200">
+                    <span>✨</span>
+                    <span>
+                      @if (isMultiMonthMatrix()) {
+                        Planilha Mestre Anual Detectada
+                      } @else {
+                        Leitura Inteligente Ativada
+                      }
+                    </span>
+                    @if (detectedHeaderRowIndex() > 0) {
+                      <span class="px-2 py-0.5 rounded-full text-[10px] bg-indigo-100 dark:bg-indigo-900/60 text-indigo-800 dark:text-indigo-300 font-mono">
+                        Cabeçalho linha {{ detectedHeaderRowIndex() + 1 }}
+                      </span>
+                    }
+                    @if (ignoredNoiseRows() > 0) {
+                      <span class="px-2 py-0.5 rounded-full text-[10px] bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono">
+                        {{ ignoredNoiseRows() }} linha(s) de resumo ignoradas
+                      </span>
+                    }
+                  </div>
+                </div>
+
+                @if (detectedUtility() && detectedUtility() !== utilityType) {
+                  <div class="px-2.5 py-1.5 rounded-lg bg-amber-100 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 font-semibold text-[11px]">
+                    ⚠️ Atenção: o arquivo parece ser de <strong>{{ detectedUtility() === 'luz' ? 'Energia/Luz' : (detectedUtility() === 'agua' ? 'Água' : 'Gás') }}</strong>, mas você está importando na aba <strong>{{ utilityType.toUpperCase() }}</strong>.
+                  </div>
+                }
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  @if (workbookSheets().length > 1) {
+                    <div>
+                      <label class="block text-[11px] font-bold text-indigo-900 dark:text-indigo-300 mb-1">
+                        📑 Aba do Arquivo Excel
+                      </label>
+                      <select
+                        [ngModel]="selectedSheetIndex()"
+                        (ngModelChange)="onSelectSheet($event)"
+                        class="w-full p-2 rounded-lg border border-indigo-300 dark:border-indigo-800 bg-white dark:bg-slate-900 text-xs font-bold">
+                        @for (sheet of workbookSheets(); track sheet.name; let i = $index) {
+                          <option [ngValue]="i">{{ sheet.name }}</option>
+                        }
+                      </select>
+                    </div>
+                  }
+
+                  @if (isMultiMonthMatrix() && detectedMonthBlocks().length > 0) {
+                    <div>
+                      <label class="block text-[11px] font-bold text-indigo-900 dark:text-indigo-300 mb-1">
+                        📅 Mês / Bloco da Planilha a Importar
+                      </label>
+                      <select
+                        [ngModel]="selectedMonthBlockId()"
+                        (ngModelChange)="onSelectMonthBlock($event)"
+                        class="w-full p-2 rounded-lg border border-indigo-300 dark:border-indigo-800 bg-white dark:bg-slate-900 text-xs font-bold">
+                        @for (block of detectedMonthBlocks(); track block.id) {
+                          <option [value]="block.id">
+                            {{ block.label }}{{ block.year ? ('/' + block.year) : '' }} — {{ block.readingsCount }} leituras
+                          </option>
+                        }
+                      </select>
+                    </div>
+                  }
+                </div>
+
+                <!-- Resumo da Fatura extraído do topo da planilha mestre -->
+                @if (extractedBillSummary(); as bs) {
+                  <div class="mt-1 p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 flex flex-col gap-1.5">
+                    <label class="flex items-start gap-2 cursor-pointer text-emerald-900 dark:text-emerald-200 font-bold text-[11px]">
+                      <input
+                        type="checkbox"
+                        [ngModel]="applyBillSummary()"
+                        (ngModelChange)="applyBillSummary.set($event)"
+                        class="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500">
+                      <span>
+                        Importar também Custos da Fatura e Consumo da Concessionária deste mês:
+                        @if (bs.costItems.length > 0) {
+                          <span class="font-mono text-emerald-700 dark:text-emerald-300 ml-1">
+                            {{ bs.costItems.length }} itens ({{ bs.totalBillFromItems | currency:'BRL' }})
+                          </span>
+                        }
+                        @if (bs.totalConsumption) {
+                          <span class="font-mono text-emerald-700 dark:text-emerald-300 ml-1">
+                            · {{ bs.totalConsumption | number:'1.0-2' }} {{ unit }}
+                          </span>
+                        }
+                        @if (bs.acConsumption) {
+                          <span class="font-mono text-emerald-700 dark:text-emerald-300 ml-1">
+                            · AC: {{ bs.acConsumption | number:'1.0-0' }} {{ unit }}
+                          </span>
+                        }
+                      </span>
+                    </label>
+                  </div>
+                }
+              </div>
+            }
+
             <!-- MAPEAÇÃO INTELIGENTE DE COLUNAS -->
             @if (rawExcelHeaders().length > 0) {
               <div class="space-y-3 p-4 bg-teal-50/50 dark:bg-teal-950/20 rounded-2xl border border-teal-200 dark:border-teal-900/50">
-                <div class="flex items-center justify-between">
+                <div class="flex flex-wrap items-center justify-between gap-2">
                   <h4 class="font-extrabold text-xs uppercase tracking-wider text-teal-900 dark:text-teal-200 flex items-center gap-2">
                     <span>⚙️ Mapeamento Inteligente de Colunas</span>
                   </h4>
-                  <span class="text-[11px] text-teal-700 dark:text-teal-300 font-semibold">
-                    Colunas detectadas automaticamente da planilha
-                  </span>
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <button type="button"
+                      (click)="showAdvancedMappings.set(!showAdvancedMappings())"
+                      class="text-[11px] px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-teal-200 dark:border-teal-800 text-teal-800 dark:text-teal-300 font-bold hover:bg-teal-50 cursor-pointer">
+                      {{ showAdvancedMappings() ? '▲ Ocultar extras' : '▼ Constante / Ajuste / Contrato' }}
+                    </button>
+                    @if (canUseAiMapping()) {
+                      <button type="button"
+                        (click)="mapColumnsWithAi()"
+                        [disabled]="isAiMapping()"
+                        class="text-[11px] px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold flex items-center gap-1 cursor-pointer">
+                        <span>{{ isAiMapping() ? '⏳' : '✨' }}</span>
+                        <span>{{ isAiMapping() ? 'Mapeando...' : 'Mapear com IA' }}</span>
+                      </button>
+                    }
+                  </div>
                 </div>
+
+                @if (aiMappingFeedback()) {
+                  <div class="text-[11px] px-2.5 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-indigo-800 dark:text-indigo-200 font-medium">
+                    {{ aiMappingFeedback() }}
+                  </div>
+                }
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
                   <!-- Coluna Identificadora LUC -->
@@ -205,22 +337,6 @@ export interface ExcelImportSuccessEvent {
                     <select 
                       [ngModel]="columnMappings().storeName"
                       (ngModelChange)="updateColumnMapping('storeName', $event)"
-                      class="w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-xs font-medium">
-                      <option value="">-- Não Mapear --</option>
-                      @for (h of rawExcelHeaders(); track h) {
-                        <option [value]="h">{{ h }}</option>
-                      }
-                    </select>
-                  </div>
-
-                  <!-- Coluna Nº Medidor / Contrato -->
-                  <div>
-                    <label class="block font-bold text-[11px] text-slate-700 dark:text-slate-300 mb-1">
-                      Nº Medidor / Contrato (Opcional)
-                    </label>
-                    <select 
-                      [ngModel]="columnMappings().meterNumber"
-                      (ngModelChange)="updateColumnMapping('meterNumber', $event)"
                       class="w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-xs font-medium">
                       <option value="">-- Não Mapear --</option>
                       @for (h of rawExcelHeaders(); track h) {
@@ -261,6 +377,22 @@ export interface ExcelImportSuccessEvent {
                     </select>
                   </div>
 
+                  <!-- Coluna Constante -->
+                  <div>
+                    <label class="block font-bold text-[11px] text-slate-700 dark:text-slate-300 mb-1">
+                      Constante / TC (Opcional)
+                    </label>
+                    <select 
+                      [ngModel]="columnMappings().constant"
+                      (ngModelChange)="updateColumnMapping('constant', $event)"
+                      class="w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-xs font-medium">
+                      <option value="">-- Não Mapear --</option>
+                      @for (h of rawExcelHeaders(); track h) {
+                        <option [value]="h">{{ h }}</option>
+                      }
+                    </select>
+                  </div>
+
                   <!-- Coluna Observação -->
                   <div>
                     <label class="block font-bold text-[11px] text-slate-700 dark:text-slate-300 mb-1">
@@ -276,6 +408,83 @@ export interface ExcelImportSuccessEvent {
                       }
                     </select>
                   </div>
+
+                  @if (showAdvancedMappings()) {
+                    <div>
+                      <label class="block font-bold text-[11px] text-slate-700 dark:text-slate-300 mb-1">
+                        Nº do Contrato
+                      </label>
+                      <select
+                        [ngModel]="columnMappings().contrato"
+                        (ngModelChange)="updateColumnMapping('contrato', $event)"
+                        class="w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-xs font-medium">
+                        <option value="">-- Não Mapear --</option>
+                        @for (h of rawExcelHeaders(); track h) {
+                          <option [value]="h">{{ h }}</option>
+                        }
+                      </select>
+                    </div>
+
+                    <div>
+                      <label class="block font-bold text-[11px] text-slate-700 dark:text-slate-300 mb-1">
+                        Nº do Medidor / Hidrômetro
+                      </label>
+                      <select
+                        [ngModel]="columnMappings().meterNumber"
+                        (ngModelChange)="updateColumnMapping('meterNumber', $event)"
+                        class="w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-xs font-medium">
+                        <option value="">-- Não Mapear --</option>
+                        @for (h of rawExcelHeaders(); track h) {
+                          <option [value]="h">{{ h }}</option>
+                        }
+                      </select>
+                    </div>
+
+                    <div>
+                      <label class="block font-bold text-[11px] text-slate-700 dark:text-slate-300 mb-1">
+                        Leitura Anterior (Fallback)
+                      </label>
+                      <select
+                        [ngModel]="columnMappings().prevReading"
+                        (ngModelChange)="updateColumnMapping('prevReading', $event)"
+                        class="w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-xs font-medium">
+                        <option value="">-- Não Mapear --</option>
+                        @for (h of rawExcelHeaders(); track h) {
+                          <option [value]="h">{{ h }}</option>
+                        }
+                      </select>
+                    </div>
+
+                    <div>
+                      <label class="block font-bold text-[11px] text-slate-700 dark:text-slate-300 mb-1">
+                        Ajuste (x)
+                      </label>
+                      <select
+                        [ngModel]="columnMappings().adjustment"
+                        (ngModelChange)="updateColumnMapping('adjustment', $event)"
+                        class="w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-xs font-medium">
+                        <option value="">-- Não Mapear --</option>
+                        @for (h of rawExcelHeaders(); track h) {
+                          <option [value]="h">{{ h }}</option>
+                        }
+                      </select>
+                    </div>
+
+                    <div>
+                      <label class="block font-bold text-[11px] text-slate-700 dark:text-slate-300 mb-1">
+                        Rec. Fluxo (R$)
+                      </label>
+                      <select
+                        [ngModel]="columnMappings().fluxoCost"
+                        (ngModelChange)="updateColumnMapping('fluxoCost', $event)"
+                        class="w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-xs font-medium">
+                        <option value="">-- Não Mapear --</option>
+                        @for (h of rawExcelHeaders(); track h) {
+                          <option [value]="h">{{ h }}</option>
+                        }
+                      </select>
+                    </div>
+                  }
                 </div>
               </div>
             }
@@ -286,7 +495,7 @@ export interface ExcelImportSuccessEvent {
                 
                 <!-- Estatísticas de Correspondência -->
                 <div class="flex flex-wrap items-center justify-between gap-2 p-3 bg-slate-100 dark:bg-slate-800/80 rounded-xl text-xs font-bold">
-                  <div class="flex items-center gap-3">
+                  <div class="flex items-center gap-3 flex-wrap">
                     <span class="text-teal-700 dark:text-teal-300">
                       ✅ Lojas Identificadas: <strong>{{ importStats().matched }}</strong> de {{ importStats().total }}
                     </span>
@@ -295,9 +504,17 @@ export interface ExcelImportSuccessEvent {
                         ⚠️ Não Encontradas: <strong>{{ importStats().unmatched }}</strong>
                       </span>
                     }
+                    <label class="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-600 dark:text-slate-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        [ngModel]="skipEmptyReadings()"
+                        (ngModelChange)="skipEmptyReadings.set($event)"
+                        class="rounded text-teal-600">
+                      <span>Ignorar linhas vazias (sem leitura/virtual)</span>
+                    </label>
                   </div>
                   <span class="text-slate-500 font-mono text-[11px]">
-                    Com leitura preenchida: {{ importStats().withReading }}
+                    Com leitura/virtual: {{ importStats().withReading }}
                   </span>
                 </div>
 
@@ -395,6 +612,8 @@ export class ExcelImportModalComponent {
   @Output() close = new EventEmitter<void>();
   @Output() importSuccess = new EventEmitter<ExcelImportSuccessEvent>();
 
+  constructor(@Optional() private geminiService?: GeminiService) {}
+
   // Import State
   importMethod = signal<'file' | 'paste'>('file');
   importedFileName = signal<string>('');
@@ -402,6 +621,20 @@ export class ExcelImportModalComponent {
   templateSortOrder = signal<'route' | 'luc' | 'name'>('route');
   rawExcelHeaders = signal<string[]>([]);
   rawExcelRows = signal<Record<string, any>[]>([]);
+  workbookSheets = signal<ParsedSheetGrid[]>([]);
+  selectedSheetIndex = signal<number>(0);
+  isMultiMonthMatrix = signal<boolean>(false);
+  detectedMonthBlocks = signal<DetectedMonthBlock[]>([]);
+  selectedMonthBlockId = signal<string | null>(null);
+  detectedHeaderRowIndex = signal<number>(-1);
+  detectedUtility = signal<UtilityType | null>(null);
+  ignoredNoiseRows = signal<number>(0);
+  extractedBillSummary = signal<ExtractedBillSummary | null>(null);
+  applyBillSummary = signal<boolean>(true);
+  skipEmptyReadings = signal<boolean>(true);
+  showAdvancedMappings = signal<boolean>(false);
+  isAiMapping = signal<boolean>(false);
+  aiMappingFeedback = signal<string>('');
   columnMappings = signal<Record<string, string>>({
     luc: '',
     storeName: '',
@@ -463,38 +696,45 @@ export class ExcelImportModalComponent {
       const rawReadingVal = mappings.reading ? rawRow[mappings.reading] : '';
       const reading = this.parseExcelNumber(rawReadingVal);
 
-      // Correspondência inteligente em múltiplas camadas (LUC -> Contrato -> Medidor -> Nome)
-      const normLucVal = normalizeKey(rawLucVal);
-      const normNameVal = normalizeKey(rawNameVal);
-      const normContrVal = normalizeKey(rawContratoVal);
+      // Correspondência inteligente em múltiplas camadas:
+      // 1. (LUC + Contrato) exato -> protege LUCs compartilhados (ex: MULTIPLAN HALL, SCE01)
+      // 2. Contrato exato -> 3. Medidor exato -> 4. LUC normalizado -> 5. Nome normalizado -> fallbacks
+      const normLucVal = normalizeLuc(rawLucVal);
+      const normContrVal = normalizeContract(rawContratoVal);
       const normMeterVal = normalizeKey(rawMeterVal);
+      const normNameVal = normalizeStoreName(rawNameVal);
 
-      const matchedStore = stores.find(s => {
-        const sLuc = normalizeKey(s.luc);
-        const sContr = s.contrato ? normalizeKey(s.contrato) : '';
-        const sMeter = s.meterNumber ? normalizeKey(s.meterNumber) : '';
-        const sName = normalizeKey(s.name);
+      const matchedStore =
+        (normLucVal && normContrVal
+          ? stores.find(s => normalizeLuc(s.luc) === normLucVal && normalizeContract(s.contrato) === normContrVal)
+          : undefined) ||
+        (normContrVal
+          ? stores.find(s => normalizeContract(s.contrato) === normContrVal)
+          : undefined) ||
+        (normMeterVal
+          ? stores.find(s => s.meterNumber && normalizeKey(s.meterNumber) === normMeterVal)
+          : undefined) ||
+        (normLucVal
+          ? stores.find(s => normalizeLuc(s.luc) === normLucVal)
+          : undefined) ||
+        (normNameVal
+          ? stores.find(s => normalizeStoreName(s.name) === normNameVal)
+          : undefined) ||
+        stores.find(s => {
+          const sContr = s.contrato ? normalizeKey(s.contrato) : '';
+          const sMeter = s.meterNumber ? normalizeKey(s.meterNumber) : '';
+          const sName = normalizeStoreName(s.name);
+          const rawLucKey = normalizeKey(rawLucVal);
 
-        // 1. Pelo LUC
-        if (normLucVal && sLuc && sLuc === normLucVal) return true;
-        // 2. Pelo Contrato
-        if (normContrVal && sContr && sContr === normContrVal) return true;
-        // 3. Pelo Medidor
-        if (normMeterVal && sMeter && sMeter === normMeterVal) return true;
-        // 4. Pelo Nome da Loja
-        if (normNameVal && sName && sName === normNameVal) return true;
-
-        // Fallbacks se o leiturista usou a coluna LUC com nome/contrato/medidor
-        if (normLucVal) {
-          if (sContr && sContr === normLucVal) return true;
-          if (sMeter && sMeter === normLucVal) return true;
-          if (sName && sName === normLucVal) return true;
-          if (s.name && s.name.toLowerCase().includes(rawLucVal.toLowerCase())) return true;
-        }
-        if (normNameVal && s.name && s.name.toLowerCase().includes(rawNameVal.toLowerCase())) return true;
-
-        return false;
-      });
+          if (rawLucKey) {
+            if (sContr && sContr === rawLucKey) return true;
+            if (sMeter && sMeter === rawLucKey) return true;
+            if (sName && sName === normalizeStoreName(rawLucVal)) return true;
+            if (rawLucVal.length >= 3 && s.name && s.name.toLowerCase().includes(rawLucVal.toLowerCase())) return true;
+          }
+          if (rawNameVal.length >= 3 && s.name && s.name.toLowerCase().includes(rawNameVal.toLowerCase())) return true;
+          return false;
+        });
 
       let prevData = matchedStore ? prevReadings.get(matchedStore.id) : null;
       if (!prevData && matchedStore) {
@@ -604,7 +844,9 @@ export class ExcelImportModalComponent {
     const total = list.length;
     const matched = list.filter(r => r.status === 'matched').length;
     const unmatched = total - matched;
-    const withReading = list.filter(r => r.status === 'matched' && r.reading > 0).length;
+    const withReading = list.filter(
+      r => r.status === 'matched' && (r.reading > 0 || r.virtual !== undefined || !!r.note || (r.fluxoCost && r.fluxoCost > 0))
+    ).length;
     return { total, matched, unmatched, withReading };
   });
 
@@ -708,25 +950,81 @@ export class ExcelImportModalComponent {
 
   parseExcelFile(file: File) {
     this.importedFileName.set(file.name);
+    this.aiMappingFeedback.set('');
+    const isCsv = file.name.toLowerCase().endsWith('.csv');
     const reader = new FileReader();
     reader.onload = (e: any) => {
       try {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-        const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: '', raw: false });
-        if (jsonData.length === 0) {
-          alert('A planilha selecionada está vazia.');
-          return;
+        if (isCsv) {
+          const text = String(e.target?.result || '');
+          const grid = parseTextToGrid(text);
+          if (grid.length === 0) {
+            alert('A planilha selecionada está vazia.');
+            return;
+          }
+          this.workbookSheets.set([{ name: file.name, grid }]);
+          this.selectedSheetIndex.set(0);
+          this.applySmartGridExtraction(grid, null);
+        } else {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const sheets = extractSheetsFromWorkbook(workbook);
+          if (sheets.length === 0 || sheets.every(s => s.grid.length === 0)) {
+            alert('A planilha selecionada está vazia.');
+            return;
+          }
+          const bestIdx = chooseBestSheetIndex(sheets, this.utilityType);
+          this.workbookSheets.set(sheets);
+          this.selectedSheetIndex.set(bestIdx);
+          this.applySmartGridExtraction(sheets[bestIdx].grid, null);
         }
-        this.processImportedJsonData(jsonData);
       } catch (err) {
         console.error('Erro ao ler planilha Excel:', err);
         alert('Não foi possível ler o arquivo. Certifique-se de que é um arquivo .xlsx, .xls ou .csv válido.');
       }
     };
-    reader.readAsArrayBuffer(file);
+    if (isCsv) {
+      reader.readAsText(file, 'UTF-8');
+    } else {
+      reader.readAsArrayBuffer(file);
+    }
+  }
+
+  onSelectSheet(idx: number) {
+    const sheets = this.workbookSheets();
+    const safeIdx = Number(idx);
+    if (!sheets[safeIdx]) return;
+    this.selectedSheetIndex.set(safeIdx);
+    this.applySmartGridExtraction(sheets[safeIdx].grid, null);
+  }
+
+  onSelectMonthBlock(blockId: string) {
+    const sheets = this.workbookSheets();
+    const activeSheet = sheets[this.selectedSheetIndex()];
+    if (!activeSheet) return;
+    this.applySmartGridExtraction(activeSheet.grid, blockId);
+  }
+
+  private applySmartGridExtraction(grid: any[][], requestedBlockId: string | null) {
+    const extracted = extractSmartTableFromGrid(grid, {
+      selectedMonth: this.selectedMonth,
+      requestedBlockId,
+      utilityType: this.utilityType,
+      knownStores: this.effectiveStores()
+    });
+
+    this.detectedHeaderRowIndex.set(extracted.headerRowIndex);
+    this.isMultiMonthMatrix.set(extracted.isMultiMonthMatrix);
+    this.detectedMonthBlocks.set(extracted.monthBlocks);
+    this.selectedMonthBlockId.set(extracted.selectedBlockId);
+    this.detectedUtility.set(extracted.detectedUtility);
+    this.ignoredNoiseRows.set(extracted.ignoredNoiseRows);
+    this.extractedBillSummary.set(extracted.billSummary);
+    this.applyBillSummary.set(Boolean(extracted.billSummary && (extracted.billSummary.costItems.length > 0 || extracted.billSummary.totalConsumption)));
+
+    this.rawExcelHeaders.set(extracted.headers);
+    this.rawExcelRows.set(extracted.rows);
+    this.columnMappings.set(extracted.suggestedMappings);
   }
 
   processPastedText() {
@@ -735,109 +1033,81 @@ export class ExcelImportModalComponent {
       alert('Cole os dados copiados do Excel na caixa de texto.');
       return;
     }
-    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
-    if (lines.length < 2) {
-      alert('Cole pelo menos o cabeçalho e uma linha de dados.');
+    const grid = parseTextToGrid(text);
+    if (grid.length === 0) {
+      alert('Não foi possível identificar linhas válidas no texto colado.');
       return;
     }
-    const headers = lines[0].split('\t').map(h => h.trim());
-    const rows: Record<string, any>[] = [];
-    for (let i = 1; i < lines.length; i++) {
-      const parts = lines[i].split('\t');
-      const row: Record<string, any> = {};
-      headers.forEach((h, idx) => {
-        row[h] = parts[idx] !== undefined ? parts[idx].trim() : '';
-      });
-      rows.push(row);
-    }
     this.importedFileName.set('Tabela Colada (Ctrl+V)');
-    this.processImportedJsonData(rows, headers);
+    this.aiMappingFeedback.set('');
+    this.workbookSheets.set([{ name: 'Tabela Colada', grid }]);
+    this.selectedSheetIndex.set(0);
+    this.applySmartGridExtraction(grid, null);
   }
 
   processImportedJsonData(rows: any[], headers?: string[]) {
     const extractedHeaders = headers || Object.keys(rows[0] || {});
+    this.workbookSheets.set([]);
+    this.isMultiMonthMatrix.set(false);
+    this.detectedMonthBlocks.set([]);
+    this.selectedMonthBlockId.set(null);
+    this.detectedHeaderRowIndex.set(0);
+    this.detectedUtility.set(null);
+    this.ignoredNoiseRows.set(0);
+    this.extractedBillSummary.set(null);
+
     this.rawExcelHeaders.set(extractedHeaders);
     this.rawExcelRows.set(rows);
+    this.columnMappings.set(autoMapColumns(extractedHeaders, rows, this.effectiveStores()));
+  }
 
-    const mappings: Record<string, string> = {
-      luc: '',
-      storeName: '',
-      contrato: '',
-      meterNumber: '',
-      prevReading: '',
-      reading: '',
-      constant: '',
-      adjustment: '',
-      virtual: '',
-      adjustmentAdd: '',
-      fcm: '',
-      fluxoCost: '',
-      note: ''
-    };
+  canUseAiMapping(): boolean {
+    return Boolean(this.geminiService && this.geminiService.hasConfiguredApiKey());
+  }
 
-    const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  async mapColumnsWithAi() {
+    if (!this.geminiService || this.isAiMapping()) return;
+    const headers = this.rawExcelHeaders();
+    const rows = this.rawExcelRows();
+    if (headers.length === 0) return;
 
-    extractedHeaders.forEach(h => {
-      const nh = norm(h);
-
-      // LUC:
-      if (!mappings.luc && (nh === 'luc' || nh.includes('luc') || nh.includes('unidade') || nh === 'loja' || nh === 'codigo')) {
-        mappings.luc = h;
+    this.isAiMapping.set(true);
+    this.aiMappingFeedback.set('');
+    try {
+      const suggestion = await this.geminiService.suggestSpreadsheetMapping(headers, rows.slice(0, 6), this.utilityType);
+      if (suggestion) {
+        this.columnMappings.update(curr => ({
+          ...curr,
+          ...Object.fromEntries(Object.entries(suggestion).filter(([, v]) => Boolean(v)))
+        }));
+        this.aiMappingFeedback.set('✨ Colunas mapeadas pela IA! Revise a prévia abaixo antes de confirmar.');
+      } else {
+        this.aiMappingFeedback.set('⚠️ A IA não conseguiu sugerir um mapeamento diferente. Ajuste nos seletores abaixo.');
       }
-      // Nome da Loja:
-      if (!mappings.storeName && (nh.includes('nome da loja') || nh.includes('razao social') || nh.includes('fantasia') || (nh.includes('nome') && !nh.includes('medidor')))) {
-        mappings.storeName = h;
-      }
-      // Contrato:
-      if (!mappings.contrato && (nh.includes('contrato') || nh.includes('contr'))) {
-        mappings.contrato = h;
-      }
-      // Medidor:
-      if (!mappings.meterNumber && (nh.includes('medidor') || nh.includes('hidrometro') || nh.includes('relogio') || nh.includes('serie'))) {
-        mappings.meterNumber = h;
-      }
-      // Leitura Anterior:
-      if (!mappings.prevReading && (nh.includes('leitura anterior') || nh.includes('leit. ant') || nh.includes('leit ant') || nh === 'anterior')) {
-        mappings.prevReading = h;
-      }
-      // Leitura Atual (Preenchida pelo técnico): NUNCA deve capturar "Leitura Anterior"
-      if (!mappings.reading && !nh.includes('anterior') && !nh.includes('ant') &&
-          (nh.includes('leitura atual') || nh.includes('preencher') || nh.includes('medicao atual') || nh.includes('valor medido') || nh === 'leitura' || nh.includes('leitura') || nh === 'atual')) {
-        mappings.reading = h;
-      }
-      if (!mappings.constant && (nh.includes('const') || nh.includes('constante'))) {
-        mappings.constant = h;
-      }
-      if (!mappings.adjustment && (nh === 'ajuste' || nh.includes('ajuste (x)') || nh === 'aj(x)' || nh.includes('fator ajuste'))) {
-        mappings.adjustment = h;
-      }
-      if (!mappings.virtual && (nh.includes('virtual') || nh.includes('consumo virtual'))) {
-        mappings.virtual = h;
-      }
-      if (!mappings.adjustmentAdd && (nh.includes('aj(+)') || nh.includes('ajuste add') || nh.includes('adicional'))) {
-        mappings.adjustmentAdd = h;
-      }
-      if (!mappings.fcm && (nh.includes('fcm') || nh.includes('fator correcao'))) {
-        mappings.fcm = h;
-      }
-      if (!mappings.fluxoCost && (nh.includes('fluxo') || nh.includes('custo fluxo'))) {
-        mappings.fluxoCost = h;
-      }
-      if (!mappings.note && (nh.includes('obs') || nh.includes('observacao') || nh.includes('nota') || nh.includes('comentario') || nh.includes('campo'))) {
-        mappings.note = h;
-      }
-    });
-
-    this.columnMappings.set(mappings);
+    } catch (err) {
+      console.error('Erro no mapeamento com IA:', err);
+      this.aiMappingFeedback.set('⚠️ Falha ao consultar IA. Você pode ajustar as colunas manualmente.');
+    } finally {
+      this.isAiMapping.set(false);
+    }
   }
 
   confirmAndApplyImport() {
     const list = this.importPreviewList();
-    const matchedItems = list.filter(item => item.status === 'matched' && item.matchedStore);
+    let matchedItems = list.filter(item => item.status === 'matched' && item.matchedStore);
 
     if (matchedItems.length === 0) {
       alert('Nenhuma loja correspondente encontrada para importar. Verifique o mapeamento das colunas.');
       return;
+    }
+
+    if (this.skipEmptyReadings()) {
+      const populated = matchedItems.filter(
+        item => item.reading > 0 || item.virtual !== undefined || !!item.note || (item.fluxoCost && item.fluxoCost > 0)
+      );
+      if (populated.length > 0) {
+        matchedItems = populated;
+      }
     }
 
     const m = this.columnMappings();
@@ -854,7 +1124,8 @@ export class ExcelImportModalComponent {
       note: m.note ? item.note : undefined
     }));
 
-    this.importSuccess.emit({ updatedReadings });
+    const billSummary = this.applyBillSummary() ? (this.extractedBillSummary() || undefined) : undefined;
+    this.importSuccess.emit({ updatedReadings, billSummary });
   }
 
   private parseExcelNumber(val: any): number {
@@ -882,6 +1153,7 @@ export class ExcelImportModalComponent {
 
   private parseExcelOptionalNumber(val: any): number | undefined {
     if (val === undefined || val === null) return undefined;
+    if (typeof val === 'number') return isNaN(val) ? undefined : val;
     const rawStr = String(val).trim();
     if (rawStr === '' || rawStr === '-' || rawStr === '—') return undefined;
     let clean = rawStr.replace(/[^\d.,-]/g, '');
