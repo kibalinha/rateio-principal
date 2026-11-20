@@ -338,15 +338,15 @@ export type { ExcelImportRowPreview, AnomalyModalData, ExcelImportSuccessEvent }
             }
           </button>
 
-          <!-- Botão Apagar Lojas deste Mês (apenas deste tipo e mês) -->
-          @if (authService.canConfigureBill() && !isLocked() && activeStores().length > 0) {
+          <!-- Botão Apagar Lojas / Dados deste Mês (apenas deste tipo e mês) -->
+          @if (authService.canConfigureBill() && !isLocked() && (activeStores().length > 0 || totalBillAmount() > 0 || totalConsumption() > 0 || dataLoaded())) {
             <button 
               type="button"
               (click)="confirmClearMonthStores()" 
               class="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-              title="Apagar todas as lojas de {{ utilityType() === 'luz' ? 'Energia/Luz' : (utilityType() === 'agua' ? 'Água' : 'Gás') }} deste mês ({{ selectedMonth() }})">
+              title="Apagar todas as lojas e dados de {{ utilityType() === 'luz' ? 'Energia/Luz' : (utilityType() === 'agua' ? 'Água' : 'Gás') }} deste mês ({{ selectedMonth() }})">
               <span>🗑️</span>
-              <span class="hidden sm:inline">Apagar lojas</span>
+              <span class="hidden sm:inline">{{ activeStores().length > 0 ? 'Apagar lojas' : 'Apagar dados do mês' }}</span>
             </button>
           }
         </div>
